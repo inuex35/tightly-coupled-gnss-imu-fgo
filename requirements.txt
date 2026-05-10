@@ -1,0 +1,13 @@
+numpy
+matplotlib
+
+# GTSAM with the project's custom DD factors. The PyPI 'gtsam' wheel does
+# not include DDFactorArm / DDPRFactorArm / DDCPFactorArm — build from a
+# source tree that has them.
+gtsam
+
+# cssrlib must come from the inuex35 fork (dev branch); the upstream PyPI
+# cssrlib lacks prepare_double_difference_measurements / base_process_dd_only.
+# Install with:
+#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@dev#egg=cssrlib
+cssrlib>=1.2.1
