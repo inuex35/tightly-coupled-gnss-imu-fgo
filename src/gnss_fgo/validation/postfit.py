@@ -1,0 +1,483 @@
+"""Stage 4 — post-fit testing."""
+
+import os
+import numpy as np
+import gtsam
+from .. import state as _tc_state
+from . import recovery as _tc_recovery
+
+
+def all_factor_residuals(tc, g3, est2):
+    """RMS of each factor type in the live graph evaluated at est2."""
+    # Buckets keyed by factor class substring → (sum_sq, count)
+    buckets = {
+        'DDPR':       [0.0, 0],   # DoubleDifferencePseudorange
+        'DDCP':       [0.0, 0],   # DoubleDifferenceCarrierPhase
+        'CombinedImu':[0.0, 0],
+        'BetweenBias':[0.0, 0],
+        'BetweenN':   [0.0, 0],   # BetweenFactorDouble (N chain)
+        'PriorBias':  [0.0, 0],
+        'PriorVel':   [0.0, 0],
+        'PriorPose':  [0.0, 0],
+        'PriorN':     [0.0, 0],   # PriorFactorDouble (ambiguity priors)
+        'NHC':        [0.0, 0],   # via PriorFactorVector on Vel — distinguished by key
+        'Other':      [0.0, 0],
+    }
+    custom_cp_local = set(tc._last_custom_ddcp_local)
+    for i in range(g3.size()):
+        fac = g3.at(i)
+        if fac is None:
+            continue
+        try:
+            err = float(fac.error(est2))
+        except RuntimeError:
+            continue
+        tname = type(fac).__name__
+        if 'DoubleDifferencePseudorange' in tname:
+            tag = 'DDPR'
+        elif 'DoubleDifferenceCarrierPhase' in tname or i in custom_cp_local:
+            tag = 'DDCP'
+        elif 'CombinedImuFactor' in tname or 'ImuFactor' in tname:
+            tag = 'CombinedImu'
+        elif 'BetweenFactorConstantBias' in tname:
+            tag = 'BetweenBias'
+        elif 'BetweenFactorDouble' in tname:
+            tag = 'BetweenN'
+        elif 'PriorFactorConstantBias' in tname:
+            tag = 'PriorBias'
+        elif 'PriorFactorVector' in tname:
+            tag = 'PriorVel'
+        elif 'PriorFactorPose3' in tname:
+            tag = 'PriorPose'
+        elif 'PriorFactorDouble' in tname:
+            tag = 'PriorN'
+        else:
+            tag = 'Other'
+        buckets[tag][0] += err
+        buckets[tag][1] += 1
+    out = {}
+    for tag, (sse, n) in buckets.items():
+        if n == 0: continue
+        out[tag] = (float(np.sqrt(2 * sse / n)), n)
+    return out
+
+
+def _choose_ddpr_iter_indices(tag_map, g3):
+    """Decide whether to iterate just the tagged DDPR indices (per-epoch ``g3``) or the full graph. Returns ``(iter_indices, skip_type_check)``."""
+    g3_size = g3.size()
+    if not tag_map or max(tag_map.keys()) >= g3_size:
+        return range(g3_size), False
+    try:
+        probe = g3.at(next(iter(tag_map.keys())))
+        if probe is None or 'Pseudorange' not in type(probe).__name__:
+            return range(g3_size), False
+    except (RuntimeError, StopIteration):
+        return range(g3_size), False
+    return sorted(tag_map.keys()), True
+
+
+def _ddpr_factor_error(fac, est2, tc, pr_base, rebuild_for_robust):
+    """Return the DDPR factor's chi-squared error at ``est2``."""
+    del pr_base
+    try:
+        if rebuild_for_robust:
+            pose = est2.atPose3(fac.keys()[0])
+            r = float(fac.evaluateError(pose)[0])
+            sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
+            return 0.5 * (r / sigma_pr_m) ** 2
+        return fac.error(est2)
+    except RuntimeError:
+        return None
+
+
+def main_ddpr_residuals(tc, g3, est2, with_pairs=False):
+    """DDPR residuals in main graph at est2."""
+    sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
+    res_sq = []
+    per_sat = {}
+    pair_rows = [] if with_pairs else None
+    # Build a fast lookup from factor-index to (ref_sat, j_sat, f).
+    tag_map = {idx: (ref, j, f)
+               for (idx, ref, j, f) in tc._last_ddpr_sat_tags}
+    rebuild_for_robust = tc.cfg.huber_pr > 0
+    pr_base = (gtsam.noiseModel.Isotropic.Sigma(1, sigma_pr_m)
+               if rebuild_for_robust else None)
+    iter_indices, skip_type_check = _choose_ddpr_iter_indices(tag_map, g3)
+    for i in iter_indices:
+        fac = g3.at(i)
+        if fac is None:
+            continue
+        if not skip_type_check and 'Pseudorange' not in type(fac).__name__:
+            continue
+        err = _ddpr_factor_error(fac, est2, tc, pr_base, rebuild_for_robust)
+        if err is None:
+            continue
+        res_m = float(np.sqrt(2.0 * max(err, 0.0)) * sigma_pr_m)
+        res_sq.append(res_m * res_m)
+        tag = tag_map.get(i)
+        if tag is not None:
+            ref, j, _ = tag
+            if res_m > per_sat.get(ref, 0.0):
+                per_sat[ref] = res_m
+            if res_m > per_sat.get(j, 0.0):
+                per_sat[j] = res_m
+            if with_pairs:
+                pair_rows.append({
+                    'ref': int(ref),
+                    'sat': int(j),
+                    'freq': int(tag[2]),
+                    'res': float(res_m),
+                })
+    rms_all = float(np.sqrt(np.mean(res_sq))) if res_sq else 0.0
+    if with_pairs:
+        return rms_all, per_sat, pair_rows
+    return rms_all, per_sat
+
+
+def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
+    """Helper: collect (fi, residual_in_meters) for current-epoch DD factors."""
+    pr_entries = []
+    cp_entries = []
+    custom_cp_global = set((tc._last_custom_ddcp_global or {}).keys())
+    for fi in range(fi_start, nf_total):
+        fac = factors_all.at(fi)
+        if fac is None:
+            continue
+        fname = type(fac).__name__
+        try:
+            err = fac.error(est2)
+        except RuntimeError:
+            continue
+        if 'Pseudorange' in fname:
+            pr_entries.append(
+                (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_pr * np.sqrt(2)))
+        elif 'CarrierPhase' in fname or fi in custom_cp_global:
+            cp_entries.append(
+                (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_cp * np.sqrt(2)))
+    return pr_entries, cp_entries
+
+
+def _fde_pick_rejects_iterative(tc, pr_entries, cp_entries, pr_median, cp_median):
+    """Iterative FDE: pick the SINGLE largest outlier across PR and CP."""
+    best_d = 0.0
+    best_fi = None
+    for fi, res in pr_entries:
+        d = abs(res - pr_median)
+        if d > tc.cfg.fde_pr and d > best_d:
+            best_d, best_fi = d, fi
+    for fi, res in cp_entries:
+        d = abs(res - cp_median)
+        if d > tc.cfg.fde_cp and d > best_d:
+            best_d, best_fi = d, fi
+    return [best_fi] if best_fi is not None else []
+
+
+def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries, pr_median, cp_median):
+    """Single-pass FDE: collect every PR + CP entry above its threshold."""
+    reject_fi = []
+    for fi, res in pr_entries:
+        if abs(res - pr_median) > tc.cfg.fde_pr:
+            reject_fi.append(fi)
+    for fi, res in cp_entries:
+        if abs(res - cp_median) > tc.cfg.fde_cp:
+            reject_fi.append(fi)
+    return reject_fi
+
+
+def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
+    """Treat every CP factor in ``reject_fi`` as a cycle slip:"""
+    custom_cp_meta = tc._last_custom_ddcp_global or {}
+    for fi in reject_fi:
+        fac = factors_all.at(fi)
+        is_cp = (
+            fac is not None
+            and ('CarrierPhase' in type(fac).__name__ or fi in custom_cp_meta)
+        )
+        if not is_cp:
+            continue
+        if fi in custom_cp_meta:
+            ref_sat, j_sat, freq = custom_cp_meta[fi]
+            for key in ((ref_sat, freq), (j_sat, freq)):
+                st_hold = tc._sat_states.track.get(key)
+                if st_hold is not None and st_hold.held_value is not None:
+                    st_hold.release_hold(seed=True)
+        for ki in range(len(fac.keys())):
+            sym = gtsam.Symbol(fac.keys()[ki])
+            if sym.chr() != ord('n'):
+                continue
+            idx = sym.index() % 100000
+            s_fde, f_fde = idx // 10, idx % 10
+            _st = tc._sat_states.track.get((s_fde, f_fde))
+            if _st is not None and _st.amb_key is not None:
+                _st.amb_key = None
+                _st.amb_gen += 1
+
+
+def apply_fde(tc, g3, kk, nv, est2, info):
+    """GICI-style Fault Detection and Exclusion."""
+    use_median = bool(int(os.environ.get('FDE_MEDIAN_SUB', '0')))
+    max_iter = max(1, tc.cfg.fde_max_iter)
+    iterative = max_iter > 1
+    total_rejected = 0
+    for _it in range(max_iter):
+        factors_all = tc.isam2.getFactors()
+        nf_total = factors_all.size()
+        fi_start = 0 if iterative else max(0, nf_total - g3.size())
+        pr_entries, cp_entries = _fde_collect_residuals(
+            tc, factors_all, fi_start, nf_total, est2)
+        # GICI-style median subtract removes pose-common-mode bias.
+        pr_median = (float(np.median([r for _, r in pr_entries]))
+                   if use_median and pr_entries else 0.0)
+        cp_median = (float(np.median([r for _, r in cp_entries]))
+                   if use_median and cp_entries else 0.0)
+        if iterative:
+            reject_fi = _fde_pick_rejects_iterative(
+                tc, pr_entries, cp_entries, pr_median, cp_median)
+            if not reject_fi:
+                break
+        else:
+            reject_fi = _fde_pick_rejects_single_pass(
+                tc, pr_entries, cp_entries, pr_median, cp_median)
+            if not reject_fi:
+                break
+            if len(reject_fi) > tc.cfg.fde_max_frac * max(1, nv):
+                info['fde_skipped'] = len(reject_fi)
+                _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
+                                     value=info['fde_skipped'],
+                                     skip_if_active=True)
+                return est2
+
+        _fde_reset_rejected_amb(tc, factors_all, reject_fi)
+        total_rejected += len(reject_fi)
+        try:
+            tc.isam2.update(
+                gtsam.NonlinearFactorGraph(), gtsam.Values(),
+                gtsam.FixedLagSmootherKeyTimestampMap(), reject_fi)
+            est_fde = tc.isam2.calculateEstimate()
+            if est_fde.exists(tc.Xpose(kk)):
+                est2 = est_fde
+        except (RuntimeError, IndexError):
+            break
+        # Single-pass: one removal batch, done.
+        if not iterative:
+            info['fde_reject'] = total_rejected
+            return est2
+    if total_rejected:
+        info['fde_reject'] = total_rejected
+    return est2
+
+
+def _ddpr_multipath_dominated(tc, info):
+    """Return True when the per-sat DDPR residual distribution looks"""
+    ratio_thr = float(tc.cfg.sanity_max_median_ratio)
+    if ratio_thr <= 0:
+        return False
+    per_sat = info.get('main_ddpr_per_sat') or {}
+    n = len(per_sat)
+    if n < int(tc.cfg.sanity_max_median_min_sats):
+        return False
+    vals = sorted(float(v) for v in per_sat.values())
+    median = vals[n // 2]
+    max_v = vals[-1]
+    if median <= 1e-3:
+        return False
+    ratio = max_v / median
+    if ratio > ratio_thr:
+        info['sanity_skipped_multipath_ratio'] = ratio
+        return True
+    return False
+
+
+def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
+                     rs, rsb, sat, el, iu, ir_map, kk, info, nb=0):
+    """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
+    main_res = info.get('main_ddpr_res', 0.0)
+    if not _ddpr_sanity_trigger(tc, main_res, info):
+        return None
+    if _ddpr_multipath_dominated(tc, info):
+        return None
+    pred_res = _compute_res_at_pred(tc, g3, pred, kk, info)
+    fast = _ddpr_sanity_fast_path(
+        tc, main_res, pose_tc, pred, pred_res, obs, info, nb=nb)
+    if fast is not None:
+        return fast
+    if not _ddpr_sanity_persist(tc, main_res, info):
+        return None
+    if not _ddpr_sanity_gdop_ok(tc, info):
+        return None
+    anchor = _ddpr_sanity_fetch_anchor(
+        tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
+        pose_tc, ecef_tc, info)
+    if anchor is None:
+        return _ddpr_sanity_anchor_fallback(
+            tc, pose_tc, pred, pred_res, info, obs)
+    if not _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
+        return _ddpr_sanity_anchor_fallback(
+            tc, pose_tc, pred, pred_res, info, obs)
+    return _ddpr_sanity_apply_reset(
+        tc, anchor, est2, pose_tc, pred, pred_res, g3, kk, info, obs)
+
+
+def _ddpr_sanity_gdop_ok(tc, info):
+    """Stage 4: abort sanity when geometry is too weak to trust the"""
+    if tc.cfg.sanity_max_gdop <= 0:
+        return True
+    cur_gdop = info.get('gdop', 0.0)
+    if cur_gdop > tc.cfg.sanity_max_gdop:
+        info['sanity_skipped_gdop'] = cur_gdop
+        return False
+    return True
+
+
+def _ddpr_sanity_anchor_fallback(tc, pose_tc, pred, pred_res, info, obs):
+    """Stages 5/6 fallback: ``_apply_sanity_reset`` is graph surgery and"""
+    info['sanity_anchor_fallback'] = 1
+    return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
+
+
+def _compute_res_at_pred(tc, g3, pred, kk, info):
+    """DDPR residual evaluated at the IMU-predicted pose."""
+    try:
+        v_pred = gtsam.Values()
+        v_pred.insert(tc.Xpose(kk), pred.pose())
+        res, _ = main_ddpr_residuals(tc, g3, v_pred)
+        info['ddpr_res_at_pred'] = res
+        return float(res)
+    except RuntimeError:
+        return float('inf')
+
+
+def _sanity_report_translation(tc, pose_tc, pred, pred_res, info):
+    """Pose translation to report when sanity recovery fires."""
+    tc_t = np.array(pose_tc.translation())
+    thr = float(tc.cfg.sanity_pose_replace_thresh)
+    if thr <= 0 or pred is None:
+        return tc_t
+    if pred_res is None or pred_res > thr:
+        info['sanity_pose_replace_pred_dirty'] = (
+            pred_res if pred_res is not None else -1.0)
+        return tc_t
+    try:
+        pred_t = np.array(pred.pose().translation())
+    except (RuntimeError, AttributeError):
+        return tc_t
+    gap = float(np.linalg.norm(tc_t - pred_t))
+    info['sanity_pose_gap'] = gap
+    if gap > thr:
+        info['sanity_pose_replaced'] = 1
+        return pred_t
+    return tc_t
+
+
+def _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs):
+    """Sanity-recovery graph surgery shared between the normal"""
+    info['ddpr_recover'] = tc._ddpr_bad_count
+    n_removed = _tc_recovery.reset_ambiguities_with_cp_hold(tc)
+    info['sanity_dd_removed'] = n_removed
+    tc._ddpr_bad_count = 0
+    if int(tc.cfg.sanity_break_pim):
+        tc._pim_discontinuity = True
+    report_t = _sanity_report_translation(tc, pose_tc, pred, pred_res, info)
+    ecef_tc_now = tc.R_enu2ecef @ report_t + tc.base_ecef
+    return _tc_recovery.finalize_epoch(tc, ecef_tc_now, 'FLT', 0, info, obs)
+
+
+def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=0):
+    """Fast path for catastrophic residual spikes."""
+    if main_res <= tc.cfg.main_ddpr_res_catastrophic:
+        return None
+    if int(nb) > 0:
+        return None
+    worst_sat_res = 0.0
+    worst_pair = info.get('main_ddpr_sat_worst')
+    if worst_pair is not None:
+        try:
+            _, worst_sat_res = worst_pair
+            worst_sat_res = float(worst_sat_res)
+        except (ValueError, TypeError):
+            worst_sat_res = 0.0
+    if worst_sat_res < float(tc.cfg.ddpr_fast_worst_sat_min):
+        return None
+    info['ddpr_bad'] = tc._ddpr_bad_count + 1
+    info['ddpr_fast_recover'] = main_res
+    info['ddpr_fast_worst_sat_res'] = worst_sat_res
+    n_removed = _tc_recovery.reset_ambiguities_with_cp_hold(tc)
+    info['sanity_dd_removed'] = n_removed
+    tc._ddpr_bad_count = 0
+    if int(tc.cfg.sanity_break_pim):
+        tc._pim_discontinuity = True
+    report_t = _sanity_report_translation(tc, pose_tc, pred, pred_res, info)
+    ecef_tc_now = tc.R_enu2ecef @ report_t + tc.base_ecef
+    return _tc_recovery.finalize_epoch(tc, ecef_tc_now, 'FLT', 0, info, obs)
+
+
+def _ddpr_sanity_trigger(tc, main_res, info):
+    """Stage 1: clean residual signal → reset bad-count, return False."""
+    rms_bad = main_res > tc.cfg.main_ddpr_res_thresh
+    per_sat_bad = False
+    psat_thr = float(tc.cfg.main_ddpr_per_sat_thresh)
+    if psat_thr > 0:
+        per_sat = info.get('main_ddpr_per_sat') or {}
+        if per_sat:
+            per_sat_max = max(per_sat.values())
+            per_sat_bad = per_sat_max > psat_thr
+            if per_sat_bad:
+                info['sanity_trig_per_sat'] = per_sat_max
+    if not (rms_bad or per_sat_bad):
+        tc._ddpr_bad_count = 0
+        return False
+    return True
+
+
+def _ddpr_sanity_persist(tc, main_res, info):
+    """Stage 2: count consecutive bad epochs, fire CP-hold each one,"""
+    tc._ddpr_bad_count = tc._ddpr_bad_count + 1
+    info['ddpr_bad'] = tc._ddpr_bad_count
+    _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
+    return tc._ddpr_bad_count >= tc.cfg.ddpr_sanity_persist
+
+
+def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
+                               ir_map, pose_tc, ecef_tc, info):
+    """Stage 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
+    ecef_ddpr, n_ddpr, res_rms = tc._ddpr_only_position(
+        obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_tc)
+    info['ddpr_nv'] = n_ddpr
+    info['ddpr_res'] = res_rms
+    if ecef_ddpr is not None:
+        info['ecef_ddpr'] = ecef_ddpr
+        info['ddpr_innov'] = float(np.linalg.norm(ecef_tc - ecef_ddpr))
+    if ecef_ddpr is None or res_rms > tc.cfg.ddpr_max_res:
+        info['ddpr_anchor_untrusted'] = res_rms
+        return None
+    return (ecef_ddpr, res_rms)
+
+
+def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
+    """Stage 4: anchor must agree with IMU-predicted position (sub-metre"""
+    ecef_ddpr, res_rms = anchor
+    R = tc.R_enu2ecef
+    ecef_pred = R @ np.array(pred.pose().translation()) + tc.base_ecef
+    anchor_imu_gap = float(np.linalg.norm(ecef_ddpr - ecef_pred))
+    info['anchor_imu_gap'] = anchor_imu_gap
+    clean_anchor = (res_rms < tc.cfg.anchor_imu_clean_res
+                    and main_res > tc.cfg.anchor_imu_clean_main_res)
+    if (anchor_imu_gap > tc.cfg.anchor_imu_hard_max
+            and not clean_anchor):
+        info['ddpr_anchor_vs_imu_bad'] = anchor_imu_gap
+        return False
+    catastrophic = main_res > tc.cfg.main_ddpr_res_catastrophic
+    persistent_bad = (tc._ddpr_bad_count
+                      >= tc.cfg.ddpr_bad_persist_override
+                      and res_rms < tc.cfg.ddpr_clean_res)
+    if (anchor_imu_gap > tc.cfg.anchor_imu_max_gap
+            and not catastrophic and not persistent_bad):
+        info['ddpr_anchor_vs_imu_bad'] = anchor_imu_gap
+        return False
+    return True
+
+
+def _ddpr_sanity_apply_reset(tc, anchor, est2, pose_tc, pred, pred_res,
+                              g3, kk, info, obs):
+    """Stage 5: recover from a wrong-basin lock via DDCP removal + N"""
+    return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
