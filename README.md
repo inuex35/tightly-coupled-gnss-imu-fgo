@@ -72,5 +72,7 @@ still override.
 ## Requirements
 
 - GTSAM (built with the project's DD factors)
-- cssrlib — install from <https://github.com/inuex35/cssrlib-numba>
+- cssrlib — minimal DD-only RTK core from the inuex35 fork
+  (`claude/gtsam-dd-minimal`, pinned to `65ad0ed`):
+  `pip install -e git+https://github.com/inuex35/cssrlib-numba.git@65ad0ed#egg=cssrlib`
 - numpy

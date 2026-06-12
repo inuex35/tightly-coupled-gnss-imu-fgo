@@ -6,8 +6,11 @@ matplotlib
 # source tree that has them.
 gtsam
 
-# cssrlib must come from the inuex35 fork (dev branch); the upstream PyPI
-# cssrlib lacks prepare_double_difference_measurements / base_process_dd_only.
+# cssrlib must come from the inuex35 fork. This project uses the minimal
+# DD-only RTK core (claude/gtsam-dd-minimal), which strips SSR/PPP/RTCM and
+# keeps only the double-difference path this pipeline needs. The upstream
+# PyPI cssrlib lacks prepare_double_difference_measurements /
+# base_process_dd_only. Pinned to a commit for reproducibility.
 # Install with:
-#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@dev#egg=cssrlib
+#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@65ad0ed#egg=cssrlib
 cssrlib>=1.2.1
