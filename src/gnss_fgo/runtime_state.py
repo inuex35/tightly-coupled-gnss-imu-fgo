@@ -121,7 +121,6 @@ class SatState:
     release_seed_pending: bool = False       # one-shot unary prior on first float epoch
     # Per-(sat, freq) quality counters
     rejc_cp_pr: int = 0                      # CP-vs-PR consistency reject count
-    rejc_post_ddpr: int = 0                  # post-fit DDPR reject count
     fix_streak: int = 0                      # consecutive Fix epochs
 
     def activate_hold(self, value: float) -> None:

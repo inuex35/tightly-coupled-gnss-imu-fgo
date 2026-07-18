@@ -11,8 +11,6 @@ class SatQualityState:
     persist_bad_hold: dict = field(default_factory=dict)
     hold_quarantine: dict = field(default_factory=dict)
     release_probation: dict = field(default_factory=dict)
-    dirty_cooldown: dict = field(default_factory=dict)
-    dirty_suspect: dict = field(default_factory=dict)
     obsq_ewma: dict = field(default_factory=dict)
     obsq_bad_streak: dict = field(default_factory=dict)
     recent_worst: dict = field(default_factory=dict)
@@ -24,15 +22,12 @@ class SatQualityState:
     cp_lock_streak: dict = field(default_factory=dict)
     hold_streak_persat: dict = field(default_factory=dict)
     forced_hold_per_sat: set = field(default_factory=set)
-    penalized_per_sat: set = field(default_factory=set)
 
     def clear(self):
         self.persist_bad_streak.clear()
         self.persist_bad_hold.clear()
         self.hold_quarantine.clear()
         self.release_probation.clear()
-        self.dirty_cooldown.clear()
-        self.dirty_suspect.clear()
         self.obsq_ewma.clear()
         self.obsq_bad_streak.clear()
         self.recent_worst.clear()
@@ -44,18 +39,11 @@ class SatQualityState:
         self.cp_lock_streak.clear()
         self.hold_streak_persat.clear()
         self.forced_hold_per_sat.clear()
-        self.penalized_per_sat.clear()
 
     def tick(self, amb_keys_tc, info):
         """Advance hold/cooldown/probation maps and return forced-hold keys."""
         forced_hold = set()
 
-        for key in list(self.dirty_cooldown.keys()):
-            rem = int(self.dirty_cooldown.get(key, 0)) - 1
-            if rem > 0:
-                self.dirty_cooldown[key] = rem
-            else:
-                self.dirty_cooldown.pop(key, None)
 
         for key in list(self.hold_quarantine.keys()):
             rem = int(self.hold_quarantine.get(key, 0)) - 1
@@ -213,73 +201,6 @@ class SatQualityState:
         for key in set(keys or ()):
             self.cp_lock_streak[key] = 0
 
-    def sat_badness(self, tc, sat_id, freq, ref_sat=None):
-        """Continuous per-sat badness score used to downweight DDCP."""
-        cfg = tc.cfg
-        if not cfg.sat_badness_enable:
-            return 0.0
-
-        # All sat_badness_* fields are TcConfig dataclass fields with
-        # documented defaults; direct access is faster than getattr-with-
-        # default. max()/min() clamps stay so a user-provided preset that
-        # sets a negative alpha or zero threshold doesn't break the score.
-        ddpr_thr = max(1e-6, float(cfg.sat_badness_ddpr_thresh))
-        cppr_thr = max(1, int(cfg.sat_badness_cppr_thresh))
-        alpha_ddpr = max(0.0, float(cfg.sat_badness_alpha_ddpr))
-        alpha_cppr = max(0.0, float(cfg.sat_badness_alpha_cppr))
-        alpha_recent_cppr = max(0.0, float(cfg.sat_badness_alpha_recent_cppr))
-        alpha_recent_worst = max(0.0, float(cfg.sat_badness_alpha_recent_worst))
-        alpha_recent_ref = max(0.0, float(cfg.sat_badness_alpha_recent_ref))
-        alpha_recent_pair = max(0.0, float(cfg.sat_badness_alpha_recent_pair))
-        alpha_obsq_ewma = max(0.0, float(cfg.sat_badness_alpha_obsq_ewma))
-        alpha_obsq_streak = max(0.0, float(cfg.sat_badness_alpha_obsq_streak))
-        alpha_el = max(0.0, float(cfg.sat_badness_alpha_el))
-        alpha_snr = max(0.0, float(cfg.sat_badness_alpha_snr))
-        obsq_thr = max(1e-6, float(cfg.obsq_res_thresh))
-        obsq_streak_cap = max(1, int(cfg.obsq_bad_streak_cap))
-        el_ref_deg = max(1.0, float(cfg.sat_badness_el_ref_deg))
-        snr_ref_dbhz = float(cfg.sat_badness_snr_ref_dbhz)
-        snr_span_db = max(1.0, float(cfg.sat_badness_snr_span_db))
-
-        last_per_sat = tc._last_main_ddpr_per_sat or {}
-        cppr_map = getattr(tc, 'rejc_cp_pr', None) or {}
-
-        res_s = float(last_per_sat.get(sat_id, 0.0) or 0.0)
-        cppr = int(cppr_map.get((sat_id, freq), 0) or 0)
-        score = 0.0
-        if res_s > 0:
-            score += alpha_ddpr * (res_s / ddpr_thr)
-        if cppr > 0:
-            score += alpha_cppr * (cppr / cppr_thr)
-        q_recent_cppr = float(self.recent_cppr.get(sat_id, 0.0) or 0.0)
-        if q_recent_cppr > 0:
-            score += alpha_recent_cppr * (q_recent_cppr / cppr_thr)
-        q_recent_worst = float(self.recent_worst.get(sat_id, 0.0) or 0.0)
-        if q_recent_worst > 0:
-            score += alpha_recent_worst * q_recent_worst
-        q_recent_ref = float(self.recent_ref_bad.get(sat_id, 0.0) or 0.0)
-        if q_recent_ref > 0:
-            score += alpha_recent_ref * q_recent_ref
-        if ref_sat is not None and alpha_recent_pair > 0.0:
-            q_pair = float(self.recent_pair_bad.get(
-                (int(ref_sat), int(sat_id), int(freq)), 0.0) or 0.0)
-            if q_pair > 0:
-                score += alpha_recent_pair * q_pair
-        q_ewma = float(self.obsq_ewma.get(sat_id, 0.0) or 0.0)
-        if q_ewma > 0:
-            score += alpha_obsq_ewma * (q_ewma / obsq_thr)
-        q_streak = min(obsq_streak_cap, int(self.obsq_bad_streak.get(sat_id, 0) or 0))
-        if q_streak > 0:
-            score += alpha_obsq_streak * (q_streak / obsq_streak_cap)
-        if alpha_el > 0.0:
-            el_deg = float(self.latest_el_deg.get(sat_id, 90.0) or 90.0)
-            el_penalty = max(0.0, min(1.0, (el_ref_deg - el_deg) / el_ref_deg))
-            score += alpha_el * el_penalty
-        if alpha_snr > 0.0:
-            snr_dbhz = float(self.latest_snr_dbhz.get(sat_id, snr_ref_dbhz) or snr_ref_dbhz)
-            snr_penalty = max(0.0, min(1.0, (snr_ref_dbhz - snr_dbhz) / snr_span_db))
-            score += alpha_snr * snr_penalty
-        return max(0.0, score)
 
 
 def get_sat_quality(tc):

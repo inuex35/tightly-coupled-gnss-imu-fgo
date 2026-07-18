@@ -60,15 +60,12 @@ def _init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
 
 def _add_ddpr_factor(tc, graph, key_pose, lever,
                       pr_obs, sat_pts, pair_id,
-                      pair_sigma_base, bad_pair, pr_bad_scale):
+                      pair_sigma_base):
     """Add one DDPR factor for a (ref, j, freq) triple to ``graph``."""
     pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
     ref_sat, j_sat, freq = pair_id
-    pr_sigma = pair_sigma_base
-    if pr_bad_scale > 0 and bad_pair > 0:
-        pr_sigma *= (1.0 + pr_bad_scale * bad_pair)
-    pr_base = tc._noise1(pr_sigma)
+    pr_base = tc._noise1(pair_sigma_base)
     pr_noise = (pr_base if tc.cfg.huber_pr <= 0
                 else _maybe_robust(
                     pr_base, tc.cfg.huber_pr,
@@ -81,42 +78,13 @@ def _add_ddpr_factor(tc, graph, key_pose, lever,
         tc.base_pt, lever, tc.ecef_T_nav, pr_noise))
 
 
-def _cp_pr_innovation_rejects(tc, *, cp_pr_active, cp_pr_thresh, fresh_pair,
-                                pr_obs, cp_obs, lam,
-                                values, key_n_ref, key_n_j,
-                                ref_held_value, j_held_value,
-                                j_sat, freq):
-    """RTKLIB-independent CP-vs-PR consistency gate for one DD pair."""
-    if not cp_pr_active or fresh_pair:
-        return False
-    n_ref = (float(ref_held_value) if ref_held_value is not None
-             else (values.atDouble(key_n_ref)
-                   if values.exists(key_n_ref) else None))
-    n_j = (float(j_held_value) if j_held_value is not None
-           else (values.atDouble(key_n_j)
-                 if values.exists(key_n_j) else None))
-    if n_ref is None or n_j is None:
-        return False
-    pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
-    cp_ref_r, cp_ref_b, cp_j_r, cp_j_b = cp_obs
-    dd_pr = (pr_ref_r - pr_j_r) - (pr_ref_b - pr_j_b)
-    dd_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
-    innov = abs(dd_pr - (dd_cp - lam * (n_ref - n_j)))
-    if innov > cp_pr_thresh:
-        tc._sat_states.get(j_sat, freq).rejc_cp_pr += 1
-        tc._last_cp_pr_reject += 1
-        return True
-    return False
 
-
-def _compute_cp_sigma(pair_sigma_base, cp_sigma_mult, bad_pair, cp_bad_scale,
+def _compute_cp_sigma(pair_sigma_base, cp_sigma_mult,
                       *, fresh_pair, ddcp_res_active,
                       ddcp_res_psr, ddcp_res_thresh, ddcp_res_max_pair,
                       ref_sat, j_sat):
     """Compute σ for one DDCP pair."""
     cp_sigma = pair_sigma_base * cp_sigma_mult
-    if cp_bad_scale > 0 and bad_pair > 0:
-        cp_sigma *= (1.0 + cp_bad_scale * bad_pair)
     if ddcp_res_active and not fresh_pair:
         res_pair = max(
             float(ddcp_res_psr.get(int(ref_sat), 0.0) or 0.0),
@@ -258,40 +226,6 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
             j_state.amb_factor_indices.append(fi_cp)
 
 
-def _reset_persistently_failing_n(tc, prev_amb_values):
-    """Bump amb_gen on sats whose CP-vs-PR or post-fit DDPR rejection"""
-    if getattr(tc, 'phase', 1) < 2:
-        tc._last_rejc_wipe = 0
-        return
-
-    if not tc._rejc_reset_at_p2:
-        for sat_st in tc._sat_states.values():
-            sat_st.rejc_cp_pr = 0
-            sat_st.rejc_post_ddpr = 0
-        tc._rejc_reset_at_p2 = True
-
-    cp_pr_thresh = float(tc.cfg.cp_pr_innov_thresh)
-    cp_pr_rejc_max = int(tc.cfg.cp_pr_rejc_max)
-    cp_pr_active = cp_pr_thresh > 0 and cp_pr_rejc_max > 0
-    post_ddpr_count = int(tc.cfg.post_ddpr_reset_count)
-    post_ddpr_active = (
-        tc.cfg.post_ddpr_reset_thresh > 0 and post_ddpr_count > 0)
-
-    n_wipe = 0
-    for (s, f), sat_st in list(tc._sat_states.track.items()):
-        if ((cp_pr_active and sat_st.rejc_cp_pr >= cp_pr_rejc_max)
-                or (post_ddpr_active
-                    and sat_st.rejc_post_ddpr >= post_ddpr_count)):
-            sat_st.amb_gen += 1
-            sat_st.clear_hold()
-            sat_st.rejc_cp_pr = 0
-            sat_st.rejc_post_ddpr = 0
-            sat_st.fix_streak = 0
-            if prev_amb_values is not None:
-                prev_amb_values.pop((s, f), None)
-            n_wipe += 1
-    tc._last_rejc_wipe = n_wipe
-
 
 class DdFactorBuilder:
     """Per-call state bag for ``build_dd_factors``."""
@@ -339,12 +273,6 @@ class DdFactorBuilder:
         self._prev_keys = (set(prev_amb_values.keys())
                             if prev_amb_values else set())
 
-        self.cp_pr_thresh = float(tc.cfg.cp_pr_innov_thresh)
-        self.cp_pr_active = (
-            getattr(tc, 'phase', 1) >= 2
-            and self.cp_pr_thresh > 0
-            and int(tc.cfg.cp_pr_rejc_max) > 0)
-        _reset_persistently_failing_n(tc, prev_amb_values)
         tc._last_cp_pr_reject = 0
 
         # Elevation + SNR / cfg constants used by pair_sigma + bad scaling
@@ -352,9 +280,6 @@ class DdFactorBuilder:
         self.snr_ref = tc.cfg.snr_ref_dbhz
         self.dt_s = float(tc._epoch_dt)
         self.use_varerr = bool(tc.cfg.varerr_enable)
-        self.use_sat_badness = bool(tc.cfg.sat_badness_enable)
-        self.pr_bad_scale = max(0.0, float(tc.cfg.sat_badness_sigma_scale_pr))
-        self.cp_bad_scale = max(0.0, float(tc.cfg.sat_badness_sigma_scale_cp))
 
         self.ddcp_res_thresh = float(tc.cfg.ddcp_res_weight_thresh_m)
         self.ddcp_res_max_pair = float(tc.cfg.ddcp_res_weight_max_m)
@@ -381,9 +306,6 @@ class DdFactorBuilder:
         return (not self.has_prev_or_held(ref_s, freq)
                 or not self.has_prev_or_held(j_s, freq))
 
-    def sat_badness(self, sat_id, freq, ref_sat=None):
-        return (self.sq.sat_badness(self.tc, sat_id, freq, ref_sat=ref_sat)
-                if self.use_sat_badness else 0.0)
 
     def _select_ref_for_system(self, sys_id, idx_sys, sat, el,
                                 amb_dict, slip_keys):
@@ -421,7 +343,7 @@ class DdFactorBuilder:
         return ref_pt, ref_base_pt, ref_xyz, ref_base_xyz
 
     def _build_pr_for_pair(self, ref_idx, j_idx, ref_sat, j_sat, f,
-                            sat_pts, snr_r, snr_j, bad_pair):
+                            sat_pts, snr_r, snr_j):
         """Build the DDPR factor for one (ref, j, f) and return the 4-tuple of PR observations on success, ``None`` when any of the four PR values is zero (skip)."""
         obs = self.obs
         obsb = self.obsb
@@ -440,12 +362,12 @@ class DdFactorBuilder:
             pair_id=(ref_sat, j_sat, f),
             pair_sigma_base=self.pair_sigma(
                 1, f, self.el[ref_idx], self.el[j_idx], snr_r, snr_j),
-            bad_pair=bad_pair, pr_bad_scale=self.pr_bad_scale)
+            )
         return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
 
     def _build_cp_for_pair(self, sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                             lams, sat_pts, sat_xyz, pr_obs,
-                            snr_r, snr_j, fresh_pair, bad_pair,
+                            snr_r, snr_j, fresh_pair,
                             amb_dict, new_amb, dd_epoch):
         """Build the DDCP factor for one (ref, j, f) — handles N init, CP-vs-PR consistency gate, σ computation, and the actual ``_add_ddcp_factor`` call. Returns ``1`` on success, ``0`` when skipped (GLO PR-only / missing λ / zero CP / cp_allowed=False / consistency gate reject)."""
         tc = self.tc
@@ -490,23 +412,12 @@ class DdFactorBuilder:
             tc, sq_state, ref_sat, j_sat, f, self.skip_cp)
         if not cp_allowed:
             return 0
-        if _cp_pr_innovation_rejects(
-                tc, cp_pr_active=self.cp_pr_active,
-                cp_pr_thresh=self.cp_pr_thresh,
-                fresh_pair=fresh_pair, pr_obs=pr_obs,
-                cp_obs=(cp_ref_r, cp_ref_b, cp_j_r, cp_j_b),
-                lam=lam, values=self.values,
-                key_n_ref=key_n_ref, key_n_j=key_n_j,
-                ref_held_value=ref_held_value,
-                j_held_value=j_held_value,
-                j_sat=j_sat, freq=f):
-            return 0
         # Track CP factor index for both ref and target satellites
         fi_cp = tc.total_factor_count + self.graph.size()
         cp_sigma = _compute_cp_sigma(
             self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx],
                             snr_r, snr_j),
-            cp_sigma_mult, bad_pair, self.cp_bad_scale,
+            cp_sigma_mult,
             fresh_pair=fresh_pair,
             ddcp_res_active=self.ddcp_res_active,
             ddcp_res_psr=self.ddcp_res_psr,
@@ -568,7 +479,6 @@ class DdFactorBuilder:
         new_amb = self.new_amb
         snr_ref = self.snr_ref
         _is_fresh_pair = self.is_fresh_pair
-        sat_badness = self.sat_badness
         nv = 0
 
         sat_sys_for_obs = SAT_SYS_ARR[np.asarray(sat[:ns], dtype=np.int32)]
@@ -604,19 +514,17 @@ class DdFactorBuilder:
                     fresh_pair = _is_fresh_pair(ref_sat, j_sat, f)
                     snr_r = obs.S[iu[ref_idx], f] if f < obs.S.shape[1] else snr_ref
                     snr_j = obs.S[iu[j_idx], f] if f < obs.S.shape[1] else snr_ref
-                    bad_pair = max(sat_badness(ref_sat, f),
-                                   sat_badness(j_sat, f, ref_sat=ref_sat))
                     # PR factor: CPなし (L信号不在) でも追加する
                     pr_obs = self._build_pr_for_pair(
                         ref_idx, j_idx, ref_sat, j_sat, f,
-                        sat_pts, snr_r, snr_j, bad_pair)
+                        sat_pts, snr_r, snr_j)
                     if pr_obs is None:
                         continue
                     nv += 1
                     nv += self._build_cp_for_pair(
                         sys_id, ref_idx, j_idx, ref_sat, j_sat, f, lams,
                         sat_pts, sat_xyz, pr_obs,
-                        snr_r, snr_j, fresh_pair, bad_pair,
+                        snr_r, snr_j, fresh_pair,
                         amb_dict, new_amb, dd_epoch)
 
         amb_dict.update(new_amb)

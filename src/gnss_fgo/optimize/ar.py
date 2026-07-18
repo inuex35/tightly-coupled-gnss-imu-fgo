@@ -385,11 +385,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc._last_resamb_raw_nb = -1
     try:
-        if (tc.cfg.rtklib_mode
-                and bool(tc.cfg.system_subset_ar_enable)
-                and hasattr(tc, 'resamb_lambda_subsets')):
-            nb, xa = tc.resamb_lambda_subsets(sat)
-        elif tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
+        if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
             nb, xa = tc.resamb_lambda_rtklib(sat)
         else:
             nb, xa = tc.resamb_lambda(sat, tc.nav.parmode, tc.nav.par_P0)
