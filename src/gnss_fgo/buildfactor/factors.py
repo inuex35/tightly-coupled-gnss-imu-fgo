@@ -79,22 +79,9 @@ def _add_ddpr_factor(tc, graph, key_pose, lever,
 
 
 
-def _compute_cp_sigma(pair_sigma_base, cp_sigma_mult,
-                      *, fresh_pair, ddcp_res_active,
-                      ddcp_res_psr, ddcp_res_thresh, ddcp_res_max_pair,
-                      ref_sat, j_sat):
+def _compute_cp_sigma(pair_sigma_base, cp_sigma_mult):
     """Compute σ for one DDCP pair."""
-    cp_sigma = pair_sigma_base * cp_sigma_mult
-    if ddcp_res_active and not fresh_pair:
-        res_pair = max(
-            float(ddcp_res_psr.get(int(ref_sat), 0.0) or 0.0),
-            float(ddcp_res_psr.get(int(j_sat), 0.0) or 0.0))
-        if (res_pair >= ddcp_res_thresh
-                and (ddcp_res_max_pair <= 0
-                     or res_pair <= ddcp_res_max_pair)
-                and res_pair > cp_sigma):
-            cp_sigma = res_pair
-    return cp_sigma
+    return pair_sigma_base * cp_sigma_mult
 
 
 def _make_ddcp_factor_with_held_n(key_pose, key_float, noise,
@@ -277,19 +264,9 @@ class DdFactorBuilder:
 
         # Elevation + SNR / cfg constants used by pair_sigma + bad scaling
         self.el_min_rad = np.radians(max(1.0, tc.cfg.el_mask_deg))
-        self.snr_ref = tc.cfg.snr_ref_dbhz
         self.dt_s = float(tc._epoch_dt)
         self.use_varerr = bool(tc.cfg.varerr_enable)
 
-        self.ddcp_res_thresh = float(tc.cfg.ddcp_res_weight_thresh_m)
-        self.ddcp_res_max_pair = float(tc.cfg.ddcp_res_weight_max_m)
-        self.ddcp_res_psr = tc._last_main_ddpr_per_sat or {}
-        self.ddcp_res_active = False
-        if self.ddcp_res_thresh > 0.0 and self.ddcp_res_psr:
-            stale_max = int(tc.cfg.ddcp_res_weight_stale_max_epochs)
-            last_ep = int(tc._last_main_ddpr_epoch)
-            self.ddcp_res_active = (
-                stale_max <= 0 or (tc.epoch - last_ep) <= stale_max)
         self.sq = _satq.get_sat_quality(tc)
 
         # Mutable accumulators
@@ -343,7 +320,7 @@ class DdFactorBuilder:
         return ref_pt, ref_base_pt, ref_xyz, ref_base_xyz
 
     def _build_pr_for_pair(self, ref_idx, j_idx, ref_sat, j_sat, f,
-                            sat_pts, snr_r, snr_j):
+                            sat_pts):
         """Build the DDPR factor for one (ref, j, f) and return the 4-tuple of PR observations on success, ``None`` when any of the four PR values is zero (skip)."""
         obs = self.obs
         obsb = self.obsb
@@ -361,13 +338,13 @@ class DdFactorBuilder:
             sat_pts=sat_pts,
             pair_id=(ref_sat, j_sat, f),
             pair_sigma_base=self.pair_sigma(
-                1, f, self.el[ref_idx], self.el[j_idx], snr_r, snr_j),
+                1, f, self.el[ref_idx], self.el[j_idx]),
             )
         return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
 
     def _build_cp_for_pair(self, sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                             lams, sat_pts, sat_xyz, pr_obs,
-                            snr_r, snr_j, fresh_pair,
+                            fresh_pair,
                             amb_dict, new_amb, dd_epoch):
         """Build the DDCP factor for one (ref, j, f) — handles N init, CP-vs-PR consistency gate, σ computation, and the actual ``_add_ddcp_factor`` call. Returns ``1`` on success, ``0`` when skipped (GLO PR-only / missing λ / zero CP / cp_allowed=False / consistency gate reject)."""
         tc = self.tc
@@ -415,15 +392,8 @@ class DdFactorBuilder:
         # Track CP factor index for both ref and target satellites
         fi_cp = tc.total_factor_count + self.graph.size()
         cp_sigma = _compute_cp_sigma(
-            self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx],
-                            snr_r, snr_j),
-            cp_sigma_mult,
-            fresh_pair=fresh_pair,
-            ddcp_res_active=self.ddcp_res_active,
-            ddcp_res_psr=self.ddcp_res_psr,
-            ddcp_res_thresh=self.ddcp_res_thresh,
-            ddcp_res_max_pair=self.ddcp_res_max_pair,
-            ref_sat=ref_sat, j_sat=j_sat)
+            self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx]),
+            cp_sigma_mult)
         cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
         _add_ddcp_factor(
@@ -452,9 +422,7 @@ class DdFactorBuilder:
                       if j_sat in ir_map else j_xyz)
         return j_pt, j_base_pt, j_xyz, j_base_xyz
 
-    def pair_sigma(self, code, freq, el_ref_rad, el_j_rad,
-                    snr_ref_dbhz, snr_j_dbhz,
-                    ref_sat=None, j_sat=None):
+    def pair_sigma(self, code, freq, el_ref_rad, el_j_rad):
         """DD σ for the (code, freq, ref/j) pair — RTKLIB-demo5 ``varerr``"""
         if self.use_varerr:
             el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
@@ -477,7 +445,6 @@ class DdFactorBuilder:
         nf = self.nf
         ns = self.ns
         new_amb = self.new_amb
-        snr_ref = self.snr_ref
         _is_fresh_pair = self.is_fresh_pair
         nv = 0
 
@@ -512,19 +479,17 @@ class DdFactorBuilder:
                         continue
                     # Pair-level features used by both PR and CP build.
                     fresh_pair = _is_fresh_pair(ref_sat, j_sat, f)
-                    snr_r = obs.S[iu[ref_idx], f] if f < obs.S.shape[1] else snr_ref
-                    snr_j = obs.S[iu[j_idx], f] if f < obs.S.shape[1] else snr_ref
                     # PR factor: CPなし (L信号不在) でも追加する
                     pr_obs = self._build_pr_for_pair(
                         ref_idx, j_idx, ref_sat, j_sat, f,
-                        sat_pts, snr_r, snr_j)
+                        sat_pts)
                     if pr_obs is None:
                         continue
                     nv += 1
                     nv += self._build_cp_for_pair(
                         sys_id, ref_idx, j_idx, ref_sat, j_sat, f, lams,
                         sat_pts, sat_xyz, pr_obs,
-                        snr_r, snr_j, fresh_pair,
+                        fresh_pair,
                         amb_dict, new_amb, dd_epoch)
 
         amb_dict.update(new_amb)
