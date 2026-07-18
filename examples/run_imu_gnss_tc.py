@@ -118,9 +118,14 @@ def main():
     decb = rn.rnxdec()
     dec.decode_obsh(obsfile)
     decb.decode_obsh(basefile)
+    # GLONASS is excluded: FDMA inter-channel biases do not cancel in the
+    # double difference, so the DD-only core cannot use it (its biased
+    # pseudoranges would poison the float solution).
     sigs, sigsb = auto_detect_signals(
         dec.sig_map, decb.sig_map, max_freq=nav_nf,
         required=(uTYP.C, uTYP.L, uTYP.S),
+        systems=[gn.uGNSS.GPS, gn.uGNSS.GAL, gn.uGNSS.QZS, gn.uGNSS.BDS],
+        strict_freq=False,
     )
     # Add rover Doppler on the same picked bands (base has no Doppler,
     # detslp_dop is rover-only); skip systems where rover lacks Doppler.
