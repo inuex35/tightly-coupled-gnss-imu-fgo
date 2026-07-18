@@ -133,8 +133,6 @@ class ImuGnssTc(rtkpos):
             self._sat_states, 'amb_factor_indices', absent=[])
         self._rejc_cp_pr_view = SatFieldView(
             self._sat_states, 'rejc_cp_pr', absent=0)
-        self._rejc_post_ddpr_view = SatFieldView(
-            self._sat_states, 'rejc_post_ddpr', absent=0)
         self._fix_streak_view = SatFieldView(
             self._sat_states, 'fix_streak', absent=0)
 
@@ -271,13 +269,6 @@ class ImuGnssTc(rtkpos):
     def rejc_cp_pr(self, value):
         self._assign_view(self._rejc_cp_pr_view, value)
 
-    @property
-    def rejc_post_ddpr(self):
-        return self._rejc_post_ddpr_view
-
-    @rejc_post_ddpr.setter
-    def rejc_post_ddpr(self, value):
-        self._assign_view(self._rejc_post_ddpr_view, value)
 
     @property
     def _cp_hold_streak_persat(self):

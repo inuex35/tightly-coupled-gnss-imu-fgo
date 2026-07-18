@@ -245,7 +245,6 @@ def _compute_postfit_diagnostics(tc, ed):
                         sat_st = tc._sat_states.get(*key)
                         sat_st.amb_gen += 1
                         sat_st.rejc_cp_pr = 0
-                        sat_st.rejc_post_ddpr = 0
                         sat_st.fix_streak = 0
             else:
                 sq.persist_bad_streak[s] = 0
@@ -263,27 +262,6 @@ def _compute_postfit_diagnostics(tc, ed):
             sat_el_deg=info.get('sat_el_deg'),
             sat_snr_dbhz=info.get('sat_snr_dbhz'))
 
-    if (tc.cfg.post_ddpr_reset_thresh > 0
-            and tc.cfg.post_ddpr_reset_count > 0
-            and getattr(tc, 'phase', 1) >= 2):
-        thr_post = float(tc.cfg.post_ddpr_reset_thresh)
-        sats_seen = set(per_sat_res.keys()) if per_sat_res else set()
-        for s, rmax in (per_sat_res or {}).items():
-            for f in range(tc.nav.nf):
-                _st = tc._sat_states.get(s, f)
-                if rmax > thr_post:
-                    _st.rejc_post_ddpr += 1
-                else:
-                    _st.rejc_post_ddpr = 0
-        # Decay counters for sats not seen this epoch.
-        for (s, f), st in tc._sat_states.track.items():
-            if s not in sats_seen:
-                st.rejc_post_ddpr = 0
-        n_post_pending = sum(
-            1 for st in tc._sat_states.values()
-            if st.rejc_post_ddpr >= tc.cfg.post_ddpr_reset_count)
-        if n_post_pending:
-            info['post_ddpr_reset_pending'] = n_post_pending
     if tc.cfg.fde_enable:
         ed.est2 = _tc_postfit.apply_fde(tc, 
             ed.g3, ed.kk, ed.nv, ed.est2, info)
@@ -382,8 +360,6 @@ def _run_ar_with_marginals(tc, ed):
     _tc_ar.write_marginals(tc,
         tc.isam2.getFactors(), ed.est2,
         tc.Xpose(ed.kk), amb_snapshot)
-    if tc.cfg.per_sat_gate_enable and tc.cfg.diag_main_ddpr_res:
-        _tc_prefit.apply_per_sat_residual_gate(tc, info)
     ed.nb, ed.xa = _tc_ar.run_ar(tc,
         ed.obs, ed.rs, ed.vs, ed.dts,
         ed.sat, ed.el, ed.iu, ed.est2,
