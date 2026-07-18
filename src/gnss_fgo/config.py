@@ -270,7 +270,10 @@ class TcConfig:
     subset_ar_max_mres_m: float = 0.0
     subset_ar_max_dirty_sats: int = 2
     subset_ar_dirty_sat_res_m: float = 1.0
-    exclude_bds_geo: int = 0
+    exclude_bds_geo: int = 1  # BeiDou-2 GEO broadcast orbits are hundreds-
+                              # of-metres class with heavy stationary-
+                              # geometry code multipath; standard RTK
+                              # practice excludes C01-C05/C59-C63
     system_subset_ar_enable: int = 0
     ar_context_main_ddpr_max: float = 1.2
     ar_context_worst_sat_max: float = 4.0

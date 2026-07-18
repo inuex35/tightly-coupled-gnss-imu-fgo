@@ -334,7 +334,9 @@ def write_marginals(tc, factors, estimate, key_pose, amb_dict):
                     c = jm.at(k1, k2)[0, 0]
                     tc.nav.P[i1, i2] = c
                     tc.nav.P[i2, i1] = c
-    except RuntimeError:
+    except (RuntimeError, IndexError):
+        # IndexError: gtsam raises it when key_pose (or an amb key) is not
+        # in the BayesTree yet, e.g. the epoch right after a warm reset.
         pass
     bad = ~np.isfinite(tc.nav.P)
     if bad.any():
