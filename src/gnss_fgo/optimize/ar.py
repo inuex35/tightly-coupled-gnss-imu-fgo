@@ -350,7 +350,8 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
     nb, xa = _run_lambda_attempts(tc, sat, el, amb_dict)
     if nb <= 0:
         return 0, None
-    if not _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb):
+    if not _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
+                         estimate=estimate, key_pose=key_pose):
         return 0, None
     if tc.nav.armode == 3:
         if not _apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
@@ -404,7 +405,8 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
 
 
 
-def _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb):
+def _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
+                  estimate=None, key_pose=None):
     """Phase C — RTKLIB-style post-fit valpos + project-specific ar_context_reject. Returns True when the fix is accepted, False when either gate trips."""
     # xa[0:3] is already antenna position (nav.x[0:3] was set to antenna pos)
     fix_antenna = xa[0:3]
@@ -415,6 +417,40 @@ def _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb):
     if not tc.valpos(v_fix, R_fix):
         tc._last_ar_outcome = 'valpos_failed'
         return False
+
+    # Likelihood-ratio gate in the graph's OWN objective (pre-hold):
+    # Δres = DDPR RMS with the pose moved to the fixed solution xa,
+    # minus the same RMS at the float solution. A wrong-integer basin
+    # is phase-self-consistent but the epoch's code factors protest —
+    # the DELTA isolates that protest from the NLOS noise floor that
+    # defeats absolute thresholds. Evaluated BEFORE fix-and-hold, so a
+    # wrong basin is rejected before holds can lock it (once holds drag
+    # the float into the basin the delta vanishes — timing matters).
+    dres_thr = float(getattr(tc.cfg, 'ar_fix_dres_max', 0.0) or 0.0)
+    ed = getattr(tc, '_cur_ed', None)
+    if dres_thr > 0.0 and ed is not None and estimate is not None \
+            and key_pose is not None:
+        res_pre = tc._cached_ddpr_res_pre
+        res_xa = None
+        try:
+            cur_pose = estimate.atPose3(key_pose)
+            R_be = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
+            lever_arr = (np.array(tc.lever_arm_tc)
+                         if getattr(tc, 'lever_arm_tc', None) is not None
+                         else np.zeros(3))
+            body_xa = np.asarray(xa[0:3], dtype=float) - R_be @ lever_arr
+            body_nav = tc.ecef_T_nav.transformTo(gtsam.Point3(*body_xa))
+            v_xa = gtsam.Values()
+            v_xa.insert(key_pose,
+                        gtsam.Pose3(cur_pose.rotation(), body_nav))
+            res_xa, _ = _tc_postfit.main_ddpr_residuals(tc, ed.g3, v_xa)
+        except (RuntimeError, ValueError, IndexError):
+            res_xa = None
+        if res_pre is not None and res_xa is not None:
+            tc._last_fix_dres = float(res_xa) - float(res_pre)
+            if tc._last_fix_dres > dres_thr:
+                tc._last_ar_outcome = 'fix_dres'
+                return False
 
     reject_ctx, reject_detail = _ar_context_reject(tc, nb)
     if reject_ctx:

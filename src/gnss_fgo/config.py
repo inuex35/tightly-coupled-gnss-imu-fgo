@@ -190,6 +190,23 @@ class TcConfig:
                                    # (an NLOS storm, where purging arcs
                                    # would destroy the CP continuity
                                    # that bounds float drift)
+    ar_gdop_max: float = 0.0       # skip the AR attempt when GDOP
+                                   # exceeds this (0 = off). Pure
+                                   # geometry — unlike a covariance
+                                   # gate it has no feedback loop with
+                                   # the hold state. Weak geometry
+                                   # cannot support an integer decision
+                                   # (9 m vertical basin at GDOP~10
+                                   # costs only ~1.7 m code residual).
+    ar_fix_dres_max: float = 0.0   # [m] likelihood-ratio fix gate in
+                                   # the graph's own objective: reject
+                                   # when DDPR RMS at the fixed pose
+                                   # exceeds the float-pose RMS by more
+                                   # than this (0 = off). Differential,
+                                   # so the NLOS noise floor cancels;
+                                   # evaluated pre-hold so wrong-integer
+                                   # basins are rejected before holds
+                                   # lock them.
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio

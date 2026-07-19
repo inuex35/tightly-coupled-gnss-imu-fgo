@@ -306,6 +306,7 @@ _AR_OUTCOME_CODES = {
     'not_called': 0, 'armode_off': 1, 'entered': 2,
     'lambda_exception': 3, 'lambda_zero': 4, 'min_nb_gate': 5,
     'valpos_failed': 6, 'ar_context_reject': 7, 'success': 8,
+    'fix_dres': 11, 'gdop_gate': 12,
 }
 
 _AR_DIAG_ATTRS = (
@@ -355,11 +356,26 @@ def _run_ar_with_marginals(tc, ed):
             info.update({f'ar_skipped_{k}': v
                          for k, v in skip_detail.items()})
             return
+    tc._cur_ed = ed                 # for the fix-vs-LS gate in run_ar
     tc.nav.x[0:3] = tc._antenna_ecef(ed.pose_tc, ed.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.write_marginals(tc,
         tc.isam2.getFactors(), ed.est2,
         tc.Xpose(ed.kk), amb_snapshot)
+    # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
+    # the geometry cannot support an integer decision, do not attempt
+    # AR. At 7 sats / GDOP~10 a 9 m vertical basin costs only ~1.7 m of
+    # code residual — no residual test can see it, and the marginal
+    # covariance can't be used (it depends on the very holds the gate
+    # controls: measured feedback death, fix 46%->0.6%). GDOP is pure
+    # geometry: no loop. Measured run1 separation: correct fixes GDOP
+    # p50 3.3 / p99 7.6, basin wrong fixes p50 9.5.
+    ar_gdop = float(getattr(tc.cfg, 'ar_gdop_max', 0.0) or 0.0)
+    gdop_now = float(info.get('gdop', 0.0) or 0.0)
+    if ar_gdop > 0.0 and gdop_now > ar_gdop:
+        info['ar_gdop_skip'] = True
+        tc._last_ar_outcome = 'gdop_gate'
+        return
     ed.nb, ed.xa = _tc_ar.run_ar(tc,
         ed.obs, ed.rs, ed.vs, ed.dts,
         ed.sat, ed.el, ed.iu, ed.est2,
