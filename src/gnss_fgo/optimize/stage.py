@@ -6,6 +6,7 @@ import gtsam
 
 from . import ar as _tc_ar
 from ..buildfactor import doppler as _tc_doppler
+from ..buildfactor import tdcp as _tc_tdcp
 from ..buildfactor import factors as _tc_factors
 from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
@@ -126,6 +127,9 @@ def _build_factor_block(tc, ed, prev_smode):
 
     # Doppler velocity prior (opt-in via cfg.doppler_vel_sigma)
     _tc_doppler.add_doppler_vel_prior(tc, ed)
+
+    # TDCP relative-displacement constraints (rover-only carrier deltas)
+    _tc_tdcp.add_tdcp_factors(tc, ed)
 
     try:
         speed_for_nhc = float(np.linalg.norm(
