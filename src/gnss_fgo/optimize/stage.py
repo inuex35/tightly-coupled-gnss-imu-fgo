@@ -182,7 +182,11 @@ def _solve_isam2(tc, ed):
         _tc_solver.fls_update(tc, ed.g3, ed.v3, ed.kk, keep_keys=extra,
                          remove_indices=ed.remove_indices)
         ed.est2 = tc.isam2.calculateEstimate()
-    except (RuntimeError, IndexError) as ex:
+    except (RuntimeError, IndexError, ValueError) as ex:
+        # ValueError: ISAM2 marginalization raises it ("Asking to remove
+        # variables from the variable index that are not unused") when a
+        # prior purge left the FLS bookkeeping inconsistent — exactly
+        # the smoother-broke case the warm reset exists for.
         return _tc_recovery.handle_solve_exception(tc,
             ex, ed.pred, ed.bias_p, ed.kk,
             ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,

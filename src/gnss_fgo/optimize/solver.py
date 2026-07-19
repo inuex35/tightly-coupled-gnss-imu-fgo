@@ -38,6 +38,16 @@ def filter_removable_indices(tc, indices, keep_cp=True, keep_hold=True):
                 continue
             if keep_hold and 'Prior' in tname:
                 continue
+            # Never break the BetweenN chain or pull out custom factors
+            # mid-window: with keep_cp/keep_hold those are the only
+            # things an amb_factor_indices entry can still name, and
+            # removing them leaves chained N keys factorless
+            # ("variables that are not unused" on the next
+            # marginalization). Arcs die via gen-bump + natural
+            # marginalization instead — which is also what the historic
+            # stale-slot indices effectively did (no-ops).
+            if 'Between' in tname or tname == 'CustomFactor':
+                continue
             if not any(gtsam.Symbol(k).chr() == n_chr
                        for k in fac.keys()):
                 continue
