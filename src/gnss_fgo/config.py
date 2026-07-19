@@ -96,6 +96,15 @@ class TcConfig:
     thresdop: float = 0.0          # try 5–10 cyc/s on a clean run
 
     doppler_vel_sigma: float = 0.5
+    tdcp_sigma: float = 0.0        # [m] TDCP σ between consecutive poses;
+                                   # 0 disables (default). Experimental:
+                                   # cancels ambiguity/slow biases and
+                                   # bounds float drift in NLOS storms.
+                                   # tokyo run2 measurements: huber kernel
+                                   # -> best FixRMS (0.238) but a 4 km
+                                   # mass-slip excursion; tukey -> best
+                                   # AllRMS (11.8) but AR dies. Needs a
+                                   # kernel/sigma sweep before default-on.
     doppler_max_res: float = 2.0
 
     mw_thresh: float = 0.0
