@@ -190,6 +190,14 @@ class TcConfig:
     ar_precheck_skip: int = 0
     ar_min_nb: int = 0
     lambda_corr_max: float = 0.0
+    weak_fix_nb_max: int = 2
+    weak_fix_lambda_corr_max: float = 0.08
+    weak_fix_main_ddpr_res_max: float = 0.8
+    weak_fix_only_after_flt: int = 1
+    weak_fix_reject_max_prev_fix_streak: int = 2
+    low_nb_fix_reject_nb_max: int = 6
+    low_nb_fix_only_after_flt: int = 1
+    low_nb_fix_reject_max_prev_fix_streak: int = 2
     lambda_corr_hard_max: float = 1.0
     diag_truth_residual: int = 0
     diag_main_ddpr_res: int = 1
