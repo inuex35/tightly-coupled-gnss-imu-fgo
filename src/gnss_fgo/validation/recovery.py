@@ -232,6 +232,23 @@ def process_gdop_skip(tc, obs, kk, g3, v3, R_enu2ecef, info,
     _outage_add_pseudo_measurements(
         tc, g3, kk, info, imu_idx_prev,
         gdop_pose_prev, gdop_vel_prev, gyro_mean)
+    # Gauge anchor: with GNSS skipped the epoch graph is relative-only
+    # (IMU between + NHC + bias prior) and consecutive skips leave the
+    # pose gauge numerically unconstrained — measured divergence x3-7
+    # per epoch up to 1591 km over a 16-epoch skip streak. Pin the
+    # PREVIOUS pose/vel at their current estimates with the same
+    # propagate sigmas the thin-epoch path uses; the IMU factor then
+    # moves the new epoch freely on a bounded leash.
+    if gdop_pose_prev is not None:
+        g3.addPriorPose3(
+            tc.Xpose(kk - 1), gdop_pose_prev,
+            gtsam.noiseModel.Isotropic.Sigma(
+                6, tc.cfg.propagate_pose_sigma))
+    if gdop_vel_prev is not None:
+        g3.addPriorVector(
+            tc.Vel(kk - 1), np.asarray(gdop_vel_prev, dtype=float),
+            gtsam.noiseModel.Isotropic.Sigma(
+                3, tc.cfg.propagate_vel_sigma))
     try:
         _tc_solver.fls_update(tc, g3, v3, kk,
                          keep_keys=tc._sat_states.amb_key_values(),
