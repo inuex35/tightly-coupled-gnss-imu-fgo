@@ -69,15 +69,11 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     # Fresh pick: highest-elevation, excluding BDS GEO and high-residual sats
     last_res = tc._last_per_sat_res
     thresh = tc.cfg.per_sat_res_thresh
-    recent_ref_bad = getattr(tc._sat_quality, 'recent_ref_bad', {}) or {}
-    ref_bad_thr = float(tc.cfg.ref_bad_reject_thresh or 0.0)
     def ok(i):
         s = sat[i]
         if sys_id == uGNSS.BDS and _utils_is_bds_geo(s):
             return False
         if last_res.get(s, 0.0) > thresh:
-            return False
-        if ref_bad_thr > 0.0 and float(recent_ref_bad.get(int(s), 0.0) or 0.0) >= ref_bad_thr:
             return False
         return True
     pool = [i for i in idx_sys if ok(i)]
