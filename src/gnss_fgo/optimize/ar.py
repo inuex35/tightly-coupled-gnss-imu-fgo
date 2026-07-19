@@ -149,7 +149,6 @@ def should_skip_ar_precheck(tc):
                      or tc._last_main_ddpr_res or 0.0)
     per_sat = tc._last_main_ddpr_per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    pair_bad_max = float(tc._last_pair_bad_max or 0.0)
     cp_hold_active = int(tc._recov_cp_hold or 0) > 0
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
 
@@ -164,14 +163,11 @@ def should_skip_ar_precheck(tc):
         skip = True
     if worst_res > float(tc.cfg.ar_context_worst_sat_max):
         skip = True
-    if pair_bad_max > float(tc.cfg.ar_context_pair_bad_max):
-        skip = True
     if not skip:
         return False, None
     return True, {
         'main_ddpr_res': main_res,
         'worst_sat_res': worst_res,
-        'pair_bad_max': pair_bad_max,
         'cp_hold_active': cp_hold_active,
         'ddpr_bad_active': ddpr_bad_active,
     }
@@ -186,7 +182,6 @@ def _ar_context_reject(tc, nb):
                      or tc._last_main_ddpr_res or 0.0)
     per_sat = tc._last_main_ddpr_per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    pair_bad_max = float(tc._last_pair_bad_max or 0.0)
     cp_hold_active = int(tc._recov_cp_hold or 0) > 0
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
 
@@ -202,15 +197,12 @@ def _ar_context_reject(tc, nb):
         burst_like = True
     if worst_res > float(tc.cfg.ar_context_worst_sat_max):
         burst_like = True
-    if pair_bad_max > float(tc.cfg.ar_context_pair_bad_max):
-        burst_like = True
 
     if burst_like and nb <= int(tc.cfg.ar_context_nb_max):
         return True, {
             'nb': nb,
             'main_ddpr_res': main_res,
             'worst_sat_res': worst_res,
-            'pair_bad_max': pair_bad_max,
             'cp_hold_active': cp_hold_active,
             'ddpr_bad_active': ddpr_bad_active,
         }
@@ -334,7 +326,9 @@ def write_marginals(tc, factors, estimate, key_pose, amb_dict):
                     c = jm.at(k1, k2)[0, 0]
                     tc.nav.P[i1, i2] = c
                     tc.nav.P[i2, i1] = c
-    except RuntimeError:
+    except (RuntimeError, IndexError):
+        # IndexError: gtsam raises it when key_pose (or an amb key) is not
+        # in the BayesTree yet, e.g. the epoch right after a warm reset.
         pass
     bad = ~np.isfinite(tc.nav.P)
     if bad.any():
@@ -383,11 +377,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc._last_resamb_raw_nb = -1
     try:
-        if (tc.cfg.rtklib_mode
-                and bool(tc.cfg.system_subset_ar_enable)
-                and hasattr(tc, 'resamb_lambda_subsets')):
-            nb, xa = tc.resamb_lambda_subsets(sat)
-        elif tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
+        if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
             nb, xa = tc.resamb_lambda_rtklib(sat)
         else:
             nb, xa = tc.resamb_lambda(sat, tc.nav.parmode, tc.nav.par_P0)

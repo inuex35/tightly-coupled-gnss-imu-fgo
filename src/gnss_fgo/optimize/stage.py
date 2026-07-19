@@ -203,18 +203,11 @@ def _compute_postfit_diagnostics(tc, ed):
             last_res=main_res_pre_fde,
             per_sat=dict(per_sat_res) if per_sat_res else {},
             epoch=int(tc.epoch))
-        sq.update_pair_quality(tc.cfg, pair_rows)
-        tc._last_pair_bad_max = max(
-            (float(sq.recent_pair_bad.get(
-                (int(row['ref']), int(row['sat']), int(row['freq'])), 0.0) or 0.0)
-             for row in pair_rows),
-            default=0.0)
     else:
         main_res_pre_fde = 0.0
         per_sat_res = {}
         tc._cached_ddpr_res_pre = None
         tc._mres_signals.reset()
-        tc._last_pair_bad_max = 0.0
     if tc.cfg.diag_factor_residuals:
         all_res = _tc_postfit.all_factor_residuals(tc, ed.g3, ed.est2)
         for tag, (rms, n) in all_res.items():
@@ -245,7 +238,6 @@ def _compute_postfit_diagnostics(tc, ed):
                         sat_st = tc._sat_states.get(*key)
                         sat_st.amb_gen += 1
                         sat_st.rejc_cp_pr = 0
-                        sat_st.rejc_post_ddpr = 0
                         sat_st.fix_streak = 0
             else:
                 sq.persist_bad_streak[s] = 0
@@ -257,33 +249,11 @@ def _compute_postfit_diagnostics(tc, ed):
         worst_sat_id = int(worst_sat) if per_sat_res else None
         cppr_sat = info.get('sat_cppr_sat', {}) or {}
         sq = _satq.get_sat_quality(tc)
-        sq.update_reference_quality(tc.cfg, getattr(tc, 'ref_sats', {}), per_sat_res)
         sq.update_observation_quality(
             tc.cfg, per_sat_res, worst_sat=worst_sat_id, cppr_sat=cppr_sat,
             sat_el_deg=info.get('sat_el_deg'),
             sat_snr_dbhz=info.get('sat_snr_dbhz'))
 
-    if (tc.cfg.post_ddpr_reset_thresh > 0
-            and tc.cfg.post_ddpr_reset_count > 0
-            and getattr(tc, 'phase', 1) >= 2):
-        thr_post = float(tc.cfg.post_ddpr_reset_thresh)
-        sats_seen = set(per_sat_res.keys()) if per_sat_res else set()
-        for s, rmax in (per_sat_res or {}).items():
-            for f in range(tc.nav.nf):
-                _st = tc._sat_states.get(s, f)
-                if rmax > thr_post:
-                    _st.rejc_post_ddpr += 1
-                else:
-                    _st.rejc_post_ddpr = 0
-        # Decay counters for sats not seen this epoch.
-        for (s, f), st in tc._sat_states.track.items():
-            if s not in sats_seen:
-                st.rejc_post_ddpr = 0
-        n_post_pending = sum(
-            1 for st in tc._sat_states.values()
-            if st.rejc_post_ddpr >= tc.cfg.post_ddpr_reset_count)
-        if n_post_pending:
-            info['post_ddpr_reset_pending'] = n_post_pending
     if tc.cfg.fde_enable:
         ed.est2 = _tc_postfit.apply_fde(tc, 
             ed.g3, ed.kk, ed.nv, ed.est2, info)
@@ -382,8 +352,6 @@ def _run_ar_with_marginals(tc, ed):
     _tc_ar.write_marginals(tc,
         tc.isam2.getFactors(), ed.est2,
         tc.Xpose(ed.kk), amb_snapshot)
-    if tc.cfg.per_sat_gate_enable and tc.cfg.diag_main_ddpr_res:
-        _tc_prefit.apply_per_sat_residual_gate(tc, info)
     ed.nb, ed.xa = _tc_ar.run_ar(tc,
         ed.obs, ed.rs, ed.vs, ed.dts,
         ed.sat, ed.el, ed.iu, ed.est2,
@@ -441,8 +409,6 @@ def _record_ar_diagnostics(tc, info):
             ar_ctx_reject.get('main_ddpr_res', 0.0))
         info['ar_context_reject_worst_sat_res'] = float(
             ar_ctx_reject.get('worst_sat_res', 0.0))
-        info['ar_context_reject_pair_bad_max'] = float(
-            ar_ctx_reject.get('pair_bad_max', 0.0))
     ar_subset_dbg = tc._ar_subset_debug
     if ar_subset_dbg:
         info['ar_subset_candidates'] = int(ar_subset_dbg.get('candidates', 0))
