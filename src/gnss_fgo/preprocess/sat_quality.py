@@ -10,13 +10,10 @@ class SatQualityState:
     persist_bad_streak: dict = field(default_factory=dict)
     persist_bad_hold: dict = field(default_factory=dict)
     hold_quarantine: dict = field(default_factory=dict)
-    release_probation: dict = field(default_factory=dict)
     obsq_ewma: dict = field(default_factory=dict)
     obsq_bad_streak: dict = field(default_factory=dict)
     recent_worst: dict = field(default_factory=dict)
     recent_cppr: dict = field(default_factory=dict)
-    recent_ref_bad: dict = field(default_factory=dict)
-    recent_pair_bad: dict = field(default_factory=dict)
     latest_el_deg: dict = field(default_factory=dict)
     latest_snr_dbhz: dict = field(default_factory=dict)
     cp_lock_streak: dict = field(default_factory=dict)
@@ -27,13 +24,10 @@ class SatQualityState:
         self.persist_bad_streak.clear()
         self.persist_bad_hold.clear()
         self.hold_quarantine.clear()
-        self.release_probation.clear()
         self.obsq_ewma.clear()
         self.obsq_bad_streak.clear()
         self.recent_worst.clear()
         self.recent_cppr.clear()
-        self.recent_ref_bad.clear()
-        self.recent_pair_bad.clear()
         self.latest_el_deg.clear()
         self.latest_snr_dbhz.clear()
         self.cp_lock_streak.clear()
@@ -53,12 +47,6 @@ class SatQualityState:
             else:
                 self.hold_quarantine.pop(key, None)
 
-        for key in list(self.release_probation.keys()):
-            rem = int(self.release_probation.get(key, 0)) - 1
-            if rem > 0:
-                self.release_probation[key] = rem
-            else:
-                self.release_probation.pop(key, None)
 
         active_long_hold_sat = set()
         for s in list(self.persist_bad_hold.keys()):
@@ -134,46 +122,7 @@ class SatQualityState:
         for s, snr_dbhz in (sat_snr_dbhz or {}).items():
             self.latest_snr_dbhz[int(s)] = float(snr_dbhz)
 
-    def update_reference_quality(self, cfg, ref_sats, per_sat_res):
-        """Track refs that stay bad while serving as the constellation anchor."""
-        decay = float(getattr(cfg, 'obsq_recent_ref_decay', 0.85))
-        decay = min(max(decay, 0.0), 1.0)
-        thr = max(1e-6, float(getattr(cfg, 'obsq_res_thresh', 2.0)))
-        active_refs = set()
-        for _sys, sat_id in (ref_sats or {}).items():
-            if sat_id is None:
-                continue
-            sat_id = int(sat_id)
-            active_refs.add(sat_id)
-            prev = float(self.recent_ref_bad.get(sat_id, 0.0) or 0.0)
-            res = float((per_sat_res or {}).get(sat_id, 0.0) or 0.0)
-            incr = min(2.0, res / thr) if res > 0 else 0.0
-            self.recent_ref_bad[sat_id] = decay * prev + incr
-        for sat_id in list(self.recent_ref_bad.keys()):
-            if sat_id not in active_refs:
-                self.recent_ref_bad[sat_id] = decay * float(
-                    self.recent_ref_bad.get(sat_id, 0.0) or 0.0)
 
-    def update_pair_quality(self, cfg, pair_rows):
-        """Track short-memory badness for directional DD pairs (ref, sat, f)."""
-        decay = float(getattr(cfg, 'obsq_recent_pair_decay', 0.85))
-        decay = min(max(decay, 0.0), 1.0)
-        thr = max(1e-6, float(getattr(cfg, 'obsq_pair_res_thresh', 2.0)))
-        seen = set()
-        for row in pair_rows or ():
-            try:
-                key = (int(row['ref']), int(row['sat']), int(row['freq']))
-                res = float(row['res'])
-            except (KeyError, ValueError, TypeError):
-                continue
-            seen.add(key)
-            prev = float(self.recent_pair_bad.get(key, 0.0) or 0.0)
-            incr = min(2.0, res / thr) if res > 0 else 0.0
-            self.recent_pair_bad[key] = decay * prev + incr
-        for key in list(self.recent_pair_bad.keys()):
-            if key not in seen:
-                self.recent_pair_bad[key] = decay * float(
-                    self.recent_pair_bad.get(key, 0.0) or 0.0)
 
     def update_cp_lock(self, visible_keys, slip_keys=None, forced_hold=None):
         """Update per-(sat,freq) CP lock streak.

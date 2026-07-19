@@ -203,18 +203,11 @@ def _compute_postfit_diagnostics(tc, ed):
             last_res=main_res_pre_fde,
             per_sat=dict(per_sat_res) if per_sat_res else {},
             epoch=int(tc.epoch))
-        sq.update_pair_quality(tc.cfg, pair_rows)
-        tc._last_pair_bad_max = max(
-            (float(sq.recent_pair_bad.get(
-                (int(row['ref']), int(row['sat']), int(row['freq'])), 0.0) or 0.0)
-             for row in pair_rows),
-            default=0.0)
     else:
         main_res_pre_fde = 0.0
         per_sat_res = {}
         tc._cached_ddpr_res_pre = None
         tc._mres_signals.reset()
-        tc._last_pair_bad_max = 0.0
     if tc.cfg.diag_factor_residuals:
         all_res = _tc_postfit.all_factor_residuals(tc, ed.g3, ed.est2)
         for tag, (rms, n) in all_res.items():
@@ -256,7 +249,6 @@ def _compute_postfit_diagnostics(tc, ed):
         worst_sat_id = int(worst_sat) if per_sat_res else None
         cppr_sat = info.get('sat_cppr_sat', {}) or {}
         sq = _satq.get_sat_quality(tc)
-        sq.update_reference_quality(tc.cfg, getattr(tc, 'ref_sats', {}), per_sat_res)
         sq.update_observation_quality(
             tc.cfg, per_sat_res, worst_sat=worst_sat_id, cppr_sat=cppr_sat,
             sat_el_deg=info.get('sat_el_deg'),
@@ -417,8 +409,6 @@ def _record_ar_diagnostics(tc, info):
             ar_ctx_reject.get('main_ddpr_res', 0.0))
         info['ar_context_reject_worst_sat_res'] = float(
             ar_ctx_reject.get('worst_sat_res', 0.0))
-        info['ar_context_reject_pair_bad_max'] = float(
-            ar_ctx_reject.get('pair_bad_max', 0.0))
     ar_subset_dbg = tc._ar_subset_debug
     if ar_subset_dbg:
         info['ar_subset_candidates'] = int(ar_subset_dbg.get('candidates', 0))

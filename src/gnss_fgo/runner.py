@@ -164,7 +164,6 @@ class ImuGnssTc(rtkpos):
         self._last_main_ddpr_per_sat = {}
         self._last_main_ddpr_epoch = -10**9
         self._last_per_sat_res = {}
-        self._last_pair_bad_max = 0.0
         self._cached_ddpr_res_pre = None
         # write_marginals diagnostics (cp visibility hysteresis)
         self._cp_visible_sf_last_ep = {}

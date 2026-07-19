@@ -117,7 +117,6 @@ class TcConfig:
     recov_cp_release_count: int = 3
     bad_sat_release_thresh_scale: float = 0.7
     bad_sat_release_count_scale: float = 2.0
-    cp_release_probation_penalty: float = 10.0
     cp_hold_sigma_penalty: float = 0.0
     ddcp_res_weight_thresh_m: float = 0.0
     ddcp_res_weight_stale_max_epochs: int = 2
@@ -129,11 +128,6 @@ class TcConfig:
     obsq_bad_streak_cap: int = 8
     obsq_release_thresh_scale: float = 0.85
     obsq_release_count_scale: float = 1.5
-    pair_release_thresh_scale: float = 0.9
-    pair_release_count_scale: float = 1.2
-    pair_bad_cp_hold_thresh: float = 4.0
-    pair_bad_cp_hold_penalty: float = 0.0
-    ref_bad_reject_thresh: float = 2.0
 
     main_ddpr_res_thresh: float = 3.0
     main_ddpr_per_sat_thresh: float = 0.0
@@ -190,7 +184,6 @@ class TcConfig:
                               # practice excludes C01-C05/C59-C63
     ar_context_main_ddpr_max: float = 1.2
     ar_context_worst_sat_max: float = 4.0
-    ar_context_pair_bad_max: float = 4.0
     ar_context_nb_max: int = 6
     ar_context_reject_during_cp_hold: int = 1
     ar_context_reject_during_ddpr_bad: int = 1
@@ -198,15 +191,6 @@ class TcConfig:
     ar_min_nb: int = 0
     lambda_corr_max: float = 0.0
     lambda_corr_hard_max: float = 1.0
-    weak_fix_nb_max: int = 2
-    weak_fix_lambda_corr_max: float = 0.08
-    weak_fix_main_ddpr_res_max: float = 0.8
-    weak_fix_only_after_flt: int = 1
-    weak_fix_reject_max_prev_fix_streak: int = 2
-    low_nb_fix_reject_nb_max: int = 6
-    low_nb_fix_only_after_flt: int = 1
-    # Same idea as above, but for the hard low-nb gate.
-    low_nb_fix_reject_max_prev_fix_streak: int = 2
     diag_truth_residual: int = 0
     diag_main_ddpr_res: int = 1
     # Per-bucket factor RMS dump (info['fres_*'] / info['fcnt_*']). Default

@@ -149,7 +149,6 @@ def should_skip_ar_precheck(tc):
                      or tc._last_main_ddpr_res or 0.0)
     per_sat = tc._last_main_ddpr_per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    pair_bad_max = float(tc._last_pair_bad_max or 0.0)
     cp_hold_active = int(tc._recov_cp_hold or 0) > 0
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
 
@@ -164,14 +163,11 @@ def should_skip_ar_precheck(tc):
         skip = True
     if worst_res > float(tc.cfg.ar_context_worst_sat_max):
         skip = True
-    if pair_bad_max > float(tc.cfg.ar_context_pair_bad_max):
-        skip = True
     if not skip:
         return False, None
     return True, {
         'main_ddpr_res': main_res,
         'worst_sat_res': worst_res,
-        'pair_bad_max': pair_bad_max,
         'cp_hold_active': cp_hold_active,
         'ddpr_bad_active': ddpr_bad_active,
     }
@@ -186,7 +182,6 @@ def _ar_context_reject(tc, nb):
                      or tc._last_main_ddpr_res or 0.0)
     per_sat = tc._last_main_ddpr_per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    pair_bad_max = float(tc._last_pair_bad_max or 0.0)
     cp_hold_active = int(tc._recov_cp_hold or 0) > 0
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
 
@@ -202,15 +197,12 @@ def _ar_context_reject(tc, nb):
         burst_like = True
     if worst_res > float(tc.cfg.ar_context_worst_sat_max):
         burst_like = True
-    if pair_bad_max > float(tc.cfg.ar_context_pair_bad_max):
-        burst_like = True
 
     if burst_like and nb <= int(tc.cfg.ar_context_nb_max):
         return True, {
             'nb': nb,
             'main_ddpr_res': main_res,
             'worst_sat_res': worst_res,
-            'pair_bad_max': pair_bad_max,
             'cp_hold_active': cp_hold_active,
             'ddpr_bad_active': ddpr_bad_active,
         }
