@@ -209,7 +209,11 @@ class ImuGnssTc(rtkpos):
         self.ar_wait_new = self.cfg.ar_wait_new
 
         self.amb_factor_indices = {}
-        self.total_factor_count = 0  # running count of factors added to ISAM2
+        # NOTE: total_factor_count (running count of factors added to
+        # ISAM2) is intentionally NOT reset here — this method runs
+        # every epoch, and zeroing the cumulative counter made every
+        # absolute factor-slot index derived from it point at the wrong
+        # slot (the held-CP FDE bookkeeping was silently inert).
 
 
     def _assign_view(self, view: SatFieldView, value):

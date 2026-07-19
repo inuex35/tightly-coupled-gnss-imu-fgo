@@ -168,7 +168,15 @@ def _emit_held_ddcp_factor(tc, graph, fi_cp, pair_id, key_pose, key_float,
         rb, lam, dd_obs_cp, lever_arr, tc.ecef_T_nav,
         offset_m=offset_m, coeff_m=coeff_m))
     tc._last_custom_ddcp_local.add(graph.size() - 1)
-    tc._last_custom_ddcp_global[fi_cp] = pair_id
+    # Keyed by the factor's key tuple, NOT its slot index: the FLS
+    # reuses freed slots (findUnusedFactorSlots) and per-epoch counter
+    # arithmetic cannot name a slot reliably. When both ambiguities are
+    # held the factor is pose-only and its key tuple is not unique
+    # (every such factor shares the pose key) — leave those out of the
+    # FDE bookkeeping rather than guess.
+    if key_float is not None:
+        tc._last_custom_ddcp_global[
+            (int(key_pose), int(key_float))] = pair_id
 
 
 def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,

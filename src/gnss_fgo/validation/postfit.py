@@ -138,12 +138,15 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
     """Helper: collect (fi, residual_in_meters) for current-epoch DD factors."""
     pr_entries = []
     cp_entries = []
-    custom_cp_global = set((tc._last_custom_ddcp_global or {}).keys())
+    custom_cp_keys = set((tc._last_custom_ddcp_global or {}).keys())
     for fi in range(fi_start, nf_total):
         fac = factors_all.at(fi)
         if fac is None:
             continue
         fname = type(fac).__name__
+        is_custom_cp = (
+            fname == 'CustomFactor' and custom_cp_keys
+            and tuple(int(k) for k in fac.keys()) in custom_cp_keys)
         try:
             err = fac.error(est2)
         except RuntimeError:
@@ -151,7 +154,7 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
         if 'Pseudorange' in fname:
             pr_entries.append(
                 (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_pr * np.sqrt(2)))
-        elif 'CarrierPhase' in fname or fi in custom_cp_global:
+        elif 'CarrierPhase' in fname or is_custom_cp:
             cp_entries.append(
                 (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_cp * np.sqrt(2)))
     return pr_entries, cp_entries
@@ -189,14 +192,16 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
     custom_cp_meta = tc._last_custom_ddcp_global or {}
     for fi in reject_fi:
         fac = factors_all.at(fi)
-        is_cp = (
-            fac is not None
-            and ('CarrierPhase' in type(fac).__name__ or fi in custom_cp_meta)
-        )
+        if fac is None:
+            continue
+        kt = (tuple(int(k) for k in fac.keys())
+              if type(fac).__name__ == 'CustomFactor' else None)
+        is_cp = ('CarrierPhase' in type(fac).__name__
+                 or (kt is not None and kt in custom_cp_meta))
         if not is_cp:
             continue
-        if fi in custom_cp_meta:
-            ref_sat, j_sat, freq = custom_cp_meta[fi]
+        if kt is not None and kt in custom_cp_meta:
+            ref_sat, j_sat, freq = custom_cp_meta[kt]
             for key in ((ref_sat, freq), (j_sat, freq)):
                 st_hold = tc._sat_states.track.get(key)
                 if st_hold is not None and st_hold.held_value is not None:

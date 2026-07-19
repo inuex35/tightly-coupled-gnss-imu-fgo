@@ -12,12 +12,20 @@ def make_isam2(lag, relinearize_skip=1, relinearize_threshold=0.01):
 
 
 def filter_removable_indices(tc, indices, keep_cp=True, keep_hold=True):
-    """Filter stale factor indices (already marginalized out of isam2)."""
+    """Filter stale factor indices (already marginalized out of isam2).
+
+    Identity guard: every index in these lists was recorded as "a factor
+    of some ambiguity", so the slot must currently hold a factor that
+    references an 'n' key. The FLS reuses freed slots
+    (findUnusedFactorSlots), so a remembered index can point at an
+    unrelated factor — removing that would corrupt the graph.
+    """
     if not indices:
         return []
     facs = tc.isam2.getFactors()
     n = facs.size()
     valid = []
+    n_chr = ord('n')
     for i in indices:
         if i is None or i < 0 or i >= n:
             continue
@@ -29,6 +37,9 @@ def filter_removable_indices(tc, indices, keep_cp=True, keep_hold=True):
             if keep_cp and 'CarrierPhase' in tname:
                 continue
             if keep_hold and 'Prior' in tname:
+                continue
+            if not any(gtsam.Symbol(k).chr() == n_chr
+                       for k in fac.keys()):
                 continue
         except RuntimeError:
             continue
