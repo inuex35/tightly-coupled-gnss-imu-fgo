@@ -44,25 +44,6 @@ def varerr_dd_sigma(tc, code, freq, el_rad, dt_s):
     return float(np.sqrt(2.0 * var_sd))
 
 
-def apply_per_sat_residual_gate(tc, info):
-    """Zero nav.vsat[s,f] for sats whose main-graph DDPR residual
-    exceeded per_sat_res_thresh — keeps multipath-biased satellites
-    out of LAMBDA so the integer fix isn't pulled onto a wrong tree.
-    """
-    per_sat_cur = info.get('main_ddpr_per_sat', {})
-    if not per_sat_cur:
-        return
-    thresh_sat = tc.cfg.per_sat_res_thresh
-    n_drop = 0
-    for s, rmax in per_sat_cur.items():
-        if rmax > thresh_sat and 1 <= s <= tc.nav.vsat.shape[0]:
-            for f in range(tc.nav.nf):
-                if tc.nav.vsat[s - 1, f] == 1:
-                    tc.nav.vsat[s - 1, f] = 0
-                    n_drop += 1
-    if n_drop:
-        info['ar_vsat_drop'] = n_drop
-
 
 def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     """Select DD reference satellite index from idx_sys.
@@ -88,15 +69,11 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     # Fresh pick: highest-elevation, excluding BDS GEO and high-residual sats
     last_res = tc._last_per_sat_res
     thresh = tc.cfg.per_sat_res_thresh
-    recent_ref_bad = getattr(tc._sat_quality, 'recent_ref_bad', {}) or {}
-    ref_bad_thr = float(tc.cfg.ref_bad_reject_thresh or 0.0)
     def ok(i):
         s = sat[i]
         if sys_id == uGNSS.BDS and _utils_is_bds_geo(s):
             return False
         if last_res.get(s, 0.0) > thresh:
-            return False
-        if ref_bad_thr > 0.0 and float(recent_ref_bad.get(int(s), 0.0) or 0.0) >= ref_bad_thr:
             return False
         return True
     pool = [i for i in idx_sys if ok(i)]

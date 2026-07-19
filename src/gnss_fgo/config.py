@@ -39,66 +39,7 @@ IMU_PRESETS = {
                        accel_bias_sigma=2.0e-5,  gyro_bias_sigma=5.0e-7),
 }
 
-TC_PRESETS = {
-    'tokyo_mode2_satbad_cponly': {
-        'ddpr_sanity_enable': 1,
-        'sanity_break_pim': 1,
-        'pim_break_trans_sigma': 100.0,
-        'cp_hold_isam_iters': 5,
-        'sanity_max_gdop': 5.0,
-        'recov_cp_release_thresh': 2.0,
-        'recov_cp_release_count': 5,
-        'cp_pr_innov_thresh': 10.0,
-        'cp_pr_rejc_max': 2,
-        'cp_hold_dirty_reset_enable': 1,
-        'cp_hold_dirty_reset_hold': 5,
-        'cp_hold_dirty_reset_suspect_count': 2,
-        'cp_hold_dirty_reset_penalty': 15.0,
-        'cp_hold_dirty_reset_cooldown': 3,
-        'main_ddpr_res_catastrophic': 15.0,
-        'ddpr_fast_worst_sat_min': 10.0,
-        'sat_badness_enable': 1,
-        'sat_badness_ddpr_thresh': 1.0,
-        'sat_badness_cppr_thresh': 1,
-        'sat_badness_alpha_ddpr': 1.0,
-        'sat_badness_alpha_cppr': 1.0,
-        'sat_badness_alpha_recent_cppr': 0.25,
-        'sat_badness_alpha_recent_worst': 0.75,
-        'sat_badness_alpha_recent_ref': 0.5,
-        'sat_badness_alpha_recent_pair': 0.0,
-        'sat_badness_alpha_el': 0.05,
-        'sat_badness_alpha_snr': 0.05,
-        'sat_badness_sigma_scale_pr': 0.0,
-        'sat_badness_sigma_scale_cp': 1.5,
-        'sat_badness_el_ref_deg': 30.0,
-        'sat_badness_snr_ref_dbhz': 40.0,
-        'sat_badness_snr_span_db': 10.0,
-        'nhc_enable': 1,
-        'nhc_min_speed': 0.0,
-        'nhc_sigma_lat': 0.3,
-        'nhc_sigma_vert': 0.2,
-        'pair_release_thresh_scale': 1.0,
-        'pair_release_count_scale': 1.0,
-        'pair_bad_cp_hold_thresh': 0.0,
-        'pair_bad_cp_hold_penalty': 0.0,
-        'ref_bad_reject_thresh': 0.0,
-        'ar_context_pair_bad_max': 4.0,
-        'per_sat_gate_enable': 1,
-        'sanity_pose_replace_thresh': 5.0,
-        'exclude_bds_geo': 1,
-        'elmin_deg': 25.0,
-        'cnr_min_dbhz': 30.0,
-        'mw_thresh': 1.0,
-        'accel_noise': 2.84e-4,
-        'gyro_noise': 4.01e-5,
-        'accel_bias_sigma': 3.14e-4,
-        'gyro_bias_sigma': 9.70e-6,
-        'post_ddpr_reset_thresh': 1.5,
-        'post_ddpr_reset_count': 3,
-        'weak_fix_reject_max_prev_fix_streak': 0,
-        'low_nb_fix_reject_max_prev_fix_streak': 0,
-    },
-}
+TC_PRESETS = {}
 
 
 @dataclass
@@ -131,10 +72,6 @@ class TcConfig:
                                    # GREAT-FGO-style: cauchy with k ~2
     fde_pr: float = 4.0            # FDE DDPR residual threshold [m]
     fde_cp: float = 0.5            # FDE DDCP residual threshold [m]
-    cp_pr_innov_thresh: float = 0.0
-    cp_pr_rejc_max: int = 2
-    post_ddpr_reset_thresh: float = 0.0
-    post_ddpr_reset_count: int = 2
     fde_max_frac: float = 0.5      # skip FDE if >this fraction rejected
     fde_enable: int = 1           # 0=off, 1=on (FDE_ENABLE)
     fde_max_iter: int = 1
@@ -180,46 +117,17 @@ class TcConfig:
     recov_cp_release_count: int = 3
     bad_sat_release_thresh_scale: float = 0.7
     bad_sat_release_count_scale: float = 2.0
-    cp_release_probation_penalty: float = 10.0
     cp_hold_sigma_penalty: float = 0.0
-    cp_hold_dirty_reset_enable: int = 0
-    cp_hold_dirty_reset_hold: int = 0
-    cp_hold_dirty_reset_suspect_count: int = 2
-    cp_hold_dirty_reset_penalty: float = 30.0
-    cp_hold_dirty_reset_cooldown: int = 3
-    sat_badness_enable: int = 0
-    sat_badness_ddpr_thresh: float = 1.0
-    sat_badness_cppr_thresh: int = 1
-    sat_badness_alpha_ddpr: float = 1.0
-    sat_badness_alpha_cppr: float = 1.0
-    sat_badness_alpha_recent_cppr: float = 0.25
-    sat_badness_alpha_recent_worst: float = 0.75
-    sat_badness_alpha_recent_ref: float = 0.0
-    sat_badness_alpha_recent_pair: float = 0.0
-    sat_badness_alpha_el: float = 0.0
-    sat_badness_alpha_snr: float = 0.0
-    sat_badness_sigma_scale_pr: float = 0.0
-    sat_badness_sigma_scale_cp: float = 0.0
     ddcp_res_weight_thresh_m: float = 0.0
     ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
     ddcp_res_weight_max_m: float = 0.0
     imu_integ_cov_max: float = 0.5
-    sat_badness_el_ref_deg: float = 30.0
-    sat_badness_snr_ref_dbhz: float = 40.0
-    sat_badness_snr_span_db: float = 10.0
     obsq_res_thresh: float = 2.0
     obsq_bad_streak_cap: int = 8
-    sat_badness_alpha_obsq_ewma: float = 1.0
-    sat_badness_alpha_obsq_streak: float = 0.5
     obsq_release_thresh_scale: float = 0.85
     obsq_release_count_scale: float = 1.5
-    pair_release_thresh_scale: float = 0.9
-    pair_release_count_scale: float = 1.2
-    pair_bad_cp_hold_thresh: float = 4.0
-    pair_bad_cp_hold_penalty: float = 0.0
-    ref_bad_reject_thresh: float = 2.0
 
     main_ddpr_res_thresh: float = 3.0
     main_ddpr_per_sat_thresh: float = 0.0
@@ -270,11 +178,12 @@ class TcConfig:
     subset_ar_max_mres_m: float = 0.0
     subset_ar_max_dirty_sats: int = 2
     subset_ar_dirty_sat_res_m: float = 1.0
-    exclude_bds_geo: int = 0
-    system_subset_ar_enable: int = 0
+    exclude_bds_geo: int = 1  # BeiDou-2 GEO broadcast orbits are hundreds-
+                              # of-metres class with heavy stationary-
+                              # geometry code multipath; standard RTK
+                              # practice excludes C01-C05/C59-C63
     ar_context_main_ddpr_max: float = 1.2
     ar_context_worst_sat_max: float = 4.0
-    ar_context_pair_bad_max: float = 4.0
     ar_context_nb_max: int = 6
     ar_context_reject_during_cp_hold: int = 1
     ar_context_reject_during_ddpr_bad: int = 1
@@ -282,15 +191,6 @@ class TcConfig:
     ar_min_nb: int = 0
     lambda_corr_max: float = 0.0
     lambda_corr_hard_max: float = 1.0
-    weak_fix_nb_max: int = 2
-    weak_fix_lambda_corr_max: float = 0.08
-    weak_fix_main_ddpr_res_max: float = 0.8
-    weak_fix_only_after_flt: int = 1
-    weak_fix_reject_max_prev_fix_streak: int = 2
-    low_nb_fix_reject_nb_max: int = 6
-    low_nb_fix_only_after_flt: int = 1
-    # Same idea as above, but for the hard low-nb gate.
-    low_nb_fix_reject_max_prev_fix_streak: int = 2
     diag_truth_residual: int = 0
     diag_main_ddpr_res: int = 1
     # Per-bucket factor RMS dump (info['fres_*'] / info['fcnt_*']). Default
@@ -298,7 +198,6 @@ class TcConfig:
     # of wall time on the tokyo run; turn on only for offline diagnostics.
     diag_factor_residuals: int = 0
     fls_update_timing: int = 0
-    per_sat_gate_enable: int = 0
     ar_persist_bad_enable: int = 1
     ar_persist_bad_res_thresh: float = 2.0
     ar_persist_bad_streak: int = 4

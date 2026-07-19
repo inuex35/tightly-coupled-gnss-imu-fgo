@@ -24,6 +24,19 @@ def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
     return _tc_recovery.finalize_epoch(tc, sol, tag, nb, info, obs)
 
 
+def _p1_fresh_restart(tc):
+    """Rebuild the Phase-1 smoother from scratch (numerical-failure recovery)."""
+    tc.isam = tc._make_isam2(tc.cfg.phase1_fls_lag,
+                              tc.cfg.isam2_relinearize_skip,
+                              tc.cfg.isam2_relinearize_threshold)
+    tc.amb_keys.clear()
+    tc._isam_p1_inserted = set()
+    for st in tc._sat_states.values():
+        st.amb_gen += 1
+        st.amb_key = None
+        st.amb_factor_indices = []
+
+
 def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
                           ir_map, init_ecef, R):
     """Phase 1A — build the per-epoch DD graph + Values, run an FLS update with three follow-up iterations, and return the smoother estimate."""
@@ -35,6 +48,27 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     pose0 = gtsam.Pose3(gtsam.Rot3.Identity(), gtsam.Point3(*enu_pp))
     prev_missing = (ep > 0 and tc.Xp(ep - 1) not in tc._isam_p1_inserted)
     fresh_start = ep == 0 or prev_missing
+    if fresh_start:
+        # The RINEX header position can be arbitrarily stale (km-level on
+        # some rovers); anchoring Phase 1 there with a 3 m prior would
+        # never converge. Seed the anchor from a code-only DD LS instead —
+        # its linearization is insensitive to km-level initial error.
+        try:
+            ecef_ls, n_ls, res_ls = tc._ddpr_only_position(
+                obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose0)
+            if ecef_ls is not None and n_ls >= 4 and np.isfinite(res_ls):
+                # Re-anchor everything that depends on the a-priori
+                # position: the pose prior AND the geometry used to seed
+                # the ambiguities (a km-wrong init_ecef puts thousands of
+                # cycles of error into the N inits, whose priors then drag
+                # the pose away from the measurements).
+                init_ecef = np.asarray(ecef_ls, dtype=float)
+                tc.nav.x[0:3] = init_ecef
+                enu_pp = R.T @ (init_ecef - tc.base_ecef)
+                pose0 = gtsam.Pose3(gtsam.Rot3.Identity(),
+                                    gtsam.Point3(*enu_pp))
+        except (RuntimeError, ValueError):
+            pass
     if fresh_start:
         g.addPriorPose3(tc.Xp(ep), pose0,
             gtsam.noiseModel.Diagonal.Sigmas(
@@ -65,7 +99,29 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ts[k] = tc.phase1_t
     for k in tc.amb_keys.values():
         ts[k] = tc.phase1_t
-    tc.isam.update(g, v, ts)
+    try:
+        tc.isam.update(g, v, ts)
+    except RuntimeError:
+        # Numerical failure in the Phase-1 smoother (e.g. indeterminate
+        # system from a degenerate ambiguity/pose combination). A GNSS-only
+        # bootstrap holds no irreplaceable state — degrade gracefully by
+        # restarting Phase 1 fresh instead of crashing the run.
+        _p1_fresh_restart(tc)
+        g = gtsam.NonlinearFactorGraph()
+        v = gtsam.Values()
+        g.addPriorPose3(tc.Xp(ep), pose0,
+            gtsam.noiseModel.Diagonal.Sigmas(
+                np.array([0.01, 0.01, 0.01, 3, 3, 3])))
+        v.insert(tc.Xp(ep), pose0)
+        _tc_factors.build_dd_factors(tc,
+            g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
+            init_ecef, tc.Xp(ep), lever, tc.amb_keys,
+            dd_epoch=0)
+        tc.phase1_t += tc._epoch_dt
+        ts = gtsam.FixedLagSmootherKeyTimestampMap()
+        for k in v.keys():
+            ts[k] = tc.phase1_t
+        tc.isam.update(g, v, ts)
     # Record everything we just inserted so the next epoch can skip.
     tc._isam_p1_inserted.add(tc.Xp(ep))
     for k in v.keys():
@@ -74,6 +130,14 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         tc.isam.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
                         gtsam.FixedLagSmootherKeyTimestampMap())
     est = tc.isam.calculateEstimate()
+
+    # Drop marginalized variables from the inserted-set: a satellite that
+    # left amb_keys (ref switch) gets marginalized out of the smoother;
+    # when it reappears under the same key, the stale record would erase
+    # its fresh Values insert and the new CP factor would reference a
+    # variable the smoother no longer has (IndeterminantLinearSystem).
+    tc._isam_p1_inserted = {
+        k for k in tc._isam_p1_inserted if est.exists(k)}
 
     return est
 

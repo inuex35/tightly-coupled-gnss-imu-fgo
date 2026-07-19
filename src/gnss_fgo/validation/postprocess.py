@@ -108,23 +108,6 @@ def _decide_fix_or_flt(tc, ed):
     if tc.nav.smode == 4 and ed.nb > 0:
         lc = float(np.linalg.norm(ed.xa[0:3] - pose_tc_antenna))
         info['lambda_correction'] = lc
-        prev_was_flt = int(info.get('prev_smode', 0)) == 5
-        prev_fix_streak_max = max(
-            (st.fix_streak for st in tc._sat_states.values()), default=0)
-        info['prev_fix_streak_max'] = prev_fix_streak_max
-        weak_fix_fresh = prev_was_flt
-        if int(tc.cfg.weak_fix_reject_max_prev_fix_streak) > 0:
-            weak_fix_fresh = (
-                weak_fix_fresh
-                or prev_fix_streak_max
-                <= int(tc.cfg.weak_fix_reject_max_prev_fix_streak))
-        low_nb_fresh = prev_was_flt
-        if int(tc.cfg.low_nb_fix_reject_max_prev_fix_streak) > 0:
-            low_nb_fresh = (
-                low_nb_fresh
-                or prev_fix_streak_max
-                <= int(tc.cfg.low_nb_fix_reject_max_prev_fix_streak))
-        main_res = float(info.get('main_ddpr_res', 0.0) or 0.0)
         if (tc.cfg.lambda_corr_max > 0
                 and lc > tc.cfg.lambda_corr_max):
             info['lambda_corr_reject'] = lc
@@ -134,30 +117,6 @@ def _decide_fix_or_flt(tc, ed):
         elif (tc.cfg.lambda_corr_hard_max > 0
                 and lc > tc.cfg.lambda_corr_hard_max):
             info['lambda_corr_hard_reject'] = lc
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
-        elif (tc.cfg.low_nb_fix_reject_nb_max > 0
-                and ed.nb <= tc.cfg.low_nb_fix_reject_nb_max
-                and (not tc.cfg.low_nb_fix_only_after_flt or low_nb_fresh)):
-            info['weak_fix_reject'] = True
-            info['weak_fix_reject_nb'] = ed.nb
-            info['weak_fix_reject_lc'] = lc
-            info['weak_fix_reject_main_ddpr_res'] = main_res
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
-        elif (tc.cfg.weak_fix_nb_max > 0
-                and ed.nb <= tc.cfg.weak_fix_nb_max
-                and (not tc.cfg.weak_fix_only_after_flt or weak_fix_fresh)
-                and ((tc.cfg.weak_fix_lambda_corr_max > 0
-                      and lc > tc.cfg.weak_fix_lambda_corr_max)
-                     or (tc.cfg.weak_fix_main_ddpr_res_max > 0
-                         and main_res > tc.cfg.weak_fix_main_ddpr_res_max))):
-            info['weak_fix_reject'] = True
-            info['weak_fix_reject_nb'] = ed.nb
-            info['weak_fix_reject_lc'] = lc
-            info['weak_fix_reject_main_ddpr_res'] = main_res
             ed.sol = pose_tc_antenna
             ed.tag = 'FLT'
             ed.nb = 0
