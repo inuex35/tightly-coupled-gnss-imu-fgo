@@ -423,6 +423,38 @@ def _record_ar_diagnostics(tc, info):
             info['ar_subset_ratio'] = float(ar_subset_dbg.get('ratio', 0.0))
 
 
+def _ar_starvation_reset(tc, ed):
+    """Purge cold-biased float arcs after prolonged ratio starvation.
+
+    A float that settled into a biased-but-smooth basin (e.g. after a
+    mass hold loss under TDCP-class constraints) keeps every residual
+    small and every AR attempt ratio-starved: none of the existing
+    alarms (innovation, residual spike) can fire. Detect it as N
+    consecutive lambda_zero outcomes while the DDPR residual stays
+    quiet, and run the same arc purge the residual-spike recovery uses;
+    fresh arcs re-anchor on DDPR and plain ILS re-fixes within epochs.
+    """
+    n_max = int(tc.cfg.ar_starve_reset)
+    if n_max <= 0:
+        return
+    outcome = tc._last_ar_outcome
+    if outcome == 'success':
+        tc._ar_starve_streak = 0
+        return
+    if outcome != 'lambda_zero':
+        return
+    tc._ar_starve_streak = int(getattr(tc, '_ar_starve_streak', 0) or 0) + 1
+    ed.info['ar_starve_streak'] = tc._ar_starve_streak
+    if tc._ar_starve_streak < n_max or tc._recov_cp_hold > 0:
+        return
+    res_pre = tc._cached_ddpr_res_pre
+    if res_pre is not None and float(res_pre) > float(tc.cfg.ar_starve_max_res):
+        return                      # NLOS storm — arcs are load-bearing
+    n_removed = _tc_recovery.reset_ambiguities_with_cp_hold(tc)
+    ed.info['ar_starve_reset'] = n_removed
+    tc._ar_starve_streak = 0
+
+
 def _run_lambda_ar(tc, ed):
     """Layer 5 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
@@ -433,6 +465,7 @@ def _run_lambda_ar(tc, ed):
     if not _ar_eligibility(tc, ed):
         return None
     _run_ar_with_marginals(tc, ed)
+    _ar_starvation_reset(tc, ed)
     _record_ar_diagnostics(tc, ed.info)
     return None
 

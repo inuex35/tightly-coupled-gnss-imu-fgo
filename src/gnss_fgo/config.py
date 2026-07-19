@@ -176,6 +176,20 @@ class TcConfig:
     ar_wait_new: int = 3           # new amb waits N epochs before AR
     parmode: int = 1
     par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
+    ar_starve_reset: int = 0       # epochs of consecutive lambda_zero
+                                   # (ratio starvation) with a QUIET
+                                   # float that trigger the ambiguity
+                                   # purge (reset_ambiguities_with_
+                                   # cp_hold). A biased-but-smooth float
+                                   # basin passes no acceptance test and
+                                   # never trips the residual/innovation
+                                   # alarms — this is its dedicated
+                                   # escape. 0 = off.
+    ar_starve_max_res: float = 2.0 # 'quiet' gate [m]: skip the purge
+                                   # when main DDPR res exceeds this
+                                   # (an NLOS storm, where purging arcs
+                                   # would destroy the CP continuity
+                                   # that bounds float drift)
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
