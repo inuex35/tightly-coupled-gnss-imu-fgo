@@ -5,7 +5,9 @@ import numpy as np
 import gtsam
 
 from . import ar as _tc_ar
+from ..buildfactor import clock as _tc_clock
 from ..buildfactor import doppler as _tc_doppler
+from ..buildfactor import doppler_sd as _tc_doppler_sd
 from ..buildfactor import tdcp as _tc_tdcp
 from ..buildfactor import factors as _tc_factors
 from ..buildfactor import nhc as _tc_nhc
@@ -127,6 +129,12 @@ def _build_factor_block(tc, ed, prev_smode):
 
     # Raw per-satellite Doppler factors (opt-in via cfg.doppler_sigma)
     _tc_doppler.add_doppler_factors(tc, ed)
+
+    # Undifferenced pseudoranges pinning the clock chain the Doppler needs
+    _tc_clock.add_clock_pr_factors(tc, ed)
+
+    # Between-satellite differenced Doppler (clock-free; cfg.doppler_sd_sigma)
+    _tc_doppler_sd.add_sd_doppler_factors(tc, ed)
 
     # TDCP relative-displacement constraints (rover-only carrier deltas)
     _tc_tdcp.add_tdcp_factors(tc, ed)

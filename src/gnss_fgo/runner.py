@@ -123,6 +123,7 @@ class ImuGnssTc(rtkpos):
         # keys this epoch's factors reach back to (re-stamped by the FLS).
         self._doppler_clk_last = None
         self._doppler_keep_keys = []
+        self._doppler_cb_prev = None
 
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False

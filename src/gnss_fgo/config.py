@@ -100,9 +100,22 @@ class TcConfig:
     # difference needs two more knobs: a random walk between epochs (as a
     # range-rate σ, converted to seconds inside the builder) and the anchor
     # prior that pins the otherwise-unobservable absolute bias.
-    doppler_sigma: float = 0.0     # [m/s] 0 = off
+    doppler_sigma: float = 0.0     # [m/s] 0 = off — raw, with clock states
+    doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
+    doppler_fde_k: float = 4.0     # drop Dopplers beyond k robust scales
+    doppler_snr_weight: int = 1    # scale Doppler σ by C/N0 as varerr does
+    doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
+    doppler_require_dd: int = 1    # only add Doppler where the epoch has a
+                                   # usable DD set (see buildfactor/doppler_sd)
+    doppler_sd_sigma: float = 0.0  # [m/s] 0 = off — between-satellite
+                                   # difference, no clock states at all
     doppler_huber: float = 0.0     # [m/s] robust kernel width, 0 = plain L2
     doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
+    clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
+                                   # when pseudoranges observe the level
+    clock_pr_sigma: float = 0.0    # [m] zenith σ of the undifferenced GPS
+                                   # iono-free pseudoranges that observe the
+                                   # clock chain (0 = off; needs doppler_sigma)
     doppler_clk_anchor_sigma: float = 3.3e-9  # [s] prior pinning the head of
                                    # a clock chain (the level is unobservable
                                    # from range rates, so any value does)
@@ -219,6 +232,8 @@ class TcConfig:
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
+    ar_native_resolver: int = 0    # AR off the smoother directly,
+                                   # bypassing the cssrlib nav round-trip
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5

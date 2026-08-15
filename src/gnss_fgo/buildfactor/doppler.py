@@ -40,6 +40,7 @@ import gtsam
 from cssrlib.gnss import rCST, sat2prn, uGNSS
 
 from ..utils import get_wavelengths
+from . import clock as _tc_clock
 
 
 def _doppler_rows(tc, ed):
@@ -65,11 +66,63 @@ def _doppler_rows(tc, ed):
             if lams is None:
                 lams = get_wavelengths(ed.obs_sd, s, glo_ch=tc.nav.glo_ch)
             if f < len(lams) and lams[f] > 0:
+                snr = (float(ed.obs.S[i_obs, f])
+                       if f < ed.obs.S.shape[1] else 0.0)
                 rows.append((s, ed.rs[i_obs, :3], ed.vs[i_obs, :3],
                              float(d_obs), float(lams[f]),
-                             float(ed.el[si])))
+                             float(ed.el[si]), snr))
                 break
     return rows
+
+
+def screen_rows(tc, ed, rows):
+    """Robust epoch screen: drop outliers, return a residual scale [m/s].
+
+    A quick least squares for (velocity correction, clock drift) over the
+    epoch's own Doppler rows, then the robust scale of what it cannot fit.
+    Two things come out of it. Satellites whose residual is far outside that
+    scale are dropped, and the scale itself is handed back so the factor
+    sigmas can follow the measurements: entering the tokyo canyon the
+    truth-referenced Doppler error goes 0.02 -> 0.14 m/s with the elevations
+    and C/N0 barely moving, and a sigma that ignores that lets a degraded
+    epoch pull the velocity as hard as a clean one.
+    """
+    if len(rows) < 5:
+        return rows, 0.0
+    v_pred = np.asarray(ed.R, dtype=float) @ np.asarray(
+        ed.pred.velocity(), dtype=float)
+    p_r = np.asarray(ed.pred_ecef, dtype=float)
+    A, b, keep = [], [], []
+    for row in rows:
+        _s, p_sat, v_sat, d_obs, lam = row[0], row[1], row[2], row[3], row[4]
+        d_vec = np.asarray(p_sat, dtype=float) - p_r
+        rho = float(np.linalg.norm(d_vec))
+        if rho < 1.0:
+            continue
+        e = d_vec / rho
+        pred = float(e @ (np.asarray(v_sat, dtype=float) - v_pred))
+        A.append([-e[0], -e[1], -e[2], 1.0])
+        b.append(-lam * d_obs - pred)
+        keep.append(row)
+    if len(b) < 5:
+        return rows, 0.0
+    A, b = np.asarray(A), np.asarray(b)
+    try:
+        x, *_ = np.linalg.lstsq(A, b, rcond=None)
+    except np.linalg.LinAlgError:
+        return rows, 0.0
+    r = A @ x - b
+    scale = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+    k = float(tc.cfg.doppler_fde_k)
+    if k > 0 and scale > 0:
+        kept = [row for row, ri in zip(keep, r) if abs(ri) <= k * scale]
+        if len(kept) >= 4:
+            n_drop = len(keep) - len(kept)
+            if n_drop:
+                ed.info['doppler_fde'] = n_drop
+            keep = kept
+    ed.info['doppler_scale'] = scale
+    return keep, scale
 
 
 def _estimate_clock_drift(tc, ed, rows):
@@ -85,7 +138,7 @@ def _estimate_clock_drift(tc, ed, rows):
         ed.pred.velocity(), dtype=float)
     p_r = np.asarray(ed.pred_ecef, dtype=float)
     resid = []
-    for _s, p_sat, v_sat, d_obs, lam, _el in rows:
+    for _s, p_sat, v_sat, d_obs, lam, _el, _snr in rows:
         d_vec = np.asarray(p_sat, dtype=float) - p_r
         rho = np.linalg.norm(d_vec)
         if rho < 1.0:
@@ -108,19 +161,45 @@ def add_doppler_factors(tc, ed):
     tc._doppler_keep_keys = []
     if sigma <= 0 or ed.kk is None:
         return
+    gdop_max = float(tc.cfg.doppler_gdop_max)
+    if gdop_max > 0 and float(ed.info.get('gdop', 0.0) or 0.0) > gdop_max:
+        # Range rates determine velocity only as well as the sky lets them.
+        # Under a narrow cone the component along the mean line of sight is
+        # barely observed, and a velocity that is wrong there integrates
+        # straight into position for as long as the outage lasts.
+        ed.info['doppler_skipped'] = 'gdop'
+        return
+    if tc.cfg.doppler_require_dd and ed.nv < tc.cfg.min_dd_for_solve:
+        ed.info['doppler_skipped'] = int(ed.nv)
+        return
 
     kk = int(ed.kk)
     dt = float(tc._epoch_dt)
     chain_prev = tc._doppler_clk_last
     rows = _doppler_rows(tc, ed)
+    rows, scale = screen_rows(tc, ed, rows)
 
-    cb_prev = 0.0
+    cb_prev, drift_prev = 0.0, None
     if chain_prev == kk - 1 and ed.est2 is not None:
         try:
             cb_prev = float(ed.est2.atDouble(tc.Clk(kk - 1)))
+            # Clk(kk-2) is already marginalized out of the lag window, so the
+            # realized drift has to come from what we cached last epoch.
+            if tc._doppler_cb_prev is not None:
+                drift_prev = ((cb_prev - tc._doppler_cb_prev)
+                              * rCST.CLIGHT / dt)
         except RuntimeError:
             cb_prev = 0.0
-    drift_mps = _estimate_clock_drift(tc, ed, rows)
+    tc._doppler_cb_prev = cb_prev if chain_prev == kk - 1 else None
+    # Predict the chain from the clock's own past, never from this epoch's
+    # Dopplers. Feeding the measured drift back in as the between-factor
+    # measurement couples the prediction to the predicted velocity that goes
+    # into estimating it, and during a GNSS outage -- where that velocity is
+    # exactly what has gone wrong -- the error is then asserted as a
+    # measurement and locked in: tokyo run2 drifted 46 m over nine float
+    # epochs that way, against 6.6 m with no Doppler at all.
+    drift_mps = (drift_prev if drift_prev is not None
+                 else _estimate_clock_drift(tc, ed, rows))
     cb_init = cb_prev + drift_mps * dt / rCST.CLIGHT     # [s]
     ed.v3.insert(tc.Clk(kk), cb_init)
     ed.info['doppler_drift_mps'] = drift_mps
@@ -131,13 +210,23 @@ def add_doppler_factors(tc, ed):
         # the head of a chain is pinned -- range rates observe the difference
         # only, so the level is free to be anything, but pinning every state
         # would pin the difference too and leave the Doppler nothing to say.
+        #
+        # Unless pseudoranges are also on these states: then the level is
+        # theirs, so start it where the code solution says and pin it loosely.
+        anchor_sigma = float(tc.cfg.doppler_clk_anchor_sigma)
+        if float(tc.cfg.clock_pr_sigma) > 0:
+            cb_code = _tc_clock.estimate_clock_bias(tc, ed)
+            if cb_code is not None:
+                cb_init = cb_code
+                ed.v3.update(tc.Clk(kk), cb_init)
+                anchor_sigma = float(tc.cfg.clock_pr_anchor_sigma)
         ed.g3.add(gtsam.PriorFactorDouble(
-            tc.Clk(kk), cb_init,
-            tc._noise1(tc.cfg.doppler_clk_anchor_sigma)))
+            tc.Clk(kk), cb_init, tc._noise1(anchor_sigma)))
         tc._doppler_clk_last = kk
         ed.info['doppler_chain'] = 'anchored'
         return
 
+    # Constant-drift prediction, loose enough that the Dopplers own the drift.
     ed.g3.add(gtsam.BetweenFactorDouble(
         tc.Clk(kk - 1), tc.Clk(kk), cb_init - cb_prev,
         tc._noise1(float(tc.cfg.doppler_clk_rw) * dt / rCST.CLIGHT)))
@@ -148,12 +237,20 @@ def add_doppler_factors(tc, ed):
 
     huber = float(tc.cfg.doppler_huber)
 
-    def _model(el_rad):
-        # Elevation weighting as in gtsam's DopplerVelocityExample notebook:
-        # the zenith sigma divided by sin(el), floored so a horizon satellite
-        # is downweighted by 10x rather than by an unbounded factor.
-        base = gtsam.noiseModel.Isotropic.Sigma(
-            1, sigma / max(np.sin(el_rad), 0.1))
+    def _model(el_rad, snr):
+        # Elevation weighting as in gtsam's DopplerVelocityExample notebook,
+        # times the C/N0 term the DD factors already use. Elevation alone is
+        # not enough: entering the tokyo canyon the truth-referenced Doppler
+        # error goes 0.02 -> 0.14 m/s while the elevations barely move, and a
+        # sigma that does not follow it lets a degraded measurement pull the
+        # velocity as hard as a clean one.
+        sig = sigma / max(np.sin(el_rad), 0.1)
+        if tc.cfg.doppler_adaptive_sigma and scale > 0:
+            sig = max(sig, scale)
+        snr_ref = float(tc.cfg.snr_ref_dbhz)
+        if tc.cfg.doppler_snr_weight and snr > 0:
+            sig *= float(np.clip(10.0 ** ((snr_ref - snr) / 20.0), 1.0, 10.0))
+        base = gtsam.noiseModel.Isotropic.Sigma(1, sig)
         if huber <= 0:
             return base
         return gtsam.noiseModel.Robust.Create(
@@ -168,11 +265,11 @@ def add_doppler_factors(tc, ed):
     lever = np.asarray(tc.lever_arm, dtype=float)
     rr = np.asarray(ed.pred_ecef, dtype=float)
     n = 0
-    for s, p_sat, v_sat, d_obs, lam, el in rows:
+    for s, p_sat, v_sat, d_obs, lam, el, snr in rows:
         ed.g3.add(gtsam.DopplerFactorArm(
             tc.Xpose(kk), tc.Vel(kk), tc.Clk(kk - 1), tc.Clk(kk),
             d_obs, lam,
             np.asarray(p_sat, dtype=float), np.asarray(v_sat, dtype=float),
-            rr, lever, tc.ecef_T_nav, omega, dt, 0.0, _model(el)))
+            rr, lever, tc.ecef_T_nav, omega, dt, 0.0, _model(el, snr)))
         n += 1
     ed.info['doppler_n'] = n
