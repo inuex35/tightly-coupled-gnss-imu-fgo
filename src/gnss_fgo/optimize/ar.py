@@ -5,6 +5,8 @@ import os
 import numpy as np
 import gtsam
 
+from .ambiguity_resolver import AmbiguityResolver
+
 from ..preprocess import sat_quality as _satq
 from ..utils import sorted_amb_items
 from ..validation import postfit as _tc_postfit
@@ -45,6 +47,164 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
     return [s for *_rest, s in rows[:max_candidates]]
 
 
+def _resolve_native(tc, sat_list):
+    """AR straight off the smoother, without the cssrlib nav round-trip.
+
+    Assembles the float ambiguities and their joint covariance from ISAM2 --
+    the same numbers ``write_marginals`` transcribes into ``nav.x`` / ``nav.P``
+    -- and hands them to :class:`AmbiguityResolver`. Held ambiguities keep the
+    pinned value and ``varholdamb`` variance the fix-and-hold policy gives
+    them; that policy stays with the caller, the resolver only fixes integers.
+
+    Returns the ``(nb, xa)`` pair the rest of the AR path expects, with ``xa``
+    carrying the fixed ambiguities and the position corrected by the usual
+    Kalman gain from the (pose, ambiguity) cross-covariance.
+    """
+    # Phase 1 runs on its own smoother with its own ambiguity keys; this
+    # resolver reads the Phase-2 graph, so leave Phase 1 to cssrlib.
+    smoother = getattr(tc, 'isam2', None)
+    if tc.phase != 2 or smoother is None:
+        return None
+    isam2 = smoother.getISAM2()
+    if isam2 is None:
+        return None
+    est = smoother.calculateEstimate()
+    wanted = {int(s) for s in sat_list}
+
+    keys, values, held_var = [], {}, {}
+    key_of = dict(sorted_amb_items(tc._sat_states.amb_keys_dict()))
+    for (s, f), k in sorted_amb_items(key_of):
+        if int(s) in wanted and est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
+            keys.append((int(s), int(f)))
+            values[(int(s), int(f))] = est.atDouble(k)
+    for (s, f), value in tc._sat_states.held_items():
+        sf = (int(s), int(f))
+        if sf in values or int(s) not in wanted:
+            continue
+        if tc.nav.vsat[int(s) - 1, int(f)] != 1:
+            continue
+        keys.append(sf)
+        values[sf] = float(value)
+        held_var[sf] = max(float(tc.cfg.varholdamb), 1e-9)
+    if len(keys) < 4:
+        return None
+
+    free = [sf for sf in keys if sf not in held_var]
+    key_pose = getattr(tc, '_ar_key_pose', None)
+    if key_pose is None:
+        return None
+    kv = gtsam.KeyVector()
+    kv.append(key_pose)
+    for sf in free:
+        kv.append(key_of[sf])
+    try:
+        jm = isam2.jointMarginalCovariance(kv)
+    except (RuntimeError, IndexError):
+        return None
+
+    n = len(keys)
+    cov = np.zeros((n, n))
+    cross = np.zeros((3, n))          # (position, ambiguity), ENU
+    for i, a in enumerate(keys):
+        if a in held_var:
+            cov[i, i] = held_var[a]
+            continue
+        for j, b in enumerate(keys):
+            if b in held_var:
+                continue
+            cov[i, j] = jm.at(key_of[a], key_of[b])[0, 0]
+        cross[:, i] = jm.at(key_pose, key_of[a])[3:6, 0]
+    if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
+        return None
+
+    resolver = AmbiguityResolver(
+        thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
+        par_p0=float(tc.nav.par_P0),
+        el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
+    el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
+    res = resolver.resolve(values, cov, keys, el)
+    # Diagnostics elsewhere still read the stashed ratio pair.
+    tc._last_s0, tc._last_s1 = res.s0, res.s1
+    if res.nb <= 0:
+        return 0, tc.nav.x.copy()
+
+    xa = tc.nav.x.copy()
+    for sf, value in res.fixed.items():
+        xa[tc.IB(sf[0], sf[1], tc.nav.na)] = value
+    # Position update: x_fix = x - Qab Qb^-1 (y - b), in the DD space.
+    idx = {sf: i for i, sf in enumerate(keys)}
+    D = np.zeros((len(res.pairs), n))
+    for row, (ref, tgt) in enumerate(res.pairs):
+        D[row, idx[ref]] = 1.0
+        D[row, idx[tgt]] = -1.0
+    x_float = np.array([values[sf] for sf in keys])
+    x_fixed = np.array([res.fixed.get(sf, values[sf]) for sf in keys])
+    Qb = D @ cov @ D.T
+    Qab = cross @ cov @ D.T
+    try:
+        gain = Qab @ np.linalg.inv(Qb)
+    except np.linalg.LinAlgError:
+        return res.nb, xa
+    d_enu = gain @ (D @ (x_float - x_fixed))
+    xa[0:3] = tc.nav.x[0:3] + tc.R_enu2ecef @ d_enu
+    return res.nb, xa
+
+
+def _resolve_native_retry(tc, sat_list):
+    """Native AR with the one-satellite retry cssrlib does inside resamb_lambda.
+
+    RTKLIB (and cssrlib after it) retries a failed fix once with a single
+    satellite excluded, chosen round-robin so a different one is tried each
+    epoch, and prefers a freshly-acquired satellite when its arrival is what
+    dropped the ratio. Both live inside ``resamb_lambda`` there, reached by
+    zeroing ``nav.vsat`` and calling back in; here the resolver takes an
+    explicit satellite list, so a retry is just a shorter list.
+    """
+    out = _resolve_native(tc, sat_list)
+    if out is None:
+        return None
+    nb, xa = out
+    ratio = 0.0 if tc._last_s0 <= 0 else tc._last_s1 / tc._last_s0
+    if nb > 0:
+        tc._native_prev_ratio = ratio
+        tc._native_excsat = 0
+        return nb, xa
+    if len(sat_list) < int(tc.nav.minfixsats) + 1:
+        return 0, xa
+
+    order = [int(s) for s in sat_list]
+    try:
+        start = order.index(int(getattr(tc, '_native_excsat', 0) or 0)) + 1
+    except ValueError:
+        start = 0
+    order = order[start:] + order[:start]
+
+    exc = 0
+    prev_ratio = float(getattr(tc, '_native_prev_ratio', 0.0) or 0.0)
+    if (tc.nav.arfilter and ratio < tc.nav.thresar and prev_ratio > 0.0
+            and ratio < 1.1 * prev_ratio):
+        # A satellite that has only just been locked is the likely culprit.
+        for s in order:
+            lock = tc.nav.lock[s - 1, :] if hasattr(tc.nav, 'lock') else None
+            if lock is not None and any(0 < lock[f] <= 1
+                                        for f in range(tc.nav.nf)):
+                exc = s
+                break
+    if exc == 0:
+        exc = order[0] if order else 0
+    if exc == 0:
+        return 0, xa
+
+    out2 = _resolve_native(tc, [s for s in sat_list if s != exc])
+    if out2 is None:
+        return 0, xa
+    nb2, xa2 = out2
+    tc._native_prev_ratio = (0.0 if tc._last_s0 <= 0
+                             else tc._last_s1 / tc._last_s0)
+    tc._native_excsat = exc if nb2 > 0 else 0
+    return (nb2, xa2) if nb2 > 0 else (0, xa)
+
+
 def _run_single_ar_attempt(tc, sat, sat_exclude=None, restore_state=True):
     """Run one AR attempt, optionally excluding one or more satellites."""
     sat_list = [int(s) for s in sat]
@@ -60,6 +220,10 @@ def _run_single_ar_attempt(tc, sat, sat_exclude=None, restore_state=True):
                 if 1 <= s <= tc.nav.vsat.shape[0]:
                     tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
+        if tc.cfg.ar_native_resolver:
+            native = _resolve_native_retry(tc, sat_list)
+            if native is not None:
+                return native
         if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
             return tc.resamb_lambda_rtklib(sat_list)
         return tc.resamb_lambda(sat_list, tc.nav.parmode, tc.nav.par_P0)
@@ -211,6 +375,10 @@ def _ar_context_reject(tc, nb):
 
 def write_marginals(tc, factors, estimate, key_pose, amb_dict):
     """Write GTSAM Marginals to nav.P with ENU->ECEF rotation."""
+    # The native resolver reads the same marginals straight from ISAM2 and
+    # needs the very pose these were taken against, not tc.tc_epoch, which
+    # still points at the previous epoch while AR runs.
+    tc._ar_key_pose = key_pose
     R = tc.R_enu2ecef
     tc.nav.P[:, :] = 0
     tc.nav.vsat[:, :] = 0
@@ -378,7 +546,11 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc._last_resamb_raw_nb = -1
     try:
-        if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
+        native = (_resolve_native_retry(tc, [int(x) for x in sat])
+                  if tc.cfg.ar_native_resolver else None)
+        if native is not None:
+            nb, xa = native
+        elif tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
             nb, xa = tc.resamb_lambda_rtklib(sat)
         else:
             nb, xa = tc.resamb_lambda(sat, tc.nav.parmode, tc.nav.par_P0)
