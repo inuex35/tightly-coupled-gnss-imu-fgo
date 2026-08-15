@@ -95,7 +95,17 @@ class TcConfig:
 
     thresdop: float = 0.0          # try 5–10 cyc/s on a clean run
 
-    doppler_vel_sigma: float = 0.5
+    # Raw per-satellite Doppler (gtsam.DopplerFactorArm). σ is the range-rate
+    # measurement noise; 0 disables. The clock-bias chain the factors
+    # difference needs two more knobs: a random walk between epochs (as a
+    # range-rate σ, converted to seconds inside the builder) and the anchor
+    # prior that pins the otherwise-unobservable absolute bias.
+    doppler_sigma: float = 0.0     # [m/s] 0 = off
+    doppler_huber: float = 0.0     # [m/s] robust kernel width, 0 = plain L2
+    doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
+    doppler_clk_anchor_sigma: float = 3.3e-9  # [s] prior pinning the head of
+                                   # a clock chain (the level is unobservable
+                                   # from range rates, so any value does)
     tdcp_sigma: float = 0.0        # [m] TDCP σ between consecutive poses;
                                    # 0 disables (default). Experimental:
                                    # cancels ambiguity/slow biases and
@@ -105,7 +115,6 @@ class TcConfig:
                                    # mass-slip excursion; tukey -> best
                                    # AllRMS (11.8) but AR dies. Needs a
                                    # kernel/sigma sweep before default-on.
-    doppler_max_res: float = 2.0
 
     mw_thresh: float = 0.0
     mw_avg_enable: int = 1

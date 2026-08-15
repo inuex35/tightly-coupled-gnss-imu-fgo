@@ -125,8 +125,8 @@ def _build_factor_block(tc, ed, prev_smode):
             info['n_anchored'] = n_anchored
     info['n_between'] = n_between
 
-    # Doppler velocity prior (opt-in via cfg.doppler_vel_sigma)
-    _tc_doppler.add_doppler_vel_prior(tc, ed)
+    # Raw per-satellite Doppler factors (opt-in via cfg.doppler_sigma)
+    _tc_doppler.add_doppler_factors(tc, ed)
 
     # TDCP relative-displacement constraints (rover-only carrier deltas)
     _tc_tdcp.add_tdcp_factors(tc, ed)
@@ -179,6 +179,7 @@ def _solve_isam2(tc, ed):
         for sf, (k_old, _) in sorted_amb_items(ed.prev_amb_tc):
             if tc._sat_states.at(*sf).amb_key is not None:
                 extra.append(k_old)
+        extra.extend(tc._doppler_keep_keys)
         _tc_solver.fls_update(tc, ed.g3, ed.v3, ed.kk, keep_keys=extra,
                          remove_indices=ed.remove_indices)
         ed.est2 = tc.isam2.calculateEstimate()

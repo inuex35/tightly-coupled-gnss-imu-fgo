@@ -40,6 +40,7 @@ class ImuGnssTc(rtkpos):
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
+    Clk = staticmethod(lambda i: gtsam.symbol('c', i))  # rcv clock bias [s]
 
     _NOISE1_CACHE = {}
 
@@ -117,6 +118,11 @@ class ImuGnssTc(rtkpos):
                                        self.cfg.isam2_relinearize_threshold)
         self.amb_keys = {}
         self._isam_p1_inserted = set()
+
+        # Doppler clock-bias chain: last epoch that owns a Clk key, and the
+        # keys this epoch's factors reach back to (re-stamped by the FLS).
+        self._doppler_clk_last = None
+        self._doppler_keep_keys = []
 
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
