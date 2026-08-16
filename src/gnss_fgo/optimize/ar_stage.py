@@ -1,4 +1,4 @@
-"""Layer 5 -- the AR pass over the fresh estimate.
+"""Stage C3 -- the AR pass over the fresh estimate.
 
 Eligibility (which needs the epoch healthy and the geometry meaningful),
 marginals publication, the LAMBDA attempt through gnss_fgo.ar, outcome
@@ -20,9 +20,9 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import postfit as _tc_postfit
-from ..validation import recovery as _tc_recovery
-from . import solver as _tc_solver
+from ..validation import residuals as _tc_postfit
+from .. import recovery as _tc_recovery
+from . import isam as _tc_solver
 
 
 _AR_OUTCOME_CODES = {
@@ -199,7 +199,7 @@ def _ar_starvation_reset(tc, ed):
 
 
 def _run_lambda_ar(tc, ed):
-    """Layer 5 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
+    """Stage C3 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
     tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5

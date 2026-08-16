@@ -1,4 +1,4 @@
-"""Layer 3 -- assemble this epoch's factor block.
+"""Stage C1 -- assemble this epoch's factor block.
 
 DD code/phase factors, the BetweenFactor chain on continuing ambiguities,
 the propagate-prior fallback when the DD set is too thin to solve, and the
@@ -22,13 +22,13 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import postfit as _tc_postfit
-from ..validation import recovery as _tc_recovery
-from . import solver as _tc_solver
+from ..validation import residuals as _tc_postfit
+from .. import recovery as _tc_recovery
+from . import isam as _tc_solver
 
 
 def _build_factor_block(tc, ed, prev_smode):
-    """Layer 3 — DD factors + BetweenN chain + propagate-prior fallback + (Doppler / NHC / ZUPT / bootstrap-DDPR) priors."""
+    """Stage C1 — DD factors + BetweenN chain + propagate-prior fallback + (Doppler / NHC / ZUPT / bootstrap-DDPR) priors."""
     info = ed.info
     # DD factor construction
     ed.nv = _tc_factors.build_dd_factors(tc, 

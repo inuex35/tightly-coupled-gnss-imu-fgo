@@ -16,7 +16,7 @@ import numpy as np
 import gtsam
 
 from ..utils import sorted_amb_items
-from ..validation import postfit as _tc_postfit
+from ..validation import residuals as _tc_postfit
 
 
 def _collect_held_sat_freq_keys(tc, amb_dict):

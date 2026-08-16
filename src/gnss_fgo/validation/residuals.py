@@ -1,10 +1,10 @@
-"""Stage 4 — post-fit testing."""
+"""Post-fit residual tests + DDPR sanity escalation (Stage C/D support)."""
 
 import os
 import numpy as np
 import gtsam
 from .. import state as _tc_state
-from . import recovery as _tc_recovery
+from .. import recovery as _tc_recovery
 
 
 def all_factor_residuals(tc, g3, est2):
@@ -324,7 +324,7 @@ def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
 
 
 def _ddpr_sanity_gdop_ok(tc, info):
-    """Stage 4: abort sanity when geometry is too weak to trust the"""
+    """Escalation step 4: abort sanity when geometry is too weak to trust the"""
     if tc.cfg.sanity_max_gdop <= 0:
         return True
     cur_gdop = info.get('gdop', 0.0)
@@ -417,7 +417,7 @@ def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=
 
 
 def _ddpr_sanity_trigger(tc, main_res, info):
-    """Stage 1: clean residual signal → reset bad-count, return False."""
+    """Escalation step 1: clean residual signal → reset bad-count, return False."""
     rms_bad = main_res > tc.cfg.main_ddpr_res_thresh
     per_sat_bad = False
     psat_thr = float(tc.cfg.main_ddpr_per_sat_thresh)
@@ -435,7 +435,7 @@ def _ddpr_sanity_trigger(tc, main_res, info):
 
 
 def _ddpr_sanity_persist(tc, main_res, info):
-    """Stage 2: count consecutive bad epochs, fire CP-hold each one,"""
+    """Escalation step 2: count consecutive bad epochs, fire CP-hold each one,"""
     tc._ddpr_bad_count = tc._ddpr_bad_count + 1
     info['ddpr_bad'] = tc._ddpr_bad_count
     _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
@@ -444,7 +444,7 @@ def _ddpr_sanity_persist(tc, main_res, info):
 
 def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
                                ir_map, pose_tc, ecef_tc, info):
-    """Stage 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
+    """Escalation step 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
     ecef_ddpr, n_ddpr, res_rms = tc._ddpr_only_position(
         obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_tc)
     info['ddpr_nv'] = n_ddpr
@@ -459,7 +459,7 @@ def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
 
 
 def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
-    """Stage 4: anchor must agree with IMU-predicted position (sub-metre"""
+    """Escalation step 4: anchor must agree with IMU-predicted position (sub-metre"""
     ecef_ddpr, res_rms = anchor
     R = tc.R_enu2ecef
     ecef_pred = R @ np.array(pred.pose().translation()) + tc.base_ecef

@@ -15,7 +15,7 @@ These are policy, not resolution: nothing here touches LAMBDA's inputs.
 import numpy as np
 import gtsam
 
-from ..validation import postfit as _tc_postfit
+from ..validation import residuals as _tc_postfit
 
 
 def should_skip_ar_precheck(tc):

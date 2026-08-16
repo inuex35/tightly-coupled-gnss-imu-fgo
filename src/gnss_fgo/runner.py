@@ -16,16 +16,16 @@ from .utils import (
     make_imu_params as _utils_make_imu_params,
 )
 from .config import TcConfig
-from .buildfactor.epoch import make_epoch_diagnostics, prepare_process_epoch
+from .buildfactor.epoch_context import make_epoch_diagnostics, prepare_process_epoch
 from .buildfactor import factors as _tc_factors
 from . import initialization as _initialization
 from . import tightly_coupled as _tightly_coupled
-from .validation import recovery as _tc_recovery
+from . import recovery as _tc_recovery
 from .runtime_state import (
     AmbiguityState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
 from .preprocess.sat_quality import SatQualityState
-from .optimize import solver as _tc_solver
+from .optimize import isam as _tc_solver
 from .preprocess import prefit as _tc_prefit
 from .utils import sorted_sys_ids
 

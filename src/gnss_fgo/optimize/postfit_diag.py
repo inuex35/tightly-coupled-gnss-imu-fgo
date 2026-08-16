@@ -1,4 +1,4 @@
-"""Layer 6 -- post-fit diagnostics on the solved epoch.
+"""Stage C4 -- post-fit diagnostics on the solved epoch.
 
 Main DDPR residuals, per-satellite bookkeeping (persist-bad holds,
 observation quality), the post-fit FDE re-solve, and the pose snapshot the
@@ -20,13 +20,13 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import postfit as _tc_postfit
-from ..validation import recovery as _tc_recovery
-from . import solver as _tc_solver
+from ..validation import residuals as _tc_postfit
+from .. import recovery as _tc_recovery
+from . import isam as _tc_solver
 
 
 def _compute_postfit_diagnostics(tc, ed):
-    """Layer 6 — main DDPR + factor-residual diagnostics, persist-bad / observation-quality bookkeeping, post-fit FDE re-solve, and pose snapshot."""
+    """Stage C4 — main DDPR + factor-residual diagnostics, persist-bad / observation-quality bookkeeping, post-fit FDE re-solve, and pose snapshot."""
     info = ed.info
     sq = _satq.get_sat_quality(tc)
     if tc.cfg.diag_main_ddpr_res:

@@ -1,4 +1,4 @@
-"""Stage 2 — pre-fit gates.
+"""Pre-fit gates and reference-satellite pick (Stage B/C support).
 
 Operates between input preprocessing and graph optimization to keep
 multipath-contaminated satellites out of the LAMBDA tree and to

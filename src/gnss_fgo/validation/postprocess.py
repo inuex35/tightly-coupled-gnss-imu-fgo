@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from . import recovery as _tc_recovery
-from . import postfit as _tc_postfit
+from .. import recovery as _tc_recovery
+from . import residuals as _tc_postfit
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
