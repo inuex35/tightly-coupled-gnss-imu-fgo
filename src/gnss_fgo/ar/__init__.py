@@ -1,24 +1,27 @@
-"""Ambiguity resolution, orchestrated.
+"""Integer ambiguity resolution.
 
-The pieces live where they can be read on their own:
-
-    ar_problem   graph -> ArProblem (reads only) + the fixed state vector
+    problem      graph -> ArProblem (reads only) + the fixed state vector
     ambiguity_resolver   LAMBDA over that problem (pure)
-    ar_retry     demo5 single-satellite retry policy
-    ar_subset    this project's ranked subset fallback
-    ar_gates     pre-checks and fix validation
-    ar_hold      fix-and-hold
+    retry        demo5 single-satellite retry policy
+    subset       this project's ranked subset fallback
+    gates        pre-checks and fix validation
+    hold         fix-and-hold
     nav_bridge   every nav write, and the table of who reads each field
 
-This module wires them into the epoch flow (:func:`run_ar`) and keeps the
-old names importable -- probes and callers built against the monolith still
-work.
+This package root wires them into the epoch flow (:func:`run_ar`) and keeps
+the monolith-era names importable -- callers and long-lived probes address
+``ar._resolve_native`` and friends unchanged.
 """
 
 import numpy as np
 import gtsam
 
-from . import ar_gates, ar_hold, ar_problem, ar_retry, ar_subset, nav_bridge
+from . import gates as ar_gates
+from . import hold as ar_hold
+from . import nav_bridge
+from . import problem as ar_problem
+from . import retry as ar_retry
+from . import subset as ar_subset
 from .ambiguity_resolver import AmbiguityResolver
 from ..utils import sorted_amb_items
 

@@ -4,7 +4,7 @@ import os
 import numpy as np
 import gtsam
 
-from . import ar as _tc_ar
+from .. import ar as _tc_ar
 from ..buildfactor import clock as _tc_clock
 from ..buildfactor import doppler as _tc_doppler
 from ..buildfactor import doppler_sd as _tc_doppler_sd

@@ -4,7 +4,7 @@ import numpy as np
 import gtsam
 
 from cssrlib.gnss import time2gpst
-from .optimize import ar as _tc_ar
+from . import ar as _tc_ar
 from . import tightly_coupled as _tightly_coupled
 from .validation import recovery as _tc_recovery
 from .buildfactor import factors as _tc_factors
