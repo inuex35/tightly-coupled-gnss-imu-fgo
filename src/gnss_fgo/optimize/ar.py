@@ -149,18 +149,12 @@ def _resolve_native(tc, sat_list):
         el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
     el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
     res = resolver.resolve(values, cov, keys, el)
-    # ddidx writes nav.fix on every call, not only when the fix is accepted:
-    # 2 for the satellites that entered a double difference, 1 for a candidate
-    # left out by the AR elevation mask. The hold policy and restamb read it
-    # afterwards, so a rejected attempt has to leave the same marks a rejected
-    # cssrlib attempt would.
-    tc.nav.fix[:, :] = 0
-    for sf in keys:
-        if el.get(sf[0], -np.inf) < float(getattr(tc.nav, 'elmaskar', 0.0)):
-            tc.nav.fix[sf[0] - 1, sf[1]] = 1
-    for ref, tgt in res.pairs:
-        tc.nav.fix[ref[0] - 1, ref[1]] = 2
-        tc.nav.fix[tgt[0] - 1, tgt[1]] = 2
+    # nav.fix is a side effect the hold policy reads, and its exact marks are
+    # quirky -- ddidx flags the reference of a singleton group even though no
+    # difference is formed, and flags below-mask satellites only when they
+    # precede the reference in PRN order. Reproducing that by hand is how the
+    # runs drifted apart; let ddidx itself write the marks.
+    tc.ddidx(tc.nav, sat_list)
     # Diagnostics elsewhere still read the stashed ratio pair.
     tc._last_s0, tc._last_s1 = res.s0, res.s1
     if res.nb <= 0:
@@ -204,58 +198,81 @@ def _resolve_native(tc, sat_list):
 
 
 def _resolve_native_retry(tc, sat_list):
-    """Native AR with the one-satellite retry cssrlib does inside resamb_lambda.
+    """Native counterpart of resamb_lambda_rtklib, side effects included.
 
-    RTKLIB (and cssrlib after it) retries a failed fix once with a single
-    satellite excluded, chosen round-robin so a different one is tried each
-    epoch, and prefers a freshly-acquired satellite when its arrival is what
-    dropped the ratio. Both live inside ``resamb_lambda`` there, reached by
-    zeroing ``nav.vsat`` and calling back in; here the resolver takes an
-    explicit satellite list, so a retry is just a shorter list.
+    A line-for-line transliteration: the lock counters are updated on every
+    call (they are nav state, read next epoch to spot freshly-acquired
+    satellites), the round-robin cursor and both previous ratios live on nav,
+    the retry candidate needs a non-zero vsat, and the exclusion itself is a
+    one-epoch vsat zeroing. Keeping any of this on private attributes instead
+    was enough to make the two runs choose different exclusions from ep127 on.
     """
+    valid = {int(s) for s in sat_list}
+    for i in range(tc.nav.lock.shape[0]):
+        sv = i + 1
+        for f in range(tc.nav.nf):
+            if sv in valid and tc.nav.vsat[i, f] != 0:
+                tc.nav.lock[i, f] += 1
+            else:
+                tc.nav.lock[i, f] = 0
+
     out = _resolve_native(tc, sat_list)
     if out is None:
         return None
     nb, xa = out
-    ratio = 0.0 if tc._last_s0 <= 0 else tc._last_s1 / tc._last_s0
+    ratio = 0.0 if tc._last_s0 <= 0.0 else tc._last_s1 / tc._last_s0
     if nb > 0:
-        tc._native_prev_ratio = ratio
-        tc._native_excsat = 0
+        tc.nav.prev_ratio1 = ratio
+        tc.nav.prev_ratio2 = ratio
+        tc.nav.excsat = 0
         return nb, xa
-    if len(sat_list) < int(tc.nav.minfixsats) + 1:
+    tc.nav.prev_ratio1 = ratio
+
+    if len(sat_list) < tc.nav.minfixsats:
         return 0, xa
 
-    order = [int(s) for s in sat_list]
+    sat_arr = [int(s) for s in sat_list]
     try:
-        start = order.index(int(getattr(tc, '_native_excsat', 0) or 0)) + 1
+        start = sat_arr.index(tc.nav.excsat) + 1
     except ValueError:
         start = 0
-    order = order[start:] + order[:start]
+    order = sat_arr[start:] + sat_arr[:start]
 
     exc = 0
-    prev_ratio = float(getattr(tc, '_native_prev_ratio', 0.0) or 0.0)
-    if (tc.nav.arfilter and ratio < tc.nav.thresar and prev_ratio > 0.0
-            and ratio < 1.1 * prev_ratio):
-        # A satellite that has only just been locked is the likely culprit.
-        for s in order:
-            lock = tc.nav.lock[s - 1, :] if hasattr(tc.nav, 'lock') else None
-            if lock is not None and any(0 < lock[f] <= 1
-                                        for f in range(tc.nav.nf)):
-                exc = s
+    if (tc.nav.arfilter and ratio < tc.nav.thresar
+            and tc.nav.prev_ratio2 > 0.0
+            and ratio < 1.1 * tc.nav.prev_ratio2):
+        for s_ in order:
+            if any(0 < tc.nav.lock[s_ - 1, f] <= 1
+                   for f in range(tc.nav.nf)):
+                exc = s_
                 break
     if exc == 0:
-        exc = order[0] if order else 0
+        for s_ in order:
+            if any(tc.nav.vsat[s_ - 1, f] != 0
+                   for f in range(tc.nav.nf)):
+                exc = s_
+                break
     if exc == 0:
         return 0, xa
 
-    out2 = _resolve_native(tc, [s for s in sat_list if s != exc])
+    vsat_row = tc.nav.vsat[exc - 1, :].copy()
+    tc.nav.vsat[exc - 1, :] = 0
+    try:
+        out2 = _resolve_native(tc, [s for s in sat_list if s != exc])
+    finally:
+        tc.nav.vsat[exc - 1, :] = vsat_row
     if out2 is None:
         return 0, xa
     nb2, xa2 = out2
-    tc._native_prev_ratio = (0.0 if tc._last_s0 <= 0
-                             else tc._last_s1 / tc._last_s0)
-    tc._native_excsat = exc if nb2 > 0 else 0
-    return (nb2, xa2) if nb2 > 0 else (0, xa)
+
+    if nb2 > 0:
+        tc.nav.prev_ratio2 = (0.0 if tc._last_s0 <= 0.0
+                              else tc._last_s1 / tc._last_s0)
+        tc.nav.excsat = exc
+        return nb2, xa2
+    tc.nav.excsat = 0
+    return 0, xa
 
 
 def _run_single_ar_attempt(tc, sat, sat_exclude=None, restore_state=True):
