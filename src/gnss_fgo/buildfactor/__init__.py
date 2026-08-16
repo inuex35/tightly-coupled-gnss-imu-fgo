@@ -1,3 +1,3 @@
-"""Layer 3 — buildfactor: DD pseudorange / carrier-phase, IMU PIM chain,
+"""buildfactor: DD pseudorange / carrier-phase, IMU PIM chain,
 NHC, Doppler, ZUPT/ZARU/anchor.
 """

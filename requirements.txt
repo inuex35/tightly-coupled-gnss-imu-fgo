@@ -1,16 +1,17 @@
 numpy
 matplotlib
 
-# GTSAM with the project's custom DD factors. The PyPI 'gtsam' wheel does
-# not include DDFactorArm / DDPRFactorArm / DDCPFactorArm — build from a
-# source tree that has them.
+# GTSAM with the project's custom factors (DD PR/CP, Doppler, SD Doppler,
+# NHC). Install the prebuilt wheel from inuex35/gtsam custom-wheels-latest
+# (branch custom/develop, re-merged with upstream weekly) — see README.
+# The stock PyPI 'gtsam' wheel lacks these factors.
 gtsam
 
-# cssrlib must come from the inuex35 fork. This project uses the minimal
-# DD-only RTK core (claude/gtsam-dd-minimal), which strips SSR/PPP/RTCM and
-# keeps only the double-difference path this pipeline needs. The upstream
+# cssrlib must come from the inuex35 fork (branch gtsam-gnss-frontend),
+# whose layered DD-only RTK core keeps just the double-difference path
+# this pipeline needs. The upstream
 # PyPI cssrlib lacks prepare_double_difference_measurements /
 # base_process_dd_only. Pinned to a commit for reproducibility.
 # Install with:
-#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@289da8c#egg=cssrlib
+#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib
 cssrlib>=1.2.1

@@ -16,22 +16,29 @@ from .utils import (
     make_imu_params as _utils_make_imu_params,
 )
 from .config import TcConfig
-from .buildfactor.epoch import make_epoch_diagnostics, prepare_process_epoch
+from .buildfactor.epoch_context import make_epoch_diagnostics, prepare_process_epoch
 from .buildfactor import factors as _tc_factors
 from . import initialization as _initialization
 from . import tightly_coupled as _tightly_coupled
-from .validation import recovery as _tc_recovery
+from . import recovery as _tc_recovery
 from .runtime_state import (
     AmbiguityState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
 from .preprocess.sat_quality import SatQualityState
-from .optimize import solver as _tc_solver
+from .optimize import isam as _tc_solver
 from .preprocess import prefit as _tc_prefit
 from .utils import sorted_sys_ids
 
 
-class ImuGnssTc(rtkpos):
-    """Two-phase IMU/GNSS tight coupling processor."""
+class ImuGnssTc:
+    """Two-phase IMU/GNSS tight coupling processor.
+
+    The estimator is the factor graph; cssrlib is a library it calls, not a
+    base class it is. The complete surface this pipeline uses from cssrlib's
+    engine is the delegation block below -- ten methods and the ratio stash
+    -- everything else (EKF time/measurement updates, the engine's own
+    process loop) is deliberately out of reach.
+    """
 
     # Symbol helpers
     Xp = staticmethod(lambda i: gtsam.symbol('x', i))   # Phase 1 pose
@@ -40,6 +47,56 @@ class ImuGnssTc(rtkpos):
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
+    Clk = staticmethod(lambda i: gtsam.symbol('c', i))  # rcv clock bias [s]
+
+    # ── The cssrlib boundary ────────────────────────────────────────
+    # Every capability this pipeline takes from the engine, in one block.
+    # Measurement preparation and validation:
+    def prepare_double_difference_measurements(self, *a, **k):
+        return self.engine.prepare_double_difference_measurements(*a, **k)
+
+    def zdres(self, *a, **k):
+        return self.engine.zdres(*a, **k)
+
+    def sdres(self, *a, **k):
+        return self.engine.sdres(*a, **k)
+
+    def valpos(self, *a, **k):
+        return self.engine.valpos(*a, **k)
+
+    # Ambiguity resolution (the cssrlib path; ar/ is the native one):
+    def resamb_lambda(self, *a, **k):
+        return self.engine.resamb_lambda(*a, **k)
+
+    def resamb_lambda_rtklib(self, *a, **k):
+        return self.engine.resamb_lambda_rtklib(*a, **k)
+
+    def ddidx(self, *a, **k):
+        return self.engine.ddidx(*a, **k)
+
+    def holdamb_flags(self, *a, **k):
+        return self.engine.holdamb_flags(*a, **k)
+
+    def IB(self, *a, **k):
+        return self.engine.IB(*a, **k)
+
+    # The ratio stash lives on the engine (resamb_lambda writes it there);
+    # forwarding keeps one source of truth for both AR paths.
+    @property
+    def _last_s0(self):
+        return self.engine._last_s0
+
+    @_last_s0.setter
+    def _last_s0(self, v):
+        self.engine._last_s0 = v
+
+    @property
+    def _last_s1(self):
+        return self.engine._last_s1
+
+    @_last_s1.setter
+    def _last_s1(self, v):
+        self.engine._last_s1 = v
 
     _NOISE1_CACHE = {}
 
@@ -55,7 +112,8 @@ class ImuGnssTc(rtkpos):
     def __init__(self, nav, pos0, base_ecef, imu_data,
                  lever_arm=np.zeros(3), logfile=None, cfg=None):
         """Initialize TC processor."""
-        super().__init__(nav, pos0, logfile)
+        self.engine = rtkpos(nav, pos0, logfile)
+        self.nav = self.engine.nav
 
         self.base_ecef = np.array(base_ecef)
         self.imu_data = imu_data
@@ -118,6 +176,12 @@ class ImuGnssTc(rtkpos):
         self.amb_keys = {}
         self._isam_p1_inserted = set()
 
+        # Doppler clock-bias chain: last epoch that owns a Clk key, and the
+        # keys this epoch's factors reach back to (re-stamped by the FLS).
+        self._doppler_clk_last = None
+        self._doppler_keep_keys = []
+        self._doppler_cb_prev = None
+
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
         self.collected_fixes = []  # list of {'ecef': ..., 'vel': ..., 'imu': [...]}
@@ -158,6 +222,7 @@ class ImuGnssTc(rtkpos):
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
         self._last_cp_pr_reject = 0
+        self._last_hold_gauge_rel = []
         self._last_rejc_wipe = 0
         self._last_ddpr_sat_tags = []
         self._last_main_ddpr_res = 0.0
@@ -209,7 +274,11 @@ class ImuGnssTc(rtkpos):
         self.ar_wait_new = self.cfg.ar_wait_new
 
         self.amb_factor_indices = {}
-        self.total_factor_count = 0  # running count of factors added to ISAM2
+        # NOTE: total_factor_count (running count of factors added to
+        # ISAM2) is intentionally NOT reset here — this method runs
+        # every epoch, and zeroing the cumulative counter made every
+        # absolute factor-slot index derived from it point at the wrong
+        # slot (the held-CP FDE bookkeeping was silently inert).
 
 
     def _assign_view(self, view: SatFieldView, value):

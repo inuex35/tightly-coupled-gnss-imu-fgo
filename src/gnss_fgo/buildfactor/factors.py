@@ -10,52 +10,8 @@ from ..utils.robust import maybe_robust as _maybe_robust
 from ..preprocess import sat_quality as _satq
 from ..preprocess import prefit as _tc_prefit
 from .factors_support import compute_cp_build_policy, get_wavelengths
+from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 from ..utils import sorted_amb_keys, sorted_sys_ids
-
-
-def _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
-                          prev_amb_values, key_id):
-    """Insert N value + add prior with the right σ for one sat. Three modes:"""
-    if prev_amb_values is not None and key_id in prev_amb_values:
-        n0 = prev_amb_values[key_id][1]
-        values.insert(key_n, n0)
-        graph.addPriorDouble(key_n, n0, tc._noise1(tc.cfg.sigma_cont))
-        return
-    if (sat_st.release_seed_pending
-            and sat_st.last_held_value is not None):
-        n0 = sat_st.last_held_value
-        values.insert(key_n, n0)
-        graph.addPriorDouble(key_n, n0, tc._noise1(0.1))
-        sat_st.amb_init_epoch = tc.epoch
-        sat_st.release_seed_pending = False
-        return
-    # Phase 2: σ=sigma_amb0 (cssrlib sig_n0); Phase 1: σ=3 cyc.
-    sig = tc.cfg.sigma_amb0 if tc.phase == 2 else 3.0
-    values.insert(key_n, n0_seed)
-    graph.addPriorDouble(key_n, n0_seed, tc._noise1(sig))
-    sat_st.amb_init_epoch = tc.epoch
-
-
-def _init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
-                                prev_amb_values, freq, lam,
-                                pair_sat_info, pos_ecef, rb):
-    """Add Prior factors + initial values for the two N ambiguities of one"""
-    for sat_id, key_n, cp_rover, cp_base, sat_xyz in pair_sat_info:
-        key_id = (sat_id, freq)
-        sat_st = tc._sat_states.get(*key_id)
-        sat_st.amb_lam = lam
-        if sat_st.held_value is not None:
-            continue
-        if key_id in amb_dict or key_id in new_amb:
-            continue
-        if values.exists(key_n):
-            continue
-        rv, _ = geodist(sat_xyz, pos_ecef)
-        bv, _ = geodist(sat_xyz, rb)
-        n0_seed = ((cp_rover - cp_base) - (rv - bv)) / lam
-        _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
-                              prev_amb_values, key_id)
-        new_amb[key_id] = key_n
 
 
 def _add_ddpr_factor(tc, graph, key_pose, lever,
@@ -168,7 +124,15 @@ def _emit_held_ddcp_factor(tc, graph, fi_cp, pair_id, key_pose, key_float,
         rb, lam, dd_obs_cp, lever_arr, tc.ecef_T_nav,
         offset_m=offset_m, coeff_m=coeff_m))
     tc._last_custom_ddcp_local.add(graph.size() - 1)
-    tc._last_custom_ddcp_global[fi_cp] = pair_id
+    # Keyed by the factor's key tuple, NOT its slot index: the FLS
+    # reuses freed slots (findUnusedFactorSlots) and per-epoch counter
+    # arithmetic cannot name a slot reliably. When both ambiguities are
+    # held the factor is pose-only and its key tuple is not unique
+    # (every such factor shares the pose key) — leave those out of the
+    # FDE bookkeeping rather than guess.
+    if key_float is not None:
+        tc._last_custom_ddcp_global[
+            (int(key_pose), int(key_float))] = pair_id
 
 
 def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
@@ -211,6 +175,7 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
         if track_indices:
             ref_state.amb_factor_indices.append(fi_cp)
             j_state.amb_factor_indices.append(fi_cp)
+    return 1
 
 
 
@@ -370,19 +335,19 @@ class DdFactorBuilder:
 
         ref_state = tc._sat_states.get(ref_sat, f)
         j_state = tc._sat_states.get(j_sat, f)
-        ref_held_value = ref_state.held_value
-        j_held_value = j_state.held_value
         key_n_ref = tc.N(ref_sat, f, dd_epoch * 100 + ref_state.amb_gen)
         key_n_j = tc.N(j_sat, f, dd_epoch * 100 + j_state.amb_gen)
         # N初期化: hybrid (continuing prior / release-seed / fresh)
+        pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
         _init_dd_ambiguity_priors(
             tc, self.graph, self.values, amb_dict, new_amb,
             self.prev_amb_values, f, lam,
-            ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b,
-              self.rs[iu[ref_idx], :3]),
-             (j_sat, key_n_j, cp_j_r, cp_j_b,
-              self.rs[iu[j_idx], :3])),
-            self.pos_ecef, self.rb)
+            ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
+             (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
+        # Read held state AFTER seeding: the gauge gate above may have
+        # just released a stale hold, and that must be visible here.
+        ref_held_value = ref_state.held_value
+        j_held_value = j_state.held_value
 
         sq_state = _satq.get_sat_quality(tc)
         cp_allowed, cp_sigma_mult = compute_cp_build_policy(
@@ -396,7 +361,7 @@ class DdFactorBuilder:
             cp_sigma_mult)
         cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
-        _add_ddcp_factor(
+        return _add_ddcp_factor(
             tc, self.graph, self.key_pose, cp_noise, dd_obs_cp, lam,
             sat_pts=sat_pts, sat_xyz=sat_xyz,
             cp_obs=(cp_ref_r, cp_ref_b, cp_j_r, cp_j_b),
@@ -406,7 +371,6 @@ class DdFactorBuilder:
             states=(ref_state, j_state),
             pair_id=(ref_sat, j_sat, f),
             fi_cp=fi_cp, track_indices=self.track_indices)
-        return 1
 
     def _compute_pair_geometry(self, j_idx, j_sat):
         """j-sat SD geometry: rover/base ``Point3`` + xyz arrays. Returns ``(j_pt, j_base_pt, j_xyz, j_base_xyz)``."""

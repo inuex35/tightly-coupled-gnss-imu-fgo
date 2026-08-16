@@ -5,6 +5,36 @@ Tightly-coupled IMU + GNSS RTK on **GTSAM** factor graphs and the
 
 ---
 
+## Install
+
+```bash
+python3.12 -m venv venv && . venv/bin/activate
+pip install numpy matplotlib
+
+# 1) GTSAM — use the prebuilt custom wheel (recommended).
+#    Branch custom/develop = upstream borglab develop + NhcFactor +
+#    SingleDifferenceDopplerFactor(/Arm) + the DD factors this pipeline
+#    needs. CI re-merges upstream weekly and refreshes the release.
+pip install https://github.com/inuex35/gtsam/releases/download/custom-wheels-latest/gtsam_develop-4.3a2.dev202608161310-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+#    (cp311 wheel is on the same release; check the release page for the
+#    current filenames: https://github.com/inuex35/gtsam/releases/tag/custom-wheels-latest)
+
+# 2) cssrlib — the inuex35 fork's DD-only RTK core (upstream PyPI cssrlib
+#    lacks prepare_double_difference_measurements / the layered frontend).
+pip install -e "git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib"
+
+# 3) this repo
+pip install -e .   # or just export PYTHONPATH=src
+```
+
+Building GTSAM from source instead: clone `inuex35/gtsam`, checkout
+`custom/develop`, then
+`cmake -B build -DGTSAM_BUILD_PYTHON=1 -DPYTHON_EXECUTABLE=$(which python) && make -C build -j4 python-install`
+(~20 min, needs ~11 GB RAM). The stock PyPI `gtsam` wheel will NOT work —
+it lacks the DD / Doppler / NHC factors.
+
+---
+
 ## Run
 
 ```bash
@@ -19,11 +49,16 @@ python examples/run_imu_gnss_tc.py \
 
 ### Defaults — tokyo PPC, full-length (NF=3, GPS L1/L2/L5 + Galileo E1/E5a/E5b + QZSS L1/L2/L5 + BDS B1C/B1I/B2a)
 
-| run  | length    | AllRMS  | FixRMS  | fix %  | <50 cm |
-|------|-----------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 47.40 m | 0.815 m | 49.5 % | 56.7 % |
-| run2 |  9151 ep  | 32.08 m | 0.277 m | 60.8 % | 69.9 % |
-| run3 | 15301 ep  | 34.52 m | 0.211 m | 59.4 % | 67.9 % |
+| run  | length    | AllRMS  | median  | p90     | FixRMS  | fix %  | <50 cm |
+|------|-----------|---------|---------|---------|---------|--------|--------|
+| run1 | 11928 ep  | 27.10 m | 0.47 m  | 42.5 m  | 2.316 m | 40.8 % | 50.7 % |
+| run2 |  9151 ep  |  5.36 m | 0.056 m |  3.1 m  | 0.267 m | 62.2 % | 74.5 % |
+| run3 | 15301 ep  | 19.69 m | 0.050 m |  5.9 m  | 0.463 m | 68.9 % | 75.2 % |
+
+Sequential runs, all defaults (`doppler_sd_sigma=0.5`, `doppler_huber=1.0`,
+`doppler_skip_aid=1`, C++ `gtsam.NhcFactor`, cp−pr ambiguity seeding).
+run1's residual tail is one deep canyon + a full tunnel blackout; its
+FixRMS is dominated by wrong fixes in the NLOS zone (open issue).
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
 
@@ -31,48 +66,64 @@ python examples/run_imu_gnss_tc.py \
 
 ## Architecture
 
-Each epoch flows through six layers:
+Phase 1 (`phase1_rtk.py`) is stationary GNSS-only RTK; Phase 2 is the
+moving IMU+DD pipeline. Each Phase-2 epoch flows through five stages:
 
 ```
-dataloader → preprocess → buildfactor → optimize → AR → validation
+A  preprocess/stage.py   IMU preintegration, prediction, IMU chain
+B  preprocess/gate.py    slip/CMC detection, holds, prev-N carry, GDOP gate
+C  optimize/stage.py     C1 build → C2 smoother → C3 AR → C4 post-fit diag
+D  validation/postprocess.py  FIX/FLT verdict, innovation policy
+E  validation/output.py  result tuple + bookkeeping
 ```
 
-| Layer | Role | Package |
-|---|---|---|
-| dataloader   | RINEX / IMU CSV / reference loading | `examples/run_imu_gnss_tc.py`, `utils/geometry.py` |
-| preprocess   | slip detection, sat selection, ref-sat, hold/release | `preprocess/` |
-| buildfactor  | DD pseudorange / carrier-phase, IMU PIM, NHC, Doppler, ZUPT | `buildfactor/` |
-| optimize     | ISAM2 / FixedLagSmoother update, LAMBDA AR | `optimize/` |
-| validation   | post-fit FDE, cp-hold FSM, sanity recovery | `validation/` |
-| utils        | LS solvers, geometry, IMU, robust kernels, RTK shim | `utils/` |
+| Where | What |
+|---|---|
+| `runner.py` | `ImuGnssTc` — owns state, the cssrlib engine boundary (10-method delegation block) |
+| `tightly_coupled.py` | Phase-2 epoch entry (`run_tc_epoch`) and Phase-1→2 transition |
+| `recovery.py` | cross-cutting outage paths: GDOP skip, IMU-only, warm reset, solve-failure handling |
+| `buildfactor/` | one module per factor family: DD PR/CP (`factors.py`), ambiguity seeding (`amb_seed.py`), SD Doppler (`doppler_sd.py`), raw Doppler, NHC, ZUPT, TDCP, PIM |
+| `optimize/` | `build.py` (C1), `isam.py` (C2, ISAM2/FLS glue), `ar_stage.py` (C3), `postfit_diag.py` (C4) |
+| `validation/` | `residuals.py` (residual tests, FDE, DDPR sanity), `postprocess.py` (D), `output.py` (E) |
+| `ar/` | the native ambiguity-resolution core (LAMBDA, retry, subset, hold) + cssrlib nav bridge |
+| `epoch_data.py`, `stage_contract.py` | the `EpochData` carrier and the stage reads/writes contract checker (`ENABLE_STAGE_CONTRACT_CHECK=1`) |
 
-`runner.py` owns the `ImuGnssTc` class and the per-epoch `process()`
-entry point. `phase.py` routes each epoch through the
-phase-appropriate stages (Phase 1: GNSS-only RTK; Phase 2: IMU + DD).
-`epoch.py` defines the `EpochData` carrier and the stage-contract
-validator (set `ENABLE_STAGE_CONTRACT_CHECK=1` to verify at startup).
+Design notes worth knowing:
+
+- **Ambiguity seeds are clock-free** (`amb_seed.py`): SD phase minus SD
+  code. Seeding against geometry bakes the receiver clock into the N
+  level and detonates fix-and-hold across clock drift (km-scale).
+- **SD Doppler replaces the old Doppler-LS velocity prior**: clock-free
+  by construction, robust (Huber) against the NLOS screen feedback loop,
+  and also injected on GDOP-skipped epochs (`doppler_skip_aid`) where it
+  is the only velocity observation.
+- **NHC is the C++ `gtsam.NhcFactor`** from the custom wheel (exact
+  Jacobians; the former Python CustomFactor had a wrong rotation
+  Jacobian).
 
 ---
 
 ## Configuration
 
-All knobs are env vars; see `config.py` for full list. Most-used:
+All knobs are env vars; see `config.py` for the full list. Most-used:
 
 | Knob | Default | Effect |
 |---|---|---|
 | `LEVER_ARM` | `0,0,0` | IMU → antenna lever in body FLU [m] |
 | `MAX_EP` | all | epoch cap |
 | `SAVE_NPZ` | none | write per-epoch diagnostics |
+| `DOPPLER_SD_SIGMA` | `0.5` | SD Doppler σ [m/s], 0 = off |
+| `DOPPLER_HUBER` | `1.0` | robust width [m/s] on SD Doppler |
+| `AR_NATIVE_RESOLVER` | `0` | 1 = native `ar/` LAMBDA path |
 
 `TC_PRESET=<name>` loads a knob bundle first; explicit env vars
 still override.
 
 ---
 
-## Requirements
+## Reproducibility
 
-- GTSAM (built with the project's DD factors)
-- cssrlib — minimal DD-only RTK core from the inuex35 fork
-  (`claude/gtsam-dd-minimal`, pinned to `dd90eb0`):
-  `pip install -e git+https://github.com/inuex35/cssrlib-numba.git@dd90eb0#egg=cssrlib`
-- numpy
+Benchmark runs must be sequential (one pipeline per machine): parallel
+runs perturb each other's floating-point summation order through the
+threaded solver and flip near-threshold AR decisions. Clear
+`__pycache__` before A/B comparisons.

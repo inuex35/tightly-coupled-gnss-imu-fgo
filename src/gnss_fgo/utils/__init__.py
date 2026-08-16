@@ -23,7 +23,7 @@ from .imu import (
     estimate_stationary_bias,
     make_imu_params,
     sensor_to_body_flu)
-from .ls_solvers import DDPRContext, ddpr_only_position, doppler_velocity_ls
+from .ls_solvers import DDPRContext, ddpr_only_position
 from .pipeline_helpers import (
     heading_from_pose,
     skew_matrix,
@@ -41,7 +41,6 @@ __all__ = [
     'compute_zupt_stats',
     'DDPRContext',
     'ddpr_only_position',
-    'doppler_velocity_ls',
     'env_f',
     'env_i',
     'estimate_stationary_bias',

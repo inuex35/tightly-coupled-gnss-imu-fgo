@@ -6,7 +6,8 @@ from . import sat_quality as _satq
 from ..state import effective_cp_hold_epochs
 from . import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
-from ..validation import recovery as _tc_recovery
+from .. import recovery as _tc_recovery
+from ..buildfactor import doppler_sd as _tc_doppler_sd
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
@@ -26,7 +27,7 @@ STAGE_WRITES = (
 def run(tc, ed):
     """Stage B: quality gating + slip / CP-hold decisions."""
     info = ed.info
-    early = _check_gdop_nsat_gate(tc, ed)
+    early = _gdop_gate_and_skip(tc, ed)
     if early is not None:
         return early
     tc.skip_count = 0
@@ -45,15 +46,22 @@ def run(tc, ed):
     return None
 
 
-def _check_gdop_nsat_gate(tc, ed):
-    """Phase 1 — GDOP / nsat gate. Returns the recovery early-return tuple when the gate fails, else None."""
+def _gdop_gate_and_skip(tc, ed):
+    """Step 1 — GDOP / nsat gate; on failure PROCESSES the epoch via recovery.process_gdop_skip and returns its tuple (else None)."""
     info = ed.info
     gdop_val = tc._compute_gdop(ed.pred, ed.ns, ed.rs, ed.iu, ed.R)
     info['gdop'] = gdop_val
     info['nsat'] = ed.ns
     if not (gdop_val < tc.cfg.gdop_max
             and ed.ns >= tc.cfg.nsat_min):
-        return _tc_recovery.process_gdop_skip(tc, 
+        if tc.cfg.doppler_skip_aid and tc.cfg.doppler_sd_sigma > 0:
+            # The skipped epoch still has 4-6 tracked satellites whose
+            # Doppler bounds the velocity (NHC leaves vertical free and
+            # the canyon drift is mostly U). Factors land in ed.g3,
+            # which process_gdop_skip solves.
+            _update_pred_ecef(tc, ed)
+            _tc_doppler_sd.add_sd_doppler_factors(tc, ed, in_outage=True)
+        return _tc_recovery.process_gdop_skip(tc,
             ed.obs, ed.kk, ed.g3, ed.v3, ed.R, info,
             imu_idx_prev=ed.imu_idx_prev,
             gyro_mean=getattr(ed, 'gyro_mean', None),
@@ -62,7 +70,7 @@ def _check_gdop_nsat_gate(tc, ed):
 
 
 def _collect_sat_telemetry_and_holds(tc, ed, sq):
-    """Phase 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick + CP-lock update + residual-based hold extension. Returns ``forced_hold`` set populated by ``sq.tick``."""
+    """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick + CP-lock update + residual-based hold extension. Returns ``forced_hold`` set populated by ``sq.tick``."""
     info = ed.info
     # Cycle slip detection + CMC multipath detection
     n_reset, ed.remove_indices, n_cmc, ed.slip_keys = \
@@ -130,7 +138,7 @@ def _collect_sat_telemetry_and_holds(tc, ed, sq):
 
 
 def _carry_prev_amb(tc, ed, fresh_amb_bootstrap, forced_hold):
-    """Phase 6 — copy previous-epoch ambiguity values onto ``ed.prev_amb_tc`` for the BetweenN chain, skipping forced-hold sats and entire-epoch CP-hold."""
+    """Step 6 — copy previous-epoch ambiguity values onto ``ed.prev_amb_tc`` for the BetweenN chain, skipping forced-hold sats and entire-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     ed.prev_amb_tc = {}
     if fresh_amb_bootstrap:
@@ -154,7 +162,7 @@ def _carry_prev_amb(tc, ed, fresh_amb_bootstrap, forced_hold):
 
 
 def _update_pred_ecef(tc, ed):
-    """Phase 7 — write ``ed.pred_enu`` and ``ed.pred_ecef`` from the IMU-predicted pose, using the antenna lever arm."""
+    """Step 7 — write ``ed.pred_enu`` and ``ed.pred_ecef`` from the IMU-predicted pose, using the antenna lever arm."""
     ed.pred_enu = np.array(ed.pred.pose().translation())
     pred_body_ecef = ed.R @ ed.pred_enu + tc.base_ecef
     ed.pred_ecef = tc._antenna_ecef(ed.pred.pose(), pred_body_ecef)
