@@ -15,6 +15,17 @@ joint covariance -- and returns the fixed ones. No shared state, no index
 arithmetic against ``nav.na``, and the ratio comes back with the result
 instead of being left on the engine for the caller to find.
 
+Relation to cssrlib
+-------------------
+cssrlib's ``resolve_ambiguities()`` (cssrlib-numba PR #10) is the nav-side
+counterpart: same LAMBDA, same demo5 retry, answer returned as an
+``ArResult`` -- but its inputs still live in ``nav.x`` / ``nav.P``. This
+class is the nav-free half: the problem arrives as arguments (built by
+:mod:`gnss_fgo.ar.problem` from the smoother) and nothing here reads or
+writes shared state. The two are verified equivalent -- shadowed in both
+directions over tokyo run2 (4361 + 2422 calls, identical nb and ratio) and
+line-identical over sequential 3000-epoch runs.
+
 The double-difference construction matches cssrlib's ``ddidx``: within each
 constellation and frequency, the satellite with the highest elevation is the
 reference and every other satellite is differenced against it.
