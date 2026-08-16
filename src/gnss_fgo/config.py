@@ -81,6 +81,14 @@ class TcConfig:
     sanity_pose_replace_thresh: float = 5.0
     varholdamb: float = 0.001
     cp_hold_isam_iters: int = 0
+    # Held-N gauge gate [m]: release a held SD ambiguity when the fresh
+    # cp-pr seed disagrees with it by more than this (receiver SD
+    # phase-bias gauge moved since the hold era). Off by default: the
+    # structural fix is skipping held×free mixed DD-CP pairs; under
+    # ~150 m/s receiver clock drift this gate would expire every hold
+    # within seconds and cost far more fixes than it saves (run2
+    # 27 m → 111 m when enabled at 300).
+    hold_gauge_gate_m: float = 0.0
     pim_break_trans_sigma: float = 1.0
     # cssrlib valpos chi-square threshold in σ units.
     valpos_thres: float = 4.0

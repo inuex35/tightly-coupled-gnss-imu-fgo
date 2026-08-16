@@ -75,6 +75,9 @@ def _build_factor_block(tc, ed, prev_smode):
                     tc._noise1(sig_between)))
                 n_between += 1
     info['n_dd'] = ed.nv
+    if tc._last_hold_gauge_rel:
+        info['hold_gauge_rel'] = list(tc._last_hold_gauge_rel)
+        tc._last_hold_gauge_rel = []
     cp_pr_rej = tc._last_cp_pr_reject
     rejc_wipe = tc._last_rejc_wipe
     if cp_pr_rej:

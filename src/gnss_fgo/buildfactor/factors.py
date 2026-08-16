@@ -38,21 +38,41 @@ def _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
 
 def _init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
                                 prev_amb_values, freq, lam,
-                                pair_sat_info, pos_ecef, rb):
+                                pair_sat_info):
     """Add Prior factors + initial values for the two N ambiguities of one"""
-    for sat_id, key_n, cp_rover, cp_base, sat_xyz in pair_sat_info:
+    for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
         key_id = (sat_id, freq)
         sat_st = tc._sat_states.get(*key_id)
         sat_st.amb_lam = lam
+        # cssrlib-udbias-style seed: SD phase minus SD CODE. Both carry
+        # the same receiver SD clock term, so the seed level is
+        # clock-free. Seeding against geometry instead (the previous
+        # form) bakes c·(dtr−dtb) of the seed epoch into the N level;
+        # with ~150 m/s clock drift that gauge diverges km-scale
+        # between a hold era and a later re-seed cohort and detonates
+        # every held×free DD-CP pair (run1 ep1619, 2.4 km jump).
+        n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
         if sat_st.held_value is not None:
-            continue
+            # Gauge gate: a held SD ambiguity pins the receiver SD
+            # phase-bias gauge of the era it was fixed in. If the
+            # current gauge (fresh cp-pr seed) has moved away by more
+            # than hold_gauge_gate_m, pairing this held N with a
+            # freshly seeded free N would inject the gauge gap
+            # (km-scale) into the DD-CP factor. Held-held pairs cancel
+            # the gauge, so only the stale absolute level is poison:
+            # drop the hold and fall through to fresh float seeding.
+            gate = float(tc.cfg.hold_gauge_gate_m)
+            gap_m = abs(n0_seed - sat_st.held_value) * lam
+            if gate > 0 and gap_m > gate:
+                sat_st.clear_hold()
+                tc._last_hold_gauge_rel.append((int(sat_id), int(freq),
+                                                float(gap_m)))
+            else:
+                continue
         if key_id in amb_dict or key_id in new_amb:
             continue
         if values.exists(key_n):
             continue
-        rv, _ = geodist(sat_xyz, pos_ecef)
-        bv, _ = geodist(sat_xyz, rb)
-        n0_seed = ((cp_rover - cp_base) - (rv - bv)) / lam
         _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
                               prev_amb_values, key_id)
         new_amb[key_id] = key_n
@@ -219,6 +239,7 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
         if track_indices:
             ref_state.amb_factor_indices.append(fi_cp)
             j_state.amb_factor_indices.append(fi_cp)
+    return 1
 
 
 
@@ -378,19 +399,19 @@ class DdFactorBuilder:
 
         ref_state = tc._sat_states.get(ref_sat, f)
         j_state = tc._sat_states.get(j_sat, f)
-        ref_held_value = ref_state.held_value
-        j_held_value = j_state.held_value
         key_n_ref = tc.N(ref_sat, f, dd_epoch * 100 + ref_state.amb_gen)
         key_n_j = tc.N(j_sat, f, dd_epoch * 100 + j_state.amb_gen)
         # N初期化: hybrid (continuing prior / release-seed / fresh)
+        pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
         _init_dd_ambiguity_priors(
             tc, self.graph, self.values, amb_dict, new_amb,
             self.prev_amb_values, f, lam,
-            ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b,
-              self.rs[iu[ref_idx], :3]),
-             (j_sat, key_n_j, cp_j_r, cp_j_b,
-              self.rs[iu[j_idx], :3])),
-            self.pos_ecef, self.rb)
+            ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
+             (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
+        # Read held state AFTER seeding: the gauge gate above may have
+        # just released a stale hold, and that must be visible here.
+        ref_held_value = ref_state.held_value
+        j_held_value = j_state.held_value
 
         sq_state = _satq.get_sat_quality(tc)
         cp_allowed, cp_sigma_mult = compute_cp_build_policy(
@@ -404,7 +425,7 @@ class DdFactorBuilder:
             cp_sigma_mult)
         cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
-        _add_ddcp_factor(
+        return _add_ddcp_factor(
             tc, self.graph, self.key_pose, cp_noise, dd_obs_cp, lam,
             sat_pts=sat_pts, sat_xyz=sat_xyz,
             cp_obs=(cp_ref_r, cp_ref_b, cp_j_r, cp_j_b),
@@ -414,7 +435,6 @@ class DdFactorBuilder:
             states=(ref_state, j_state),
             pair_id=(ref_sat, j_sat, f),
             fi_cp=fi_cp, track_indices=self.track_indices)
-        return 1
 
     def _compute_pair_geometry(self, j_idx, j_sat):
         """j-sat SD geometry: rover/base ``Point3`` + xyz arrays. Returns ``(j_pt, j_base_pt, j_xyz, j_base_xyz)``."""

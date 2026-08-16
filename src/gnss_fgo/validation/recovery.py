@@ -121,7 +121,7 @@ def reset_ambiguities_with_cp_hold(tc):
         try:
             tc.isam2.update(gtsam.NonlinearFactorGraph(),
                              gtsam.Values(), ts, remove_safe)
-        except (RuntimeError, IndexError):
+        except (RuntimeError, IndexError, ValueError):
             pass
     return len(remove_safe)
 
@@ -226,7 +226,7 @@ def process_gdop_skip(tc, obs, kk, g3, v3, R_enu2ecef, info,
         est_now = tc.isam2.calculateEstimate()
         gdop_pose_prev = est_now.atPose3(tc.Xpose(kk - 1))
         gdop_vel_prev = np.array(est_now.atVector(tc.Vel(kk - 1)))
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         gdop_pose_prev = None
         gdop_vel_prev = vel_prev
     _outage_add_pseudo_measurements(
@@ -258,7 +258,7 @@ def process_gdop_skip(tc, obs, kk, g3, v3, R_enu2ecef, info,
         tc.tc_bias = est2.atConstantBias(tc.Bias(kk))
         ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
         tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         pass
     tc.nav.smode = 5
     info['bias_acc'] = tc.tc_bias.accelerometer()
@@ -326,7 +326,7 @@ def process_imu_only(tc, obs):
         ecef_tc = R @ np.array(pose_tc.translation()) + tc.base_ecef
         sol = tc._antenna_ecef(pose_tc, ecef_tc)
         tc.nav.x[0:3] = sol
-    except (RuntimeError, IndexError) as ex:
+    except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
         sol = tc.nav.x[0:3]
 
@@ -358,6 +358,6 @@ def handle_solve_exception(tc, ex, pred, bias_p, kk, obs, obsb, obs_sd,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.1))
         _tc_solver.fls_update(tc, g_fb, v_fb, kk)
         tc.tc_bias = bias_p
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         pass
     return finalize_epoch(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)

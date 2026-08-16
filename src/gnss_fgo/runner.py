@@ -222,6 +222,7 @@ class ImuGnssTc:
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
         self._last_cp_pr_reject = 0
+        self._last_hold_gauge_rel = []
         self._last_rejc_wipe = 0
         self._last_ddpr_sat_tags = []
         self._last_main_ddpr_res = 0.0
