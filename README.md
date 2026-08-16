@@ -92,9 +92,9 @@ NF=3: GPS L1/L2/L5, Galileo E1/E5a/E5b, QZSS L1/L2/L5, BDS B1C/B1I/B2a.
 
 | run  | length    | AllRMS  | median  | p90    | FixRMS  | fix %  | <50 cm |
 |------|-----------|---------|---------|--------|---------|--------|--------|
-| run1 | 11928 ep  | 27.10 m | 0.47 m  | 42.5 m | 2.32 m  | 40.8 % | 50.7 % |
-| run2 |  9151 ep  |  5.36 m | 0.056 m |  3.1 m | 0.27 m  | 62.2 % | 74.5 % |
-| run3 | 15301 ep  | 19.69 m | 0.050 m |  5.9 m | 0.46 m  | 68.9 % | 75.2 % |
+| run1 | 11928 ep  | 21.35 m | 0.23 m  | 34.6 m | 0.65 m  | 49.6 % | 55.4 % |
+| run2 |  9151 ep  |  6.34 m | 0.053 m |  3.7 m | 0.35 m  | 67.6 % | 75.4 % |
+| run3 | 15301 ep  | 18.61 m | 0.051 m |  6.8 m | 0.47 m  | 67.8 % | 71.5 % |
 
 run1 is the hardest route: its tail is one deep canyon plus a full
 tunnel blackout, and its FixRMS is dominated by wrong fixes in the NLOS

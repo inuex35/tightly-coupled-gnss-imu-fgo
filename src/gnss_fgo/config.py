@@ -210,7 +210,7 @@ class TcConfig:
     ar_wait_new: int = 3           # new amb waits N epochs before AR
     parmode: int = 1
     par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
-    ar_starve_reset: int = 0       # epochs of consecutive lambda_zero
+    ar_starve_reset: int = 50      # epochs of consecutive lambda_zero
                                    # (ratio starvation) with a QUIET
                                    # float that trigger the ambiguity
                                    # purge (reset_ambiguities_with_
@@ -224,7 +224,7 @@ class TcConfig:
                                    # (an NLOS storm, where purging arcs
                                    # would destroy the CP continuity
                                    # that bounds float drift)
-    ar_gdop_max: float = 0.0       # skip the AR attempt when GDOP
+    ar_gdop_max: float = 8.0       # skip the AR attempt when GDOP
                                    # exceeds this (0 = off). Pure
                                    # geometry — unlike a covariance
                                    # gate it has no feedback loop with
@@ -232,7 +232,7 @@ class TcConfig:
                                    # cannot support an integer decision
                                    # (9 m vertical basin at GDOP~10
                                    # costs only ~1.7 m code residual).
-    ar_fix_dres_max: float = 0.0   # [m] likelihood-ratio fix gate in
+    ar_fix_dres_max: float = 1.0   # [m] likelihood-ratio fix gate in
                                    # the graph's own objective: reject
                                    # when DDPR RMS at the fixed pose
                                    # exceeds the float-pose RMS by more
