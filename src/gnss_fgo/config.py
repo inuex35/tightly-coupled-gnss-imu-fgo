@@ -115,8 +115,13 @@ class TcConfig:
     doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
     doppler_require_dd: int = 1    # only add Doppler where the epoch has a
                                    # usable DD set (see buildfactor/doppler_sd)
-    doppler_sd_sigma: float = 0.0  # [m/s] 0 = off — between-satellite
-                                   # difference, no clock states at all
+    doppler_sd_sigma: float = 0.5  # [m/s] 0 = off — between-satellite
+                                   # difference, no clock states at all.
+                                   # 0.5 measured best overall on tokyo
+                                   # full-length after the cp-pr seed fix
+                                   # (run1 89.2 / run2 15.9 / run3 19.2 m
+                                   # vs off: 141.7 / 40.1 / 22.2 m); only
+                                   # run1's canyon prefers 0.2 (76.1 m).
     doppler_huber: float = 0.0     # [m/s] robust kernel width, 0 = plain L2
     doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
     clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
