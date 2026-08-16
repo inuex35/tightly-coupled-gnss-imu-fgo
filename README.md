@@ -97,8 +97,8 @@ NF=3: GPS L1/L2/L5, Galileo E1/E5a/E5b, QZSS L1/L2/L5, BDS B1C/B1I/B2a.
 | run3 | 15301 ep  | 18.61 m | 0.051 m |  6.8 m | 0.47 m  | 67.8 % | 71.5 % |
 
 run1 is the hardest route: its tail is one deep canyon plus a full
-tunnel blackout, and its FixRMS is dominated by wrong fixes in the NLOS
-zone (open issue). Runs are sequential — see Reproducibility.
+tunnel blackout, bridged by IMU + SD Doppler dead reckoning. Runs are
+sequential — see Reproducibility.
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
 
