@@ -19,7 +19,7 @@ Relation to cssrlib
 -------------------
 cssrlib's ``resolve_ambiguities()`` (cssrlib-numba PR #10) is the nav-side
 counterpart: same LAMBDA, same demo5 retry, answer returned as an
-``ArResult`` -- but its inputs still live in ``nav.x`` / ``nav.P``. This
+``ResolverResult`` -- but its inputs still live in ``nav.x`` / ``nav.P``. This
 class is the nav-free half: the problem arrives as arguments (built by
 :mod:`gnss_fgo.ar.problem` from the smoother) and nothing here reads or
 writes shared state. The two are verified equivalent -- shadowed in both
@@ -39,8 +39,15 @@ from cssrlib.mlambda import mlambda
 
 
 @dataclass
-class ArResult:
-    """Outcome of one resolution attempt."""
+class ResolverResult:
+    """Outcome of one resolution attempt.
+
+    Deliberately NOT named ArResult: cssrlib's class of that name carries a
+    boolean ``fixed`` while this one carries the fixed (sat, freq) -> value
+    map, and ``if result.fixed:`` happens to behave identically on both --
+    the difference only surfaces as a TypeError on the first epoch that
+    actually fixes. Distinct names make a mix-up an ImportError instead.
+    """
 
     nb: int = 0                       # number of fixed DD ambiguities
     fixed: dict = field(default_factory=dict)   # (sat, freq) -> fixed SD value
@@ -94,12 +101,12 @@ class AmbiguityResolver:
           keys:         ordered (sat, freq) tuples matching ``covariance``.
           elevations:   sat -> elevation [rad], for the reference choice.
 
-        Returns an :class:`ArResult`; ``nb == 0`` means no fix was accepted.
+        Returns an :class:`ResolverResult`; ``nb == 0`` means no fix was accepted.
         """
         keys = list(keys)
         pairs = self.double_difference(keys, elevations)
         if len(pairs) < self.min_pairs:
-            return ArResult(pairs=pairs)
+            return ResolverResult(pairs=pairs)
 
         index = {k: i for i, k in enumerate(keys)}
         # D maps the single-difference states onto the double differences.
@@ -116,7 +123,7 @@ class AmbiguityResolver:
         s0 = float(s[0]) if len(s) > 0 else 0.0
         s1 = float(s[1]) if len(s) > 1 else 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
-        result = ArResult(ratio=ratio, s0=s0, s1=s1, nfix=int(nfix),
+        result = ResolverResult(ratio=ratio, s0=s0, s1=s1, nfix=int(nfix),
                           ps=float(ps), pairs=pairs)
         if nfix <= 0:
             return result
