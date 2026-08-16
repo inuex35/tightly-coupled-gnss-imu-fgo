@@ -29,35 +29,44 @@ odometry — the NHC constraint stands in for it.
 
 ## Install
 
-Python 3.11/3.12 on Linux x86_64.
+Requirements: Linux x86_64, Python 3.11 or 3.12. Both GNSS
+dependencies come from forks — **the stock PyPI `gtsam` and `cssrlib`
+will not work** (they lack the DD/Doppler/NHC factors and the layered
+DD front end this pipeline is built on).
 
 ```bash
+git clone https://github.com/inuex35/tightly-coupled-gnss-imu-fgo
+cd tightly-coupled-gnss-imu-fgo
 python3.12 -m venv venv && . venv/bin/activate
 pip install numpy matplotlib
 
-# 1) GTSAM — prebuilt wheel with this project's factors
-#    (DD pseudorange/carrier, Doppler, SD Doppler, NHC).
-#    The release is rebuilt weekly against upstream gtsam develop;
-#    download resolves the current filename:
+# 1) GTSAM — prebuilt wheel with this project's factors, rebuilt weekly
+#    against upstream gtsam develop. With the GitHub CLI:
 gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*'
 pip install gtsam_develop-*.whl
+#    Without gh: pick the cp311/cp312 wheel from
+#    https://github.com/inuex35/gtsam/releases/tag/custom-wheels-latest
 
-# 2) cssrlib — the inuex35 fork's DD-only RTK core
+# 2) cssrlib — the inuex35 fork's DD-only RTK core (pinned)
 pip install -e "git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib"
-
-# 3) this repo (no packaging yet — run from the source tree)
-git clone https://github.com/inuex35/tightly-coupled-gnss-imu-fgo
-cd tightly-coupled-gnss-imu-fgo
 ```
 
-The stock PyPI `gtsam` wheel will **not** work — it lacks every factor
-this pipeline is built on. If you prefer building from source: clone
-`inuex35/gtsam`, branch `custom/develop`, then
-`cmake -B build -DGTSAM_BUILD_PYTHON=1 -DPYTHON_EXECUTABLE=$(which python)`
-and `make -C build -j4 python-install` (~20 min, ~11 GB RAM).
-Upstream cssrlib from PyPI is equally insufficient — the fork carries
-the layered DD front end (`prepare_double_difference_measurements` and
-friends) that this pipeline calls.
+There is no packaging for this repo yet — run everything from the
+source tree (the example script sets its own `sys.path`). Datasets are
+not included; the results below use the tokyo PPC set laid out as
+`data/PPC-Dataset/tokyo/run{1,2,3}/{rover.obs,base.obs,base.nav,imu.csv,reference.csv}`.
+
+<details>
+<summary>Building GTSAM from source instead</summary>
+
+Clone `inuex35/gtsam`, branch `custom/develop` (upstream develop + the
+custom factors, re-merged weekly), then:
+
+```bash
+cmake -B build -DGTSAM_BUILD_PYTHON=1 -DPYTHON_EXECUTABLE=$(which python)
+make -C build -j4 python-install   # ~20 min, ~11 GB RAM
+```
+</details>
 
 ---
 
