@@ -139,6 +139,16 @@ def _resolve_native(tc, sat_list):
     if res.nb <= 0:
         return 0, tc.nav.x.copy()
 
+    # Downstream reads state that cssrlib's resamb_lambda leaves behind:
+    # nav.fix marks which satellites entered the double differences (the hold
+    # policy and restamb both consult it) and nav.xa carries the fixed
+    # non-ambiguity state. Set them here or the two paths diverge a few
+    # epochs later even when LAMBDA agreed.
+    tc.nav.fix[:, :] = 0
+    for ref, tgt in res.pairs:
+        tc.nav.fix[ref[0] - 1, ref[1]] = 2
+        tc.nav.fix[tgt[0] - 1, tgt[1]] = 2
+
     xa = tc.nav.x.copy()
     for sf, value in res.fixed.items():
         xa[tc.IB(sf[0], sf[1], tc.nav.na)] = value
@@ -158,6 +168,8 @@ def _resolve_native(tc, sat_list):
         return res.nb, xa
     d_enu = gain @ (D @ (x_float - x_fixed))
     xa[0:3] = tc.nav.x[0:3] + tc.R_enu2ecef @ d_enu
+    tc.nav.xa = tc.nav.x.copy()
+    tc.nav.xa[0:tc.nav.na] = xa[0:tc.nav.na]
     return res.nb, xa
 
 
@@ -232,7 +244,8 @@ def _run_single_ar_attempt(tc, sat, sat_exclude=None, restore_state=True):
                     tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
         if tc.cfg.ar_native_resolver:
-            native = _resolve_native_retry(tc, sat_list)
+            native = (_resolve_native_retry(tc, sat_list) if tc.cfg.rtklib_mode
+                      else _resolve_native(tc, sat_list))
             if native is not None:
                 return native
         if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
@@ -557,8 +570,13 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc._last_resamb_raw_nb = -1
     try:
-        native = (_resolve_native_retry(tc, [int(x) for x in sat])
-                  if tc.cfg.ar_native_resolver else None)
+        # Match the path being replaced: the round-robin retry belongs to
+        # resamb_lambda_rtklib, and the default path calls plain resamb_lambda.
+        native = None
+        if tc.cfg.ar_native_resolver:
+            sats = [int(x) for x in sat]
+            native = (_resolve_native_retry(tc, sats) if tc.cfg.rtklib_mode
+                      else _resolve_native(tc, sats))
         if native is not None:
             nb, xa = native
         elif tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
