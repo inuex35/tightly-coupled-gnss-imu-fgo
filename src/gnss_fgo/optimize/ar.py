@@ -69,24 +69,35 @@ def _resolve_native(tc, sat_list):
     if isam2 is None:
         return None
     est = smoother.calculateEstimate()
-    wanted = {int(s) for s in sat_list}
 
     keys, values, held_var = [], {}, {}
     key_of = dict(sorted_amb_items(tc._sat_states.amb_keys_dict()))
-    for (s, f), k in sorted_amb_items(key_of):
-        if int(s) in wanted and est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
-            keys.append((int(s), int(f)))
-            values[(int(s), int(f))] = est.atDouble(k)
+    # Held ambiguities first: fix-and-hold pins them at varholdamb and that
+    # pinning wins over the smoother's own spread, exactly as write_marginals
+    # overwrites nav.P for them. Taking the graph covariance instead leaves
+    # the double differences far looser than cssrlib sees them -- measured on
+    # tokyo, the best residual came out at 890 against 610 and the ratio fell
+    # short of the threshold that the cssrlib path cleared.
     for (s, f), value in tc._sat_states.held_items():
         sf = (int(s), int(f))
-        if sf in values or int(s) not in wanted:
-            continue
         if tc.nav.vsat[int(s) - 1, int(f)] != 1:
             continue
         keys.append(sf)
         values[sf] = float(value)
         held_var[sf] = max(float(tc.cfg.varholdamb), 1e-9)
-    if len(keys) < 4:
+    # Selection is nav.vsat's job, exactly as in ddidx: the satellite list is
+    # a presence check there, not a filter. Intersecting the two drops every
+    # (sat, band) whose satellite left the list -- on a subset retry that took
+    # the double differences from fifteen down to four and turned fixes the
+    # cssrlib path accepted at ratio 12.8 into no fix at all.
+    for (s, f), k in sorted_amb_items(key_of):
+        sf = (int(s), int(f))
+        if sf in values:
+            continue
+        if est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
+            keys.append(sf)
+            values[sf] = est.atDouble(k)
+    if len(keys) < 2:
         return None
 
     free = [sf for sf in keys if sf not in held_var]

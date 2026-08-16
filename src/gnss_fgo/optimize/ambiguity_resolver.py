@@ -44,7 +44,7 @@ class ArResult:
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
-    def __init__(self, thresar=3.0, parmode=1, par_p0=0.995, min_pairs=4,
+    def __init__(self, thresar=3.0, parmode=1, par_p0=0.995, min_pairs=2,
                  el_mask=0.0):
         self.thresar = float(thresar)
         self.parmode = int(parmode)
