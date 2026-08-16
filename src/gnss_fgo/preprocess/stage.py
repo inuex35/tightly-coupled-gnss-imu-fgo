@@ -12,7 +12,7 @@ import gtsam
 from cssrlib.gnss import time2gpst
 from ..buildfactor import imu_preintegration as _tc_pim
 from ..utils import heading_from_pose
-from ..validation import recovery as _tc_recovery
+from .. import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

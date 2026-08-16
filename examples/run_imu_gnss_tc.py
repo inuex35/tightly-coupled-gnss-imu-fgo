@@ -45,7 +45,7 @@ def parse_args():
 
 def _format_sat_freq(sat, freq):
     sys_i, prn = sat2prn(int(sat))
-    sys_ch = {1: 'G', 2: 'R', 3: 'E', 4: 'J', 5: 'C'}.get(sys_i, '?')
+    sys_ch = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}.get(sys_i, '?')
     return f"{sys_ch}{prn:02d}f{int(freq)}"
 
 
@@ -369,7 +369,7 @@ def main():
             if info.get('ar_subset_used'):
                 drop_sat = int(info.get('ar_subset_drop_sat', 0))
                 sys_i, prn = sat2prn(drop_sat)
-                sys_ch = {1:'G',2:'R',3:'E',4:'J',5:'C'}.get(sys_i, '?')
+                sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
                 extra += (
                     f" SUBSET_AR({sys_ch}{prn:02d}"
                     f",nb={int(info.get('ar_subset_nb', 0))}"
@@ -392,7 +392,7 @@ def main():
                 if 'main_ddpr_sat_worst' in info:
                     sw, rw = info['main_ddpr_sat_worst']
                     sys_i, prn = sat2prn(sw)
-                    sys_ch = {1:'G',2:'R',3:'E',4:'J',5:'C'}.get(sys_i, '?')
+                    sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
                     extra += f" worst={sys_ch}{prn:02d}:{rw:.1f}"
             if 'dirty_sat_reset' in info:
                 extra += f" DIRTY_RESET(n={info['dirty_sat_reset']})"
@@ -413,6 +413,14 @@ def main():
                 extra += (
                     f" HREL({_format_sat_freq(s_rel, f_rel)}"
                     f",score={score_rel:.1f},res={res_rel:.1f},cppr={cppr_rel})"
+                )
+            gauge_rel = info.get('hold_gauge_rel')
+            if gauge_rel:
+                worst = max(gauge_rel, key=lambda t: t[2])
+                extra += (
+                    f" HGAUGE(n={len(gauge_rel)},"
+                    f"worst={_format_sat_freq(worst[0], worst[1])}"
+                    f":{worst[2]:.0f}m)"
                 )
 
         if True:

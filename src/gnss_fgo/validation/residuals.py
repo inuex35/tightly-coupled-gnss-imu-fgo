@@ -1,10 +1,10 @@
-"""Stage 4 — post-fit testing."""
+"""Post-fit residual tests + DDPR sanity escalation (Stage C/D support)."""
 
 import os
 import numpy as np
 import gtsam
 from .. import state as _tc_state
-from . import recovery as _tc_recovery
+from .. import recovery as _tc_recovery
 
 
 def all_factor_residuals(tc, g3, est2):
@@ -138,12 +138,15 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
     """Helper: collect (fi, residual_in_meters) for current-epoch DD factors."""
     pr_entries = []
     cp_entries = []
-    custom_cp_global = set((tc._last_custom_ddcp_global or {}).keys())
+    custom_cp_keys = set((tc._last_custom_ddcp_global or {}).keys())
     for fi in range(fi_start, nf_total):
         fac = factors_all.at(fi)
         if fac is None:
             continue
         fname = type(fac).__name__
+        is_custom_cp = (
+            fname == 'CustomFactor' and custom_cp_keys
+            and tuple(int(k) for k in fac.keys()) in custom_cp_keys)
         try:
             err = fac.error(est2)
         except RuntimeError:
@@ -151,7 +154,7 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
         if 'Pseudorange' in fname:
             pr_entries.append(
                 (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_pr * np.sqrt(2)))
-        elif 'CarrierPhase' in fname or fi in custom_cp_global:
+        elif 'CarrierPhase' in fname or is_custom_cp:
             cp_entries.append(
                 (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_cp * np.sqrt(2)))
     return pr_entries, cp_entries
@@ -189,14 +192,16 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
     custom_cp_meta = tc._last_custom_ddcp_global or {}
     for fi in reject_fi:
         fac = factors_all.at(fi)
-        is_cp = (
-            fac is not None
-            and ('CarrierPhase' in type(fac).__name__ or fi in custom_cp_meta)
-        )
+        if fac is None:
+            continue
+        kt = (tuple(int(k) for k in fac.keys())
+              if type(fac).__name__ == 'CustomFactor' else None)
+        is_cp = ('CarrierPhase' in type(fac).__name__
+                 or (kt is not None and kt in custom_cp_meta))
         if not is_cp:
             continue
-        if fi in custom_cp_meta:
-            ref_sat, j_sat, freq = custom_cp_meta[fi]
+        if kt is not None and kt in custom_cp_meta:
+            ref_sat, j_sat, freq = custom_cp_meta[kt]
             for key in ((ref_sat, freq), (j_sat, freq)):
                 st_hold = tc._sat_states.track.get(key)
                 if st_hold is not None and st_hold.held_value is not None:
@@ -319,7 +324,7 @@ def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
 
 
 def _ddpr_sanity_gdop_ok(tc, info):
-    """Stage 4: abort sanity when geometry is too weak to trust the"""
+    """Escalation step 4: abort sanity when geometry is too weak to trust the"""
     if tc.cfg.sanity_max_gdop <= 0:
         return True
     cur_gdop = info.get('gdop', 0.0)
@@ -412,7 +417,7 @@ def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=
 
 
 def _ddpr_sanity_trigger(tc, main_res, info):
-    """Stage 1: clean residual signal → reset bad-count, return False."""
+    """Escalation step 1: clean residual signal → reset bad-count, return False."""
     rms_bad = main_res > tc.cfg.main_ddpr_res_thresh
     per_sat_bad = False
     psat_thr = float(tc.cfg.main_ddpr_per_sat_thresh)
@@ -430,7 +435,7 @@ def _ddpr_sanity_trigger(tc, main_res, info):
 
 
 def _ddpr_sanity_persist(tc, main_res, info):
-    """Stage 2: count consecutive bad epochs, fire CP-hold each one,"""
+    """Escalation step 2: count consecutive bad epochs, fire CP-hold each one,"""
     tc._ddpr_bad_count = tc._ddpr_bad_count + 1
     info['ddpr_bad'] = tc._ddpr_bad_count
     _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
@@ -439,7 +444,7 @@ def _ddpr_sanity_persist(tc, main_res, info):
 
 def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
                                ir_map, pose_tc, ecef_tc, info):
-    """Stage 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
+    """Escalation step 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
     ecef_ddpr, n_ddpr, res_rms = tc._ddpr_only_position(
         obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_tc)
     info['ddpr_nv'] = n_ddpr
@@ -454,7 +459,7 @@ def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
 
 
 def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
-    """Stage 4: anchor must agree with IMU-predicted position (sub-metre"""
+    """Escalation step 4: anchor must agree with IMU-predicted position (sub-metre"""
     ecef_ddpr, res_rms = anchor
     R = tc.R_enu2ecef
     ecef_pred = R @ np.array(pred.pose().translation()) + tc.base_ecef

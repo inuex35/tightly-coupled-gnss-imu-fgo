@@ -81,6 +81,11 @@ class TcConfig:
     sanity_pose_replace_thresh: float = 5.0
     varholdamb: float = 0.001
     cp_hold_isam_iters: int = 0
+    # Held-N gauge gate [m]: drop a held N when the fresh seed disagrees
+    # by more than this. Diagnostic only (0 = off) — the clock-free
+    # cp-pr seed removed the gauge drift this defended against, and a
+    # tight gate expires healthy holds. See buildfactor/amb_seed.py.
+    hold_gauge_gate_m: float = 0.0
     pim_break_trans_sigma: float = 1.0
     # cssrlib valpos chi-square threshold in σ units.
     valpos_thres: float = 4.0
@@ -95,7 +100,37 @@ class TcConfig:
 
     thresdop: float = 0.0          # try 5–10 cyc/s on a clean run
 
-    doppler_vel_sigma: float = 0.5
+    # Raw per-satellite Doppler (gtsam.DopplerFactorArm). σ is the range-rate
+    # measurement noise; 0 disables. The clock-bias chain the factors
+    # difference needs two more knobs: a random walk between epochs (as a
+    # range-rate σ, converted to seconds inside the builder) and the anchor
+    # prior that pins the otherwise-unobservable absolute bias.
+    doppler_sigma: float = 0.0     # [m/s] 0 = off — raw, with clock states
+    doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
+    doppler_fde_k: float = 4.0     # drop Dopplers beyond k robust scales
+    doppler_snr_weight: int = 1    # scale Doppler σ by C/N0 as varerr does
+    doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
+    doppler_require_dd: int = 1    # only add Doppler where the epoch has a
+                                   # usable DD set (see buildfactor/doppler_sd)
+    doppler_skip_aid: int = 1      # SD Doppler also on GDOP-skipped epochs
+                                   # (outage velocity aid; bypasses the
+                                   # require_dd/gdop gates there)
+    doppler_sd_sigma: float = 0.5  # [m/s] 0 = off — between-satellite
+                                   # difference, no clock states. 0.5 is
+                                   # the measured full-length optimum.
+    doppler_huber: float = 1.0     # [m/s] robust width, 0 = plain L2.
+                                   # Load-bearing: bounds the NLOS
+                                   # feedback loop in the SD screen (see
+                                   # buildfactor/doppler_sd.py).
+    doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
+    clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
+                                   # when pseudoranges observe the level
+    clock_pr_sigma: float = 0.0    # [m] zenith σ of the undifferenced GPS
+                                   # iono-free pseudoranges that observe the
+                                   # clock chain (0 = off; needs doppler_sigma)
+    doppler_clk_anchor_sigma: float = 3.3e-9  # [s] prior pinning the head of
+                                   # a clock chain (the level is unobservable
+                                   # from range rates, so any value does)
     tdcp_sigma: float = 0.0        # [m] TDCP σ between consecutive poses;
                                    # 0 disables (default). Experimental:
                                    # cancels ambiguity/slow biases and
@@ -105,7 +140,6 @@ class TcConfig:
                                    # mass-slip excursion; tukey -> best
                                    # AllRMS (11.8) but AR dies. Needs a
                                    # kernel/sigma sweep before default-on.
-    doppler_max_res: float = 2.0
 
     mw_thresh: float = 0.0
     mw_avg_enable: int = 1
@@ -176,9 +210,49 @@ class TcConfig:
     ar_wait_new: int = 3           # new amb waits N epochs before AR
     parmode: int = 1
     par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
+    ar_starve_reset: int = 0       # epochs of consecutive lambda_zero
+                                   # (ratio starvation) with a QUIET
+                                   # float that trigger the ambiguity
+                                   # purge (reset_ambiguities_with_
+                                   # cp_hold). A biased-but-smooth float
+                                   # basin passes no acceptance test and
+                                   # never trips the residual/innovation
+                                   # alarms — this is its dedicated
+                                   # escape. 0 = off.
+    ar_starve_max_res: float = 2.0 # 'quiet' gate [m]: skip the purge
+                                   # when main DDPR res exceeds this
+                                   # (an NLOS storm, where purging arcs
+                                   # would destroy the CP continuity
+                                   # that bounds float drift)
+    ar_gdop_max: float = 0.0       # skip the AR attempt when GDOP
+                                   # exceeds this (0 = off). Pure
+                                   # geometry — unlike a covariance
+                                   # gate it has no feedback loop with
+                                   # the hold state. Weak geometry
+                                   # cannot support an integer decision
+                                   # (9 m vertical basin at GDOP~10
+                                   # costs only ~1.7 m code residual).
+    ar_fix_dres_max: float = 0.0   # [m] likelihood-ratio fix gate in
+                                   # the graph's own objective: reject
+                                   # when DDPR RMS at the fixed pose
+                                   # exceeds the float-pose RMS by more
+                                   # than this (0 = off). Differential,
+                                   # so the NLOS noise floor cancels;
+                                   # evaluated pre-hold so wrong-integer
+                                   # basins are rejected before holds
+                                   # lock them.
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
+    ar_native_resolver: int = 0    # 1 = AR off the smoother (gnss_fgo.ar).
+                                   # Line-identical to cssrlib over the FIRST
+                                   # 3000 tokyo run2 epochs and shadow-equal
+                                   # per call, but the full 9151-epoch run
+                                   # measures 42.6 m / 5670 fix against
+                                   # 30.6 m / 5818 on the cssrlib path -- the
+                                   # equivalence does not yet cover the
+                                   # warm-reset-heavy tail, so the proven
+                                   # path stays default until it does.
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5

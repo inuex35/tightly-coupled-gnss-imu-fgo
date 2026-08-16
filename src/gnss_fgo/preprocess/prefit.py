@@ -1,4 +1,4 @@
-"""Stage 2 — pre-fit gates.
+"""Pre-fit gates and reference-satellite pick (Stage B/C support).
 
 Operates between input preprocessing and graph optimization to keep
 multipath-contaminated satellites out of the LAMBDA tree and to
@@ -14,7 +14,6 @@ import numpy as np
 from cssrlib.gnss import uGNSS
 from ..utils import get_wavelengths as _utils_get_wavelengths
 
-from ..utils import doppler_velocity_ls as _utils_doppler_velocity_ls
 from ..utils import is_bds_geo as _utils_is_bds_geo
 
 
@@ -88,14 +87,3 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     return ref_idx, sat[ref_idx]
 
 
-def doppler_velocity_ls(tc, obs, obs_sd, rs, vs, iu, sat, pos_ecef,
-                        vel_pred_ecef=None):
-    """GICI-style Doppler → rover velocity LS. See utils.ls_solvers."""
-    outlier = float(os.environ.get('DOP_OUTLIER_M_S', '3.0'))
-    return _utils_doppler_velocity_ls(
-        obs, obs_sd, rs, vs, iu, sat, pos_ecef,
-        nav_nf=tc.nav.nf,
-        get_wavelengths=lambda obs, sat: _utils_get_wavelengths(
-            obs, sat, glo_ch=tc.nav.glo_ch),
-        vel_pred_ecef=vel_pred_ecef,
-        outlier_thresh_m_s=outlier)

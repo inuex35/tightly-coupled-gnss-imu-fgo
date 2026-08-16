@@ -6,7 +6,7 @@ decisions live in Stages B (gate) and D (postprocess).
 
 import numpy as np
 
-from . import recovery as _tc_recovery
+from .. import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

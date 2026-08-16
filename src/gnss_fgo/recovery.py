@@ -6,13 +6,13 @@ import gtsam
 
 from cssrlib.gnss import time2gpst
 
-from ..buildfactor.epoch import make_epoch_diagnostics
-from ..buildfactor.nhc import add_nhc_factor as _add_nhc_factor
-from ..buildfactor.zupt import add_zupt_factors as _add_zupt_factor_inplace
-from ..preprocess import sat_quality as _satq
-from ..state import effective_cp_hold_epochs
-from ..buildfactor import imu_preintegration as _tc_pim
-from ..optimize import solver as _tc_solver
+from .buildfactor.epoch_context import make_epoch_diagnostics
+from .buildfactor.nhc import add_nhc_factor as _add_nhc_factor
+from .buildfactor.zupt import add_zupt_factors as _add_zupt_factor_inplace
+from .preprocess import sat_quality as _satq
+from .state import effective_cp_hold_epochs
+from .buildfactor import imu_preintegration as _tc_pim
+from .optimize import isam as _tc_solver
 
 
 def finalize_epoch(tc, sol, tag, nb, info, obs):
@@ -121,7 +121,7 @@ def reset_ambiguities_with_cp_hold(tc):
         try:
             tc.isam2.update(gtsam.NonlinearFactorGraph(),
                              gtsam.Values(), ts, remove_safe)
-        except (RuntimeError, IndexError):
+        except (RuntimeError, IndexError, ValueError):
             pass
     return len(remove_safe)
 
@@ -226,12 +226,29 @@ def process_gdop_skip(tc, obs, kk, g3, v3, R_enu2ecef, info,
         est_now = tc.isam2.calculateEstimate()
         gdop_pose_prev = est_now.atPose3(tc.Xpose(kk - 1))
         gdop_vel_prev = np.array(est_now.atVector(tc.Vel(kk - 1)))
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         gdop_pose_prev = None
         gdop_vel_prev = vel_prev
     _outage_add_pseudo_measurements(
         tc, g3, kk, info, imu_idx_prev,
         gdop_pose_prev, gdop_vel_prev, gyro_mean)
+    # Gauge anchor: with GNSS skipped the epoch graph is relative-only
+    # (IMU between + NHC + bias prior) and consecutive skips leave the
+    # pose gauge numerically unconstrained — measured divergence x3-7
+    # per epoch up to 1591 km over a 16-epoch skip streak. Pin the
+    # PREVIOUS pose/vel at their current estimates with the same
+    # propagate sigmas the thin-epoch path uses; the IMU factor then
+    # moves the new epoch freely on a bounded leash.
+    if gdop_pose_prev is not None:
+        g3.addPriorPose3(
+            tc.Xpose(kk - 1), gdop_pose_prev,
+            gtsam.noiseModel.Isotropic.Sigma(
+                6, tc.cfg.propagate_pose_sigma))
+    if gdop_vel_prev is not None:
+        g3.addPriorVector(
+            tc.Vel(kk - 1), np.asarray(gdop_vel_prev, dtype=float),
+            gtsam.noiseModel.Isotropic.Sigma(
+                3, tc.cfg.propagate_vel_sigma))
     try:
         _tc_solver.fls_update(tc, g3, v3, kk,
                          keep_keys=tc._sat_states.amb_key_values(),
@@ -241,7 +258,7 @@ def process_gdop_skip(tc, obs, kk, g3, v3, R_enu2ecef, info,
         tc.tc_bias = est2.atConstantBias(tc.Bias(kk))
         ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
         tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         pass
     tc.nav.smode = 5
     info['bias_acc'] = tc.tc_bias.accelerometer()
@@ -309,7 +326,7 @@ def process_imu_only(tc, obs):
         ecef_tc = R @ np.array(pose_tc.translation()) + tc.base_ecef
         sol = tc._antenna_ecef(pose_tc, ecef_tc)
         tc.nav.x[0:3] = sol
-    except (RuntimeError, IndexError) as ex:
+    except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
         sol = tc.nav.x[0:3]
 
@@ -341,6 +358,6 @@ def handle_solve_exception(tc, ex, pred, bias_p, kk, obs, obsb, obs_sd,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.1))
         _tc_solver.fls_update(tc, g_fb, v_fb, kk)
         tc.tc_bias = bias_p
-    except (RuntimeError, IndexError):
+    except (RuntimeError, IndexError, ValueError):
         pass
     return finalize_epoch(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)

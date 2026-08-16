@@ -1,4 +1,4 @@
-"""Stage 1 — slip detection on raw observations."""
+"""Slip detection on raw observations (Stage B, step 2)."""
 
 import numpy as np
 
