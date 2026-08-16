@@ -47,6 +47,14 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
     return [s for *_rest, s in rows[:max_candidates]]
 
 
+def gain_full(Qab_full, Qb):
+    """Kalman correction to the non-ambiguity covariance, K Qab^T."""
+    try:
+        return Qab_full @ np.linalg.inv(Qb) @ Qab_full.T
+    except np.linalg.LinAlgError:
+        return np.zeros((Qab_full.shape[0], Qab_full.shape[0]))
+
+
 def _resolve_native(tc, sat_list):
     """AR straight off the smoother, without the cssrlib nav round-trip.
 
@@ -141,20 +149,22 @@ def _resolve_native(tc, sat_list):
         el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
     el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
     res = resolver.resolve(values, cov, keys, el)
+    # ddidx writes nav.fix on every call, not only when the fix is accepted:
+    # 2 for the satellites that entered a double difference, 1 for a candidate
+    # left out by the AR elevation mask. The hold policy and restamb read it
+    # afterwards, so a rejected attempt has to leave the same marks a rejected
+    # cssrlib attempt would.
+    tc.nav.fix[:, :] = 0
+    for sf in keys:
+        if el.get(sf[0], -np.inf) < float(getattr(tc.nav, 'elmaskar', 0.0)):
+            tc.nav.fix[sf[0] - 1, sf[1]] = 1
+    for ref, tgt in res.pairs:
+        tc.nav.fix[ref[0] - 1, ref[1]] = 2
+        tc.nav.fix[tgt[0] - 1, tgt[1]] = 2
     # Diagnostics elsewhere still read the stashed ratio pair.
     tc._last_s0, tc._last_s1 = res.s0, res.s1
     if res.nb <= 0:
         return 0, tc.nav.x.copy()
-
-    # Downstream reads state that cssrlib's resamb_lambda leaves behind:
-    # nav.fix marks which satellites entered the double differences (the hold
-    # policy and restamb both consult it) and nav.xa carries the fixed
-    # non-ambiguity state. Set them here or the two paths diverge a few
-    # epochs later even when LAMBDA agreed.
-    tc.nav.fix[:, :] = 0
-    for ref, tgt in res.pairs:
-        tc.nav.fix[ref[0] - 1, ref[1]] = 2
-        tc.nav.fix[tgt[0] - 1, tgt[1]] = 2
 
     xa = tc.nav.x.copy()
     for sf, value in res.fixed.items():
@@ -168,15 +178,28 @@ def _resolve_native(tc, sat_list):
     x_float = np.array([values[sf] for sf in keys])
     x_fixed = np.array([res.fixed.get(sf, values[sf]) for sf in keys])
     Qb = D @ cov @ D.T
-    Qab = cross @ cov @ D.T
+    # cross is already cov(position, ambiguity); differencing it gives the
+    # cross-covariance with the double differences. Multiplying by cov again
+    # was wrong and moved the fixed position enough for valpos downstream to
+    # take a different decision from the same LAMBDA answer.
+    Qab = cross @ D.T
     try:
         gain = Qab @ np.linalg.inv(Qb)
     except np.linalg.LinAlgError:
         return res.nb, xa
+    # cssrlib applies xa = x - K (y_float - y_fixed); the sign matters, and
+    # with it flipped the fixed position lands the same distance the wrong
+    # way and valpos downstream sees a different solution from the same
+    # integers.
     d_enu = gain @ (D @ (x_float - x_fixed))
-    xa[0:3] = tc.nav.x[0:3] + tc.R_enu2ecef @ d_enu
+    xa[0:3] = tc.nav.x[0:3] - tc.R_enu2ecef @ d_enu
     tc.nav.xa = tc.nav.x.copy()
     tc.nav.xa[0:tc.nav.na] = xa[0:tc.nav.na]
+    na = tc.nav.na
+    Pa = tc.nav.P[0:na, 0:na].copy()
+    Qab_full = np.zeros((na, len(res.pairs)))
+    Qab_full[0:3, :] = tc.R_enu2ecef @ Qab
+    tc.nav.Pa = Pa - gain_full(Qab_full, Qb)
     return res.nb, xa
 
 
