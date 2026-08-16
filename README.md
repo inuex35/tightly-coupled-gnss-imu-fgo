@@ -1,9 +1,29 @@
 # tightly-coupled-gnss-imu-fgo
 
-Tightly-coupled RTK: GNSS double differences and a 100 Hz IMU fused on a
-**GTSAM** factor graph, with **cssrlib** as the observation front end.
-Built for urban canyons — NLOS storms, GDOP collapses, full tunnel
-blackouts — where a loosely-coupled filter falls apart.
+A vehicle positioning engine: RTK GNSS and a 100 Hz IMU fused in one
+factor-graph estimator, aiming for centimeter FIX solutions in deep
+urban environments where GNSS-only RTK breaks down.
+
+**What it does.** Given rover/base RINEX observations, broadcast
+ephemerides and raw IMU samples, it outputs a 5 Hz trajectory with
+integer-fixed carrier-phase accuracy wherever the sky allows, and
+IMU-bridged dead reckoning where it does not (NLOS storms, GDOP
+collapse, tunnels).
+
+**How.** Every epoch adds factors to a GTSAM incremental fixed-lag
+smoother — double-differenced pseudorange and carrier phase (cssrlib
+front end), IMU preintegration (`CombinedImuFactor`), between-satellite
+single-differenced Doppler for velocity, and vehicle constraints (NHC,
+ZUPT). Carrier ambiguities are estimated as float states in the graph,
+fixed by LAMBDA (cssrlib's resolver or the native `ar/` port of it,
+with demo5-style retry and partial AR), and pinned by fix-and-hold.
+Post-fit residual tests, FDE and a recovery ladder (CP-hold →
+ambiguity reset → DDPR re-anchor → warm reset) keep one bad epoch from
+poisoning the graph.
+
+**What's not here.** No PPP/SSR corrections, no RTCM streaming, no
+GLONASS (FDMA biases don't cancel in the double difference), no wheel
+odometry — the NHC constraint stands in for it.
 
 ---
 
