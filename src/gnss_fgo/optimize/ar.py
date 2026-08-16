@@ -78,23 +78,23 @@ def _resolve_native(tc, sat_list):
     # the double differences far looser than cssrlib sees them -- measured on
     # tokyo, the best residual came out at 890 against 610 and the ratio fell
     # short of the threshold that the cssrlib path cleared.
+    # ddidx uses the satellite list as a presence check and lets nav.vsat do
+    # the selecting; a subset retry drops satellites from both. Using only the
+    # list drops the surviving bands of every excluded satellite, using only
+    # vsat lets an excluded satellite back in -- both have been measured.
+    present = {int(s) for s in sat_list}
     for (s, f), value in tc._sat_states.held_items():
         sf = (int(s), int(f))
-        if tc.nav.vsat[int(s) - 1, int(f)] != 1:
+        if int(s) not in present or tc.nav.vsat[int(s) - 1, int(f)] != 1:
             continue
         keys.append(sf)
         values[sf] = float(value)
         held_var[sf] = max(float(tc.cfg.varholdamb), 1e-9)
-    # Selection is nav.vsat's job, exactly as in ddidx: the satellite list is
-    # a presence check there, not a filter. Intersecting the two drops every
-    # (sat, band) whose satellite left the list -- on a subset retry that took
-    # the double differences from fifteen down to four and turned fixes the
-    # cssrlib path accepted at ratio 12.8 into no fix at all.
     for (s, f), k in sorted_amb_items(key_of):
         sf = (int(s), int(f))
         if sf in values:
             continue
-        if est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
+        if int(s) in present and est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
             keys.append(sf)
             values[sf] = est.atDouble(k)
     if len(keys) < 2:
