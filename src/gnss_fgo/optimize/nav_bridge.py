@@ -21,12 +21,16 @@ knows what it is touching.
     nav.prev_ratio1/2        retry outcome           next epoch's arfilter
     tc._last_s0/_last_s1     every resolution        ratio gates, diagnostics
 
-``publish_marginals`` (the historical ``write_marginals``) stays in
-``ar.py`` for now -- it is scheduled to move here once its diagnostics
-side-band is untangled -- but the native path's writes all live below.
 """
 
+import os
+
 import numpy as np
+import gtsam
+
+from ..preprocess import sat_quality as _satq
+from ..utils import sorted_amb_items
+
 
 
 def publish_attempt(tc, sat_list, result):
@@ -94,3 +98,138 @@ def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
         tc.nav.excsat = excluded_sat
     else:
         tc.nav.excsat = 0
+
+
+def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
+    """Write GTSAM Marginals to nav.P with ENU->ECEF rotation."""
+    # The native resolver reads the same marginals straight from ISAM2 and
+    # needs the very pose these were taken against, not tc.tc_epoch, which
+    # still points at the previous epoch while AR runs.
+    tc._ar_key_pose = key_pose
+    R = tc.R_enu2ecef
+    tc.nav.P[:, :] = 0
+    tc.nav.vsat[:, :] = 0
+    tc.nav.x[tc.nav.na:] = 0
+    cp_visible_sf = set(tc._ar_cp_visible_sf)
+    hold_epochs = int(os.environ.get('HELD_VSAT_HOLD_EPOCHS', '0') or 0)
+    last_visible = tc._cp_visible_sf_last_ep
+    if last_visible is None:
+        last_visible = {}
+        tc._cp_visible_sf_last_ep = last_visible
+    for sf in cp_visible_sf:
+        last_visible[sf] = tc.epoch
+
+    diag_estimate_missing = 0
+    diag_vsat1 = 0
+    diag_vsat0_young = 0
+    diag_vsat0_held_bad = 0
+    diag_ages = []
+    diag_amb_el_deg = []  # elevation [deg] of vsat=1 amb sats
+    for (s, f), k in sorted_amb_items(amb_dict):
+        if estimate.exists(k):
+            tc.nav.x[tc.IB(s, f, tc.nav.na)] = estimate.atDouble(k)
+            # Exclude new ambiguities from AR until converged
+            init_ep = tc._sat_states.at(s, f).amb_init_epoch
+            age = tc.epoch - (init_ep if init_ep is not None else 0)
+            diag_ages.append(int(age))
+            held_bad = int(_satq.get_sat_quality(tc).persist_bad_hold.get(int(s), 0)) > 0
+            if age >= tc.ar_wait_new and not held_bad:
+                tc.nav.vsat[s - 1, f] = 1
+                diag_vsat1 += 1
+                el_idx = int(s) - 1
+                if 0 <= el_idx < tc.nav.el.shape[0]:
+                    diag_amb_el_deg.append(float(np.degrees(tc.nav.el[el_idx])))
+            else:
+                tc.nav.vsat[s - 1, f] = 0  # exclude from LAMBDA
+                if held_bad:
+                    diag_vsat0_held_bad += 1
+                else:
+                    diag_vsat0_young += 1
+        else:
+            diag_estimate_missing += 1
+    tc._last_amb_el_min_deg = (int(round(min(diag_amb_el_deg)))
+                                 if diag_amb_el_deg else -1)
+    tc._last_amb_el_median_deg = (int(round(float(np.median(diag_amb_el_deg))))
+                                    if diag_amb_el_deg else -1)
+    tc._last_amb_el_above15 = sum(1 for e in diag_amb_el_deg if e >= 15)
+    tc._last_amb_el_above25 = sum(1 for e in diag_amb_el_deg if e >= 25)
+    tc._last_amb_estimate_missing = diag_estimate_missing
+    tc._last_amb_vsat1 = diag_vsat1
+    tc._last_amb_vsat0_young = diag_vsat0_young
+    tc._last_amb_vsat0_held_bad = diag_vsat0_held_bad
+    tc._last_amb_age_median = int(np.median(diag_ages)) if diag_ages else -1
+    tc._last_amb_age_min = int(min(diag_ages)) if diag_ages else -1
+
+    held_var = max(float(tc.cfg.varholdamb), 1e-6)
+    for (s, f), held_value in tc._sat_states.held_items():
+        tc.nav.x[tc.IB(s, f, tc.nav.na)] = float(held_value)
+        tc.nav.P[tc.IB(s, f, tc.nav.na), tc.IB(s, f, tc.nav.na)] = held_var
+        held_bad = int(_satq.get_sat_quality(tc).persist_bad_hold.get(int(s), 0)) > 0
+        is_visible = (s, f) in cp_visible_sf
+        if not is_visible and hold_epochs > 0:
+            last_ep = last_visible.get((s, f), -10**9)
+            is_visible = (tc.epoch - last_ep) <= hold_epochs
+        tc.nav.vsat[s - 1, f] = (1 if is_visible and not held_bad else 0)
+
+    held_sf = {(int(s), int(f)) for (s, f), _ in tc._sat_states.held_items()}
+    amb_sf = {(int(s), int(f)) for (s, f) in amb_dict.keys()}
+    orphan = [(s, f) for (s, f) in cp_visible_sf
+              if (s, f) not in held_sf and (s, f) not in amb_sf]
+    tc._last_orphan_cp_count = len(orphan)
+    tc._last_amb_dict_size = len(amb_sf)
+    tc._last_held_size = len(held_sf)
+    tc._last_cp_visible_size = len(cp_visible_sf)
+
+    # Pull marginals straight from the smoother's Bayes tree; constructing
+    # a fresh gtsam.Marginals(factors, estimate) re-linearizes the entire
+    # graph (including every Python CustomFactor) and dominates the AR
+    # stage. ISAM2 already has the cached factorization. FLS exposes
+    # marginalCovariance but joint marginals must come from getISAM2().
+    smoother = getattr(tc, 'isam2', None)
+    isam2 = smoother.getISAM2() if smoother is not None else None
+    try:
+        if isam2 is not None:
+            P_pose = isam2.marginalCovariance(key_pose)
+        else:
+            mg = gtsam.Marginals(factors, estimate)
+            P_pose = mg.marginalCovariance(key_pose)
+        tc.nav.P[0:3, 0:3] = R @ P_pose[3:6, 3:6] @ R.T
+
+        active = [(s, f, k) for (s, f), k in sorted_amb_items(amb_dict)
+                  if estimate.exists(k)
+                  and tc.nav.vsat[s - 1, f] == 1]
+        if active:
+            keys = gtsam.KeyVector()
+            keys.append(key_pose)
+            for s, f, k in active:
+                keys.append(k)
+            jm = (isam2.jointMarginalCovariance(keys) if isam2 is not None
+                  else mg.jointMarginalCovariance(keys))
+            for s, f, k in active:
+                idx = tc.IB(s, f, tc.nav.na)
+                tc.nav.P[idx, idx] = jm.at(k, k)[0, 0]
+                Pxn = jm.at(key_pose, k)
+                pxn_ecef = R @ Pxn[3:6, 0]
+                tc.nav.P[0:3, idx] = pxn_ecef
+                tc.nav.P[idx, 0:3] = pxn_ecef
+            for i, (s1, f1, k1) in enumerate(active):
+                i1 = tc.IB(s1, f1, tc.nav.na)
+                for j, (s2, f2, k2) in enumerate(active):
+                    if i >= j:
+                        continue
+                    i2 = tc.IB(s2, f2, tc.nav.na)
+                    c = jm.at(k1, k2)[0, 0]
+                    tc.nav.P[i1, i2] = c
+                    tc.nav.P[i2, i1] = c
+    except (RuntimeError, IndexError):
+        # IndexError: gtsam raises it when key_pose (or an amb key) is not
+        # in the BayesTree yet, e.g. the epoch right after a warm reset.
+        pass
+    bad = ~np.isfinite(tc.nav.P)
+    if bad.any():
+        tc.nav.P[bad] = 0.0
+        diag_idx = np.where(np.diag(bad))[0]
+        if len(diag_idx):
+            tc.nav.P[diag_idx, diag_idx] = 1e10
+
+
