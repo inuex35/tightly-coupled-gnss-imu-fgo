@@ -115,6 +115,9 @@ class TcConfig:
     doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
     doppler_require_dd: int = 1    # only add Doppler where the epoch has a
                                    # usable DD set (see buildfactor/doppler_sd)
+    doppler_skip_aid: int = 1      # also add SD Doppler on GDOP-skipped
+                                   # epochs (velocity aid during outages;
+                                   # bypasses require_dd/gdop gates there)
     doppler_sd_sigma: float = 0.5  # [m/s] 0 = off — between-satellite
                                    # difference, no clock states at all.
                                    # 0.5 measured best overall on tokyo
@@ -122,7 +125,12 @@ class TcConfig:
                                    # (run1 89.2 / run2 15.9 / run3 19.2 m
                                    # vs off: 141.7 / 40.1 / 22.2 m); only
                                    # run1's canyon prefers 0.2 (76.1 m).
-    doppler_huber: float = 0.0     # [m/s] robust kernel width, 0 = plain L2
+    doppler_huber: float = 1.0     # [m/s] robust kernel width, 0 = plain L2.
+                                   # Load-bearing for SD Doppler: without it
+                                   # the screen's predicted-velocity feedback
+                                   # lets NLOS rows spiral the velocity state
+                                   # (run1 tunnel approach: 23 m/s fake vel,
+                                   # 2152 m blackout drift vs 25 m with it).
     doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
     clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
                                    # when pseudoranges observe the level

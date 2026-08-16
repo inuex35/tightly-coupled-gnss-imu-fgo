@@ -21,18 +21,25 @@ import gtsam
 from .doppler import _doppler_rows, screen_rows
 
 
-def add_sd_doppler_factors(tc, ed):
-    """Add one SD Doppler factor per satellite, against the epoch reference."""
+def add_sd_doppler_factors(tc, ed, in_outage=False):
+    """Add one SD Doppler factor per satellite, against the epoch reference.
+
+    ``in_outage=True`` is the GDOP-skip path: no DD set exists by
+    definition, so the require_dd/gdop gates don't apply — Doppler is
+    the only velocity observation the epoch has, exactly where it's
+    worth the most (the canyon drift is what it bounds).
+    """
     sigma = float(tc.cfg.doppler_sd_sigma)
     if sigma <= 0 or ed.kk is None:
         return
-    gdop_max = float(tc.cfg.doppler_gdop_max)
-    if gdop_max > 0 and float(ed.info.get('gdop', 0.0) or 0.0) > gdop_max:
-        ed.info['doppler_sd_skipped'] = 'gdop'
-        return
-    if tc.cfg.doppler_require_dd and ed.nv < tc.cfg.min_dd_for_solve:
-        ed.info['doppler_sd_skipped'] = int(ed.nv)
-        return
+    if not in_outage:
+        gdop_max = float(tc.cfg.doppler_gdop_max)
+        if gdop_max > 0 and float(ed.info.get('gdop', 0.0) or 0.0) > gdop_max:
+            ed.info['doppler_sd_skipped'] = 'gdop'
+            return
+        if tc.cfg.doppler_require_dd and ed.nv < tc.cfg.min_dd_for_solve:
+            ed.info['doppler_sd_skipped'] = int(ed.nv)
+            return
 
     rows, scale = screen_rows(tc, ed, _doppler_rows(tc, ed))
     if len(rows) < 2:
@@ -61,6 +68,7 @@ def add_sd_doppler_factors(tc, ed):
     lever = np.asarray(tc.lever_arm, dtype=float)
     rr = np.asarray(ed.pred_ecef, dtype=float)
     n = 0
+    huber = float(tc.cfg.doppler_huber)
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue
@@ -68,6 +76,16 @@ def add_sd_doppler_factors(tc, ed):
         # correlated; this keeps the diagonal approximation the DD factors use.
         noise = gtsam.noiseModel.Isotropic.Sigma(
             1, float(np.hypot(sig, sigma_ref)))
+        if huber > 0:
+            # Bounded influence. The epoch screen references the predicted
+            # velocity, so once the velocity state starts rotting, NLOS
+            # rows survive the screen and drag it further (measured: the
+            # run1 tunnel-approach trench spirals the attitude upside
+            # down and the blackout entry velocity to 23 m/s, 2152 m
+            # drift vs 215 m without Doppler). A robust kernel caps what
+            # any surviving row can pull.
+            noise = gtsam.noiseModel.Robust.Create(
+                gtsam.noiseModel.mEstimator.Huber.Create(huber), noise)
         ed.g3.add(gtsam.SingleDifferenceDopplerFactorArm(
             tc.Xpose(kk), tc.Vel(kk),
             row[3], ref[3],                 # measured Doppler [Hz]
