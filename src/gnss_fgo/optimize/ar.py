@@ -5,6 +5,7 @@ import os
 import numpy as np
 import gtsam
 
+from . import ar_problem, ar_retry, nav_bridge
 from .ambiguity_resolver import AmbiguityResolver
 
 from ..preprocess import sat_quality as _satq
@@ -47,232 +48,38 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
     return [s for *_rest, s in rows[:max_candidates]]
 
 
-def gain_full(Qab_full, Qb):
-    """Kalman correction to the non-ambiguity covariance, K Qab^T."""
-    try:
-        return Qab_full @ np.linalg.inv(Qb) @ Qab_full.T
-    except np.linalg.LinAlgError:
-        return np.zeros((Qab_full.shape[0], Qab_full.shape[0]))
-
-
 def _resolve_native(tc, sat_list):
     """AR straight off the smoother, without the cssrlib nav round-trip.
 
-    Assembles the float ambiguities and their joint covariance from ISAM2 --
-    the same numbers ``write_marginals`` transcribes into ``nav.x`` / ``nav.P``
-    -- and hands them to :class:`AmbiguityResolver`. Held ambiguities keep the
-    pinned value and ``varholdamb`` variance the fix-and-hold policy gives
-    them; that policy stays with the caller, the resolver only fixes integers.
+    Three stages, one module each: :mod:`ar_problem` reads the smoother into
+    a self-contained problem, :class:`AmbiguityResolver` fixes the integers,
+    and :mod:`nav_bridge` publishes the side effects cssrlib's callers still
+    read. ``None`` means "fall back to the cssrlib path".
 
-    Returns the ``(nb, xa)`` pair the rest of the AR path expects, with ``xa``
-    carrying the fixed ambiguities and the position corrected by the usual
-    Kalman gain from the (pose, ambiguity) cross-covariance.
+    Equivalence with that path is measured, not assumed: shadowed in both
+    directions over tokyo run2 (4361 + 2422 calls) with identical nb and
+    ratio, and sequential 3000-epoch runs are line-identical.
     """
-    # Phase 1 runs on its own smoother with its own ambiguity keys; this
-    # resolver reads the Phase-2 graph, so leave Phase 1 to cssrlib.
-    smoother = getattr(tc, 'isam2', None)
-    if tc.phase != 2 or smoother is None:
+    problem = ar_problem.build(tc, sat_list)
+    if problem is None:
         return None
-    isam2 = smoother.getISAM2()
-    if isam2 is None:
-        return None
-    est = smoother.calculateEstimate()
-
-    keys, values, held_var = [], {}, {}
-    key_of = dict(sorted_amb_items(tc._sat_states.amb_keys_dict()))
-    # Held ambiguities first: fix-and-hold pins them at varholdamb and that
-    # pinning wins over the smoother's own spread, exactly as write_marginals
-    # overwrites nav.P for them. Taking the graph covariance instead leaves
-    # the double differences far looser than cssrlib sees them -- measured on
-    # tokyo, the best residual came out at 890 against 610 and the ratio fell
-    # short of the threshold that the cssrlib path cleared.
-    # ddidx uses the satellite list as a presence check and lets nav.vsat do
-    # the selecting; a subset retry drops satellites from both. Using only the
-    # list drops the surviving bands of every excluded satellite, using only
-    # vsat lets an excluded satellite back in -- both have been measured.
-    present = {int(s) for s in sat_list}
-    for (s, f), value in tc._sat_states.held_items():
-        sf = (int(s), int(f))
-        if int(s) not in present or tc.nav.vsat[int(s) - 1, int(f)] != 1:
-            continue
-        keys.append(sf)
-        values[sf] = float(value)
-        held_var[sf] = max(float(tc.cfg.varholdamb), 1e-9)
-    for (s, f), k in sorted_amb_items(key_of):
-        sf = (int(s), int(f))
-        if sf in values:
-            continue
-        if int(s) in present and est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
-            keys.append(sf)
-            values[sf] = est.atDouble(k)
-    if len(keys) < 2:
-        return None
-
-    # A held ambiguity keeps the graph's correlations and only has its own
-    # variance replaced -- write_marginals overwrites nav.P's diagonal for it
-    # and leaves the off-diagonal terms the active loop wrote. Zeroing the row
-    # instead changes Qb enough to move the ratio in the third digit.
-    in_graph = [sf for sf in keys if sf in key_of and est.exists(key_of[sf])]
-    key_pose = getattr(tc, '_ar_key_pose', None)
-    if key_pose is None:
-        return None
-    kv = gtsam.KeyVector()
-    kv.append(key_pose)
-    for sf in in_graph:
-        kv.append(key_of[sf])
-    try:
-        jm = isam2.jointMarginalCovariance(kv)
-    except (RuntimeError, IndexError):
-        return None
-
-    n = len(keys)
-    cov = np.zeros((n, n))
-    cross = np.zeros((3, n))          # (position, ambiguity), ENU
-    graph_set = set(in_graph)
-    for i, a in enumerate(keys):
-        if a not in graph_set:
-            cov[i, i] = held_var.get(a, 0.0)
-            continue
-        for j, b in enumerate(keys):
-            if b in graph_set:
-                cov[i, j] = jm.at(key_of[a], key_of[b])[0, 0]
-        cross[:, i] = jm.at(key_pose, key_of[a])[3:6, 0]
-    for sf, var in held_var.items():
-        i = keys.index(sf)
-        cov[i, i] = var
-    if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
-        return None
-
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
         el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
-    el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
-    res = resolver.resolve(values, cov, keys, el)
-    # nav.fix is a side effect the hold policy reads, and its exact marks are
-    # quirky -- ddidx flags the reference of a singleton group even though no
-    # difference is formed, and flags below-mask satellites only when they
-    # precede the reference in PRN order. Reproducing that by hand is how the
-    # runs drifted apart; let ddidx itself write the marks.
-    tc.ddidx(tc.nav, sat_list)
-    # Diagnostics elsewhere still read the stashed ratio pair.
-    tc._last_s0, tc._last_s1 = res.s0, res.s1
+    res = resolver.resolve(problem.values, problem.cov, problem.keys,
+                           problem.elevations)
+    nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         return 0, tc.nav.x.copy()
-
-    xa = tc.nav.x.copy()
-    for sf, value in res.fixed.items():
-        xa[tc.IB(sf[0], sf[1], tc.nav.na)] = value
-    # Position update: x_fix = x - Qab Qb^-1 (y - b), in the DD space.
-    idx = {sf: i for i, sf in enumerate(keys)}
-    D = np.zeros((len(res.pairs), n))
-    for row, (ref, tgt) in enumerate(res.pairs):
-        D[row, idx[ref]] = 1.0
-        D[row, idx[tgt]] = -1.0
-    x_float = np.array([values[sf] for sf in keys])
-    x_fixed = np.array([res.fixed.get(sf, values[sf]) for sf in keys])
-    Qb = D @ cov @ D.T
-    # cross is already cov(position, ambiguity); differencing it gives the
-    # cross-covariance with the double differences. Multiplying by cov again
-    # was wrong and moved the fixed position enough for valpos downstream to
-    # take a different decision from the same LAMBDA answer.
-    Qab = cross @ D.T
-    try:
-        gain = Qab @ np.linalg.inv(Qb)
-    except np.linalg.LinAlgError:
-        return res.nb, xa
-    # cssrlib applies xa = x - K (y_float - y_fixed); the sign matters, and
-    # with it flipped the fixed position lands the same distance the wrong
-    # way and valpos downstream sees a different solution from the same
-    # integers.
-    d_enu = gain @ (D @ (x_float - x_fixed))
-    xa[0:3] = tc.nav.x[0:3] - tc.R_enu2ecef @ d_enu
-    tc.nav.xa = tc.nav.x.copy()
-    tc.nav.xa[0:tc.nav.na] = xa[0:tc.nav.na]
-    na = tc.nav.na
-    Pa = tc.nav.P[0:na, 0:na].copy()
-    Qab_full = np.zeros((na, len(res.pairs)))
-    Qab_full[0:3, :] = tc.R_enu2ecef @ Qab
-    tc.nav.Pa = Pa - gain_full(Qab_full, Qb)
+    xa, Qb, Qab = ar_problem.fixed_state(tc, problem, res)
+    nav_bridge.publish_fix(tc, xa, Qb, Qab)
     return res.nb, xa
 
 
 def _resolve_native_retry(tc, sat_list):
-    """Native counterpart of resamb_lambda_rtklib, side effects included.
-
-    A line-for-line transliteration: the lock counters are updated on every
-    call (they are nav state, read next epoch to spot freshly-acquired
-    satellites), the round-robin cursor and both previous ratios live on nav,
-    the retry candidate needs a non-zero vsat, and the exclusion itself is a
-    one-epoch vsat zeroing. Keeping any of this on private attributes instead
-    was enough to make the two runs choose different exclusions from ep127 on.
-    """
-    valid = {int(s) for s in sat_list}
-    for i in range(tc.nav.lock.shape[0]):
-        sv = i + 1
-        for f in range(tc.nav.nf):
-            if sv in valid and tc.nav.vsat[i, f] != 0:
-                tc.nav.lock[i, f] += 1
-            else:
-                tc.nav.lock[i, f] = 0
-
-    out = _resolve_native(tc, sat_list)
-    if out is None:
-        return None
-    nb, xa = out
-    ratio = 0.0 if tc._last_s0 <= 0.0 else tc._last_s1 / tc._last_s0
-    if nb > 0:
-        tc.nav.prev_ratio1 = ratio
-        tc.nav.prev_ratio2 = ratio
-        tc.nav.excsat = 0
-        return nb, xa
-    tc.nav.prev_ratio1 = ratio
-
-    if len(sat_list) < tc.nav.minfixsats:
-        return 0, xa
-
-    sat_arr = [int(s) for s in sat_list]
-    try:
-        start = sat_arr.index(tc.nav.excsat) + 1
-    except ValueError:
-        start = 0
-    order = sat_arr[start:] + sat_arr[:start]
-
-    exc = 0
-    if (tc.nav.arfilter and ratio < tc.nav.thresar
-            and tc.nav.prev_ratio2 > 0.0
-            and ratio < 1.1 * tc.nav.prev_ratio2):
-        for s_ in order:
-            if any(0 < tc.nav.lock[s_ - 1, f] <= 1
-                   for f in range(tc.nav.nf)):
-                exc = s_
-                break
-    if exc == 0:
-        for s_ in order:
-            if any(tc.nav.vsat[s_ - 1, f] != 0
-                   for f in range(tc.nav.nf)):
-                exc = s_
-                break
-    if exc == 0:
-        return 0, xa
-
-    vsat_row = tc.nav.vsat[exc - 1, :].copy()
-    tc.nav.vsat[exc - 1, :] = 0
-    try:
-        out2 = _resolve_native(tc, [s for s in sat_list if s != exc])
-    finally:
-        tc.nav.vsat[exc - 1, :] = vsat_row
-    if out2 is None:
-        return 0, xa
-    nb2, xa2 = out2
-
-    if nb2 > 0:
-        tc.nav.prev_ratio2 = (0.0 if tc._last_s0 <= 0.0
-                              else tc._last_s1 / tc._last_s0)
-        tc.nav.excsat = exc
-        return nb2, xa2
-    tc.nav.excsat = 0
-    return 0, xa
+    """The demo5 retry policy around the native resolver (see ar_retry)."""
+    return ar_retry.run(tc, sat_list, _resolve_native)
 
 
 def _run_single_ar_attempt(tc, sat, sat_exclude=None, restore_state=True):
