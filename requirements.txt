@@ -12,5 +12,5 @@ gtsam
 # PyPI cssrlib lacks prepare_double_difference_measurements /
 # base_process_dd_only. Pinned to a commit for reproducibility.
 # Install with:
-#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@2d98f8b#egg=cssrlib
+#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@2f84ab2#egg=cssrlib
 cssrlib>=1.2.1
