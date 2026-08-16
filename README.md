@@ -88,19 +88,6 @@ E  validation/output.py  result tuple + bookkeeping
 | `ar/` | the native ambiguity-resolution core (LAMBDA, retry, subset, hold) + cssrlib nav bridge |
 | `epoch_data.py`, `stage_contract.py` | the `EpochData` carrier and the stage reads/writes contract checker (`ENABLE_STAGE_CONTRACT_CHECK=1`) |
 
-Design notes worth knowing:
-
-- **Ambiguity seeds are clock-free** (`amb_seed.py`): SD phase minus SD
-  code. Seeding against geometry bakes the receiver clock into the N
-  level and detonates fix-and-hold across clock drift (km-scale).
-- **SD Doppler replaces the old Doppler-LS velocity prior**: clock-free
-  by construction, robust (Huber) against the NLOS screen feedback loop,
-  and also injected on GDOP-skipped epochs (`doppler_skip_aid`) where it
-  is the only velocity observation.
-- **NHC is the C++ `gtsam.NhcFactor`** from the custom wheel (exact
-  Jacobians; the former Python CustomFactor had a wrong rotation
-  Jacobian).
-
 ---
 
 ## Configuration
