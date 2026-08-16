@@ -100,13 +100,17 @@ def _resolve_native(tc, sat_list):
     if len(keys) < 2:
         return None
 
-    free = [sf for sf in keys if sf not in held_var]
+    # A held ambiguity keeps the graph's correlations and only has its own
+    # variance replaced -- write_marginals overwrites nav.P's diagonal for it
+    # and leaves the off-diagonal terms the active loop wrote. Zeroing the row
+    # instead changes Qb enough to move the ratio in the third digit.
+    in_graph = [sf for sf in keys if sf in key_of and est.exists(key_of[sf])]
     key_pose = getattr(tc, '_ar_key_pose', None)
     if key_pose is None:
         return None
     kv = gtsam.KeyVector()
     kv.append(key_pose)
-    for sf in free:
+    for sf in in_graph:
         kv.append(key_of[sf])
     try:
         jm = isam2.jointMarginalCovariance(kv)
@@ -116,15 +120,18 @@ def _resolve_native(tc, sat_list):
     n = len(keys)
     cov = np.zeros((n, n))
     cross = np.zeros((3, n))          # (position, ambiguity), ENU
+    graph_set = set(in_graph)
     for i, a in enumerate(keys):
-        if a in held_var:
-            cov[i, i] = held_var[a]
+        if a not in graph_set:
+            cov[i, i] = held_var.get(a, 0.0)
             continue
         for j, b in enumerate(keys):
-            if b in held_var:
-                continue
-            cov[i, j] = jm.at(key_of[a], key_of[b])[0, 0]
+            if b in graph_set:
+                cov[i, j] = jm.at(key_of[a], key_of[b])[0, 0]
         cross[:, i] = jm.at(key_pose, key_of[a])[3:6, 0]
+    for sf, var in held_var.items():
+        i = keys.index(sf)
+        cov[i, i] = var
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
         return None
 
