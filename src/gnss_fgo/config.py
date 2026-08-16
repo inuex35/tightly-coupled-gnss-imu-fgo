@@ -232,8 +232,11 @@ class TcConfig:
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
-    ar_native_resolver: int = 0    # AR off the smoother directly,
-                                   # bypassing the cssrlib nav round-trip
+    ar_native_resolver: int = 1    # AR off the smoother directly (gnss_fgo.ar);
+                                   # measured line-identical to the cssrlib
+                                   # path over 3000 tokyo epochs, shadowed in
+                                   # both directions (4361+2422 calls equal).
+                                   # 0 falls back to cssrlib's resamb_lambda
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5
