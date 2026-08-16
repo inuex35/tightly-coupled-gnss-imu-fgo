@@ -10,72 +10,8 @@ from ..utils.robust import maybe_robust as _maybe_robust
 from ..preprocess import sat_quality as _satq
 from ..preprocess import prefit as _tc_prefit
 from .factors_support import compute_cp_build_policy, get_wavelengths
+from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 from ..utils import sorted_amb_keys, sorted_sys_ids
-
-
-def _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
-                          prev_amb_values, key_id):
-    """Insert N value + add prior with the right σ for one sat. Three modes:"""
-    if prev_amb_values is not None and key_id in prev_amb_values:
-        n0 = prev_amb_values[key_id][1]
-        values.insert(key_n, n0)
-        graph.addPriorDouble(key_n, n0, tc._noise1(tc.cfg.sigma_cont))
-        return
-    if (sat_st.release_seed_pending
-            and sat_st.last_held_value is not None):
-        n0 = sat_st.last_held_value
-        values.insert(key_n, n0)
-        graph.addPriorDouble(key_n, n0, tc._noise1(0.1))
-        sat_st.amb_init_epoch = tc.epoch
-        sat_st.release_seed_pending = False
-        return
-    # Phase 2: σ=sigma_amb0 (cssrlib sig_n0); Phase 1: σ=3 cyc.
-    sig = tc.cfg.sigma_amb0 if tc.phase == 2 else 3.0
-    values.insert(key_n, n0_seed)
-    graph.addPriorDouble(key_n, n0_seed, tc._noise1(sig))
-    sat_st.amb_init_epoch = tc.epoch
-
-
-def _init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
-                                prev_amb_values, freq, lam,
-                                pair_sat_info):
-    """Add Prior factors + initial values for the two N ambiguities of one"""
-    for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
-        key_id = (sat_id, freq)
-        sat_st = tc._sat_states.get(*key_id)
-        sat_st.amb_lam = lam
-        # cssrlib-udbias-style seed: SD phase minus SD CODE. Both carry
-        # the same receiver SD clock term, so the seed level is
-        # clock-free. Seeding against geometry instead (the previous
-        # form) bakes c·(dtr−dtb) of the seed epoch into the N level;
-        # with ~150 m/s clock drift that gauge diverges km-scale
-        # between a hold era and a later re-seed cohort and detonates
-        # every held×free DD-CP pair (run1 ep1619, 2.4 km jump).
-        n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
-        if sat_st.held_value is not None:
-            # Gauge gate: a held SD ambiguity pins the receiver SD
-            # phase-bias gauge of the era it was fixed in. If the
-            # current gauge (fresh cp-pr seed) has moved away by more
-            # than hold_gauge_gate_m, pairing this held N with a
-            # freshly seeded free N would inject the gauge gap
-            # (km-scale) into the DD-CP factor. Held-held pairs cancel
-            # the gauge, so only the stale absolute level is poison:
-            # drop the hold and fall through to fresh float seeding.
-            gate = float(tc.cfg.hold_gauge_gate_m)
-            gap_m = abs(n0_seed - sat_st.held_value) * lam
-            if gate > 0 and gap_m > gate:
-                sat_st.clear_hold()
-                tc._last_hold_gauge_rel.append((int(sat_id), int(freq),
-                                                float(gap_m)))
-            else:
-                continue
-        if key_id in amb_dict or key_id in new_amb:
-            continue
-        if values.exists(key_n):
-            continue
-        _seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
-                              prev_amb_values, key_id)
-        new_amb[key_id] = key_n
 
 
 def _add_ddpr_factor(tc, graph, key_pose, lever,

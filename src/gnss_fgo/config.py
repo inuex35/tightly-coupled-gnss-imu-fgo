@@ -81,13 +81,10 @@ class TcConfig:
     sanity_pose_replace_thresh: float = 5.0
     varholdamb: float = 0.001
     cp_hold_isam_iters: int = 0
-    # Held-N gauge gate [m]: release a held SD ambiguity when the fresh
-    # cp-pr seed disagrees with it by more than this (receiver SD
-    # phase-bias gauge moved since the hold era). Off by default: the
-    # structural fix is skipping held×free mixed DD-CP pairs; under
-    # ~150 m/s receiver clock drift this gate would expire every hold
-    # within seconds and cost far more fixes than it saves (run2
-    # 27 m → 111 m when enabled at 300).
+    # Held-N gauge gate [m]: drop a held N when the fresh seed disagrees
+    # by more than this. Diagnostic only (0 = off) — the clock-free
+    # cp-pr seed removed the gauge drift this defended against, and a
+    # tight gate expires healthy holds. See buildfactor/amb_seed.py.
     hold_gauge_gate_m: float = 0.0
     pim_break_trans_sigma: float = 1.0
     # cssrlib valpos chi-square threshold in σ units.
@@ -115,22 +112,16 @@ class TcConfig:
     doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
     doppler_require_dd: int = 1    # only add Doppler where the epoch has a
                                    # usable DD set (see buildfactor/doppler_sd)
-    doppler_skip_aid: int = 1      # also add SD Doppler on GDOP-skipped
-                                   # epochs (velocity aid during outages;
-                                   # bypasses require_dd/gdop gates there)
+    doppler_skip_aid: int = 1      # SD Doppler also on GDOP-skipped epochs
+                                   # (outage velocity aid; bypasses the
+                                   # require_dd/gdop gates there)
     doppler_sd_sigma: float = 0.5  # [m/s] 0 = off — between-satellite
-                                   # difference, no clock states at all.
-                                   # 0.5 measured best overall on tokyo
-                                   # full-length after the cp-pr seed fix
-                                   # (run1 89.2 / run2 15.9 / run3 19.2 m
-                                   # vs off: 141.7 / 40.1 / 22.2 m); only
-                                   # run1's canyon prefers 0.2 (76.1 m).
-    doppler_huber: float = 1.0     # [m/s] robust kernel width, 0 = plain L2.
-                                   # Load-bearing for SD Doppler: without it
-                                   # the screen's predicted-velocity feedback
-                                   # lets NLOS rows spiral the velocity state
-                                   # (run1 tunnel approach: 23 m/s fake vel,
-                                   # 2152 m blackout drift vs 25 m with it).
+                                   # difference, no clock states. 0.5 is
+                                   # the measured full-length optimum.
+    doppler_huber: float = 1.0     # [m/s] robust width, 0 = plain L2.
+                                   # Load-bearing: bounds the NLOS
+                                   # feedback loop in the SD screen (see
+                                   # buildfactor/doppler_sd.py).
     doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
     clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
                                    # when pseudoranges observe the level

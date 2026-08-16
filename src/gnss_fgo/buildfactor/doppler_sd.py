@@ -77,13 +77,11 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
         noise = gtsam.noiseModel.Isotropic.Sigma(
             1, float(np.hypot(sig, sigma_ref)))
         if huber > 0:
-            # Bounded influence. The epoch screen references the predicted
-            # velocity, so once the velocity state starts rotting, NLOS
-            # rows survive the screen and drag it further (measured: the
-            # run1 tunnel-approach trench spirals the attitude upside
-            # down and the blackout entry velocity to 23 m/s, 2152 m
-            # drift vs 215 m without Doppler). A robust kernel caps what
-            # any surviving row can pull.
+            # Bounded influence. screen_rows references the predicted
+            # velocity, so once the velocity state degrades, NLOS rows
+            # survive the screen and drag it further — the kernel caps
+            # what any surviving row can pull (run1 tunnel approach:
+            # 2152 m blackout drift without it, 25 m with it).
             noise = gtsam.noiseModel.Robust.Create(
                 gtsam.noiseModel.mEstimator.Huber.Create(huber), noise)
         ed.g3.add(gtsam.SingleDifferenceDopplerFactorArm(
