@@ -7,6 +7,7 @@ pure residual-computation library.
 """
 
 import numpy as np
+import gtsam
 
 from . import recovery as _tc_recovery
 from .validation import residuals as _tc_residuals
