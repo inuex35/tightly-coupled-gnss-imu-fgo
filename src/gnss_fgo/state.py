@@ -24,7 +24,6 @@ register here), TcScene preset for scene-aware tuning.
 
 from enum import Enum
 
-from .preprocess import sat_quality as _satq
 
 
 class TcState(Enum):
@@ -51,7 +50,9 @@ def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
     hold_n = effective_cp_hold_epochs(tc)
     tc._recov_cp_hold = max(tc._recov_cp_hold, hold_n)
     tc._recov_cp_release_streak = 0
-    _satq.get_sat_quality(tc).clear()
+    sq = getattr(tc, '_sat_quality', None)
+    if sq is not None:
+        sq.clear()
     info[f'cp_hold_{reason}'] = value if value is not None else True
     return True
 

@@ -24,9 +24,9 @@ from . import recovery as _tc_recovery
 from .runtime_state import (
     AmbiguityState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
-from .preprocess.sat_quality import SatQualityState
+from .sat_quality import SatQualityState
 from .optimize import isam as _tc_isam
-from .preprocess import prefit as _tc_prefit
+from .buildfactor import prefit as _tc_prefit
 from .utils import sorted_sys_ids
 
 
@@ -289,144 +289,33 @@ class ImuGnssTc:
             for k, v in value.items():
                 view[k] = v
 
-    @property
-    def amb_keys_tc(self):
-        return self._amb_key_view
+    # ── Generated forwarders ───────────────────────────────────────
+    # Per-(sat,freq) dict views onto SatStateMap and scalar fields of the
+    # grouped state dataclasses, exposed as flat tc attributes. One table
+    # instead of 34 hand-written property/setter pairs; semantics are
+    # identical (view assignment goes through _assign_view).
+    _VIEW_FORWARDS = {
+        'amb_keys_tc': '_amb_key_view',
+        'amb_gen': '_amb_gen_view',
+        'amb_lam': '_amb_lam_view',
+        'amb_init_epoch': '_amb_init_epoch_view',
+        'amb_factor_indices': '_amb_factor_indices_view',
+        'rejc_cp_pr': '_rejc_cp_pr_view',
+        '_cp_hold_streak_persat': '_cp_hold_streak_view',
+        '_fix_streak': '_fix_streak_view',
+    }
+    _FIELD_FORWARDS = {
+        'total_factor_count': ('_ambiguity', 'total_factor_count'),
+        'skip_count': ('_recovery', 'skip_count'),
+        '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
+        '_recov_cp_release_streak': ('_recovery', 'recov_cp_release_streak'),
+        '_pim_discontinuity': ('_recovery', 'pim_discontinuity'),
+        '_ddpr_bad_count': ('_recovery', 'ddpr_bad_count'),
+        '_last_main_ddpr_res': ('_mres_signals', 'last_res'),
+        '_last_main_ddpr_per_sat': ('_mres_signals', 'per_sat'),
+        '_last_main_ddpr_epoch': ('_mres_signals', 'epoch'),
+    }
 
-    @amb_keys_tc.setter
-    def amb_keys_tc(self, value):
-        self._assign_view(self._amb_key_view, value)
-
-    @property
-    def amb_gen(self):
-        return self._amb_gen_view
-
-    @amb_gen.setter
-    def amb_gen(self, value):
-        self._assign_view(self._amb_gen_view, value)
-
-    @property
-    def amb_lam(self):
-        return self._amb_lam_view
-
-    @amb_lam.setter
-    def amb_lam(self, value):
-        self._assign_view(self._amb_lam_view, value)
-
-    @property
-    def amb_init_epoch(self):
-        return self._amb_init_epoch_view
-
-    @amb_init_epoch.setter
-    def amb_init_epoch(self, value):
-        self._assign_view(self._amb_init_epoch_view, value)
-
-    @property
-    def amb_factor_indices(self):
-        return self._amb_factor_indices_view
-
-    @amb_factor_indices.setter
-    def amb_factor_indices(self, value):
-        self._assign_view(self._amb_factor_indices_view, value)
-
-    @property
-    def rejc_cp_pr(self):
-        return self._rejc_cp_pr_view
-
-    @rejc_cp_pr.setter
-    def rejc_cp_pr(self, value):
-        self._assign_view(self._rejc_cp_pr_view, value)
-
-
-    @property
-    def _cp_hold_streak_persat(self):
-        return self._cp_hold_streak_view
-
-    @_cp_hold_streak_persat.setter
-    def _cp_hold_streak_persat(self, value):
-        self._assign_view(self._cp_hold_streak_view, value)
-
-    @property
-    def _fix_streak(self):
-        return self._fix_streak_view
-
-    @_fix_streak.setter
-    def _fix_streak(self, value):
-        self._assign_view(self._fix_streak_view, value)
-
-    @property
-    def total_factor_count(self):
-        return self._ambiguity.total_factor_count
-
-    @total_factor_count.setter
-    def total_factor_count(self, value):
-        self._ambiguity.total_factor_count = value
-
-    @property
-    def skip_count(self):
-        return self._recovery.skip_count
-
-    @skip_count.setter
-    def skip_count(self, value):
-        self._recovery.skip_count = value
-
-    @property
-    def _recov_cp_hold(self):
-        return self._recovery.recov_cp_hold
-
-    @_recov_cp_hold.setter
-    def _recov_cp_hold(self, value):
-        self._recovery.recov_cp_hold = value
-
-    @property
-    def _recov_cp_release_streak(self):
-        return self._recovery.recov_cp_release_streak
-
-    @_recov_cp_release_streak.setter
-    def _recov_cp_release_streak(self, value):
-        self._recovery.recov_cp_release_streak = value
-
-    @property
-    def _pim_discontinuity(self):
-        return self._recovery.pim_discontinuity
-
-    @_pim_discontinuity.setter
-    def _pim_discontinuity(self, value):
-        self._recovery.pim_discontinuity = value
-
-    @property
-    def _ddpr_bad_count(self):
-        return self._recovery.ddpr_bad_count
-
-    @_ddpr_bad_count.setter
-    def _ddpr_bad_count(self, value):
-        self._recovery.ddpr_bad_count = value
-
-    # --- MresSignalsState shims (previous-epoch DDPR residuals) ---
-
-    @property
-    def _last_main_ddpr_res(self):
-        return self._mres_signals.last_res
-
-    @_last_main_ddpr_res.setter
-    def _last_main_ddpr_res(self, value):
-        self._mres_signals.last_res = float(value or 0.0)
-
-    @property
-    def _last_main_ddpr_per_sat(self):
-        return self._mres_signals.per_sat
-
-    @_last_main_ddpr_per_sat.setter
-    def _last_main_ddpr_per_sat(self, value):
-        self._mres_signals.per_sat = value if value else {}
-
-    @property
-    def _last_main_ddpr_epoch(self):
-        return self._mres_signals.epoch
-
-    @_last_main_ddpr_epoch.setter
-    def _last_main_ddpr_epoch(self, value):
-        self._mres_signals.epoch = int(value)
 
 
     def _make_imu_params(self):
@@ -550,3 +439,22 @@ class ImuGnssTc:
     process_imu_only = _tc_recovery.process_imu_only
     _run_init_epoch = _initialization.run_init_epoch
     _run_tc_epoch = _tightly_coupled.run_tc_epoch
+
+
+def _install_forwarders(cls):
+    for name, view_attr in cls._VIEW_FORWARDS.items():
+        def getter(self, _v=view_attr):
+            return getattr(self, _v)
+        def setter(self, value, _v=view_attr):
+            self._assign_view(getattr(self, _v), value)
+        setattr(cls, name, property(getter, setter))
+    for name, (group, field) in cls._FIELD_FORWARDS.items():
+        def getter(self, _g=group, _f=field):
+            return getattr(getattr(self, _g), _f)
+        def setter(self, value, _g=group, _f=field):
+            setattr(getattr(self, _g), _f, value)
+        setattr(cls, name, property(getter, setter))
+    return cls
+
+
+_install_forwarders(ImuGnssTc)

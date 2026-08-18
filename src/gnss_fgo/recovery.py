@@ -9,9 +9,10 @@ from cssrlib.gnss import time2gpst
 from .buildfactor.epoch_context import make_epoch_diagnostics
 from .buildfactor.nhc import add_nhc_factor as _add_nhc_factor
 from .buildfactor.zupt import add_zupt_factors as _add_zupt_factor_inplace
-from .preprocess import sat_quality as _satq
+from . import sat_quality as _satq
 from .state import effective_cp_hold_epochs
 from .buildfactor import imu_preintegration as _tc_pim
+from .buildfactor import doppler_sd as _tc_doppler_sd
 from .optimize import isam as _tc_isam
 
 
@@ -217,8 +218,17 @@ def _outage_anchor_bias_prior(tc, graph, kk):
 
 
 def process_gdop_skip(tc, obs, kk, graph, values, R_enu2ecef, info,
-                      imu_idx_prev=None, gyro_mean=None, vel_prev=None):
-    """Bad GNSS geometry: IMU-only epoch. Advances state + keeps amb keys alive."""
+                      imu_idx_prev=None, gyro_mean=None, vel_prev=None,
+                      ed=None):
+    """Bad GNSS geometry: IMU-only epoch. Advances state + keeps amb keys alive.
+
+    When ``ed`` is passed and doppler_skip_aid is on, SD Doppler factors
+    are injected first — the epoch's only velocity observation (the
+    canyon drift is mostly vertical, which NHC leaves free).
+    """
+    if (ed is not None and tc.cfg.doppler_skip_aid
+            and tc.cfg.doppler_sd_sigma > 0):
+        _tc_doppler_sd.add_sd_doppler_factors(tc, ed, in_outage=True)
     _outage_advance_skip_count(tc, info, source='gdop')
     skip_remove_indices = _outage_tick_sat_outc(tc, info)
     _outage_anchor_bias_prior(tc, graph, kk)
