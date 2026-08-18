@@ -117,17 +117,17 @@ def add_tdcp_factors(tc, ed):
     key_prev = tc.Xpose(ed.kk - 1)
     key_curr = tc.Xpose(ed.kk)
     key_clk = gtsam.symbol('d', ed.kk)
-    ed.v3.insert(key_clk, 0.0)
+    ed.values.insert(key_clk, 0.0)
     # Weak prior keeps the clock-delta variable determinate even if all
     # TDCP factors get FDE-removed later.
-    ed.g3.addPriorDouble(key_clk, 0.0, tc._noise1(1.0e4))
+    ed.graph.addPriorDouble(key_clk, 0.0, tc._noise1(1.0e4))
     n = 0
     for s in common:
         dphi = snap[s][0] - prev_sats[s][0]
         # Satellite clock advanced by (dts_k - dts_{k-1}); the phase moved
         # with it — correct the observable back to pure geometry+rx clock.
         dphi += rCST.CLIGHT * (snap[s][2] - prev_sats[s][2])
-        ed.g3.add(_make_tdcp_factor(
+        ed.graph.add(_make_tdcp_factor(
             key_prev, key_curr, key_clk,
             prev_sats[s][1], snap[s][1],
             dphi, lever_arr, tc.ecef_T_nav, noise))

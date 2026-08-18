@@ -87,7 +87,7 @@ def build_pim_from_idx(tc, bias, imu_idx, target_tow=None):
         target_tow=target_tow)
 
 
-def add_imu_chain(tc, g3, v3, kk, pim, pose_p, vel_p, info):
+def add_imu_chain(tc, graph, values, kk, pim, pose_p, vel_p, info):
     """Attach the IMU chain or break it after a reset."""
     if tc._pim_discontinuity:
         info['pim_discontinuity'] = True
@@ -104,30 +104,30 @@ def add_imu_chain(tc, g3, v3, kk, pim, pose_p, vel_p, info):
             seed_pose = gtsam.Pose3(pose_p.rotation(),
                                      gtsam.Point3(*seed_trans))
             seed_vel = vel_p
-        v3.update(tc.Xpose(kk), seed_pose)
-        v3.update(tc.Vel(kk), seed_vel)
+        values.update(tc.Xpose(kk), seed_pose)
+        values.update(tc.Vel(kk), seed_vel)
         trans_sig = float(tc.cfg.pim_break_trans_sigma)
-        g3.addPriorPose3(tc.Xpose(kk), seed_pose,
+        graph.addPriorPose3(tc.Xpose(kk), seed_pose,
             gtsam.noiseModel.Diagonal.Sigmas(
                 np.array([0.1, 0.1, 0.3, trans_sig, trans_sig, trans_sig])))
-        g3.addPriorVector(tc.Vel(kk), seed_vel,
+        graph.addPriorVector(tc.Vel(kk), seed_vel,
             gtsam.noiseModel.Isotropic.Sigma(3, 2.0))
         bias_anchor = tc.tc_bias if tc.tc_bias is not None \
             else tc.tc_bias_init
-        g3.addPriorConstantBias(tc.Bias(kk), bias_anchor,
+        graph.addPriorConstantBias(tc.Bias(kk), bias_anchor,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
         tc._pim_discontinuity = False
         return
 
-    g3.add(gtsam.CombinedImuFactor(
+    graph.add(gtsam.CombinedImuFactor(
         tc.Xpose(kk - 1), tc.Vel(kk - 1),
         tc.Xpose(kk), tc.Vel(kk),
         tc.Bias(kk - 1), tc.Bias(kk), pim))
-    g3.add(gtsam.BetweenFactorConstantBias(
+    graph.add(gtsam.BetweenFactorConstantBias(
         tc.Bias(kk - 1), tc.Bias(kk),
         gtsam.imuBias.ConstantBias(np.zeros(3), np.zeros(3)),
         bias_between_noise(tc)))
     bias_anchor = bias_prior_anchor(tc, tc.tc_bias)
     if bias_anchor is not None:
-        g3.addPriorConstantBias(tc.Bias(kk), bias_anchor,
+        graph.addPriorConstantBias(tc.Bias(kk), bias_anchor,
             bias_prior_noise(tc))

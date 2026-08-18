@@ -17,13 +17,13 @@ from .. import recovery as _tc_recovery
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'bias_p', 'el', 'est2', 'g3', 'info', 'ir_map', 'iu', 'kk',
+    'R', 'bias_p', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'kk',
     'n_imu', 'obs', 'obs_sd', 'obsb', 'pim', 'pose_p', 'init_ecef', 'pred',
-    'rs', 'rsb', 'sat', 'v3', 'vel_p',
+    'rs', 'rsb', 'sat', 'values', 'vel_p',
 )
 STAGE_WRITES = (
-    'bias_p', 'est2', 'g3', 'gyro_mean', 'imu_idx_prev', 'is_recovery',
-    'kk', 'n_imu', 'pim', 'pose_p', 'pred', 'tow', 'v3', 'vel_p',
+    'bias_p', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'is_recovery',
+    'kk', 'n_imu', 'pim', 'pose_p', 'pred', 'tow', 'values', 'vel_p',
 )
 
 
@@ -31,7 +31,7 @@ def run(tc, ed):
     """Stage A: IMU preintegration + pose/vel prediction from ISAM2 prior.
 
     Populates ed: kk, pim, n_imu, gyro_mean, is_recovery,
-      g3, v3, est2, pose_p, vel_p, bias_p, pred.
+      graph, values, estimate, pose_p, vel_p, bias_p, pred.
     Early-return when n_imu==0 (no IMU samples) or prev pose is
     marginalized out (warm-reset via DDPR if possible).
     """
@@ -50,14 +50,14 @@ def run(tc, ed):
         tc.tc_bias, target_tow=tow_obs)
     info['n_imu'] = ed.n_imu
     if ed.n_imu == 0:
-        return _tc_recovery.finalize_epoch(tc, 
+        return _tc_recovery.advance_epoch_and_pack(tc, 
             tc.nav.x[0:3], 'FLT', 0, info, ed.obs)
 
-    ed.g3 = gtsam.NonlinearFactorGraph()
-    ed.v3 = gtsam.Values()
-    ed.est2 = tc.isam2.calculateEstimate()
+    ed.graph = gtsam.NonlinearFactorGraph()
+    ed.values = gtsam.Values()
+    ed.estimate = tc.isam2.calculateEstimate()
 
-    if not ed.est2.exists(tc.Xpose(ed.kk - 1)):
+    if not ed.estimate.exists(tc.Xpose(ed.kk - 1)):
         info['prev_pose_missing'] = ed.kk - 1
         dummy_pose = gtsam.Pose3(gtsam.Rot3.Identity(),
             gtsam.Point3(*(ed.R.T @ (ed.init_ecef - tc.base_ecef))))
@@ -67,20 +67,20 @@ def run(tc, ed):
             dummy_pose, dummy_pose.rotation(), np.zeros(3),
             info, 'ddpr_prev_missing_recover')
         if ok:
-            return _tc_recovery.finalize_epoch(tc, 
+            return _tc_recovery.advance_epoch_and_pack(tc, 
                 ecef_ddpr_pm, 'FLT', 0, info, ed.obs)
-        return _tc_recovery.finalize_epoch(tc, 
+        return _tc_recovery.advance_epoch_and_pack(tc, 
             tc.nav.x[0:3], 'FLT', 0, info, ed.obs)
 
-    ed.pose_p = ed.est2.atPose3(tc.Xpose(ed.kk - 1))
-    ed.vel_p = ed.est2.atVector(tc.Vel(ed.kk - 1))
-    ed.bias_p = ed.est2.atConstantBias(tc.Bias(ed.kk - 1))
+    ed.pose_p = ed.estimate.atPose3(tc.Xpose(ed.kk - 1))
+    ed.vel_p = ed.estimate.atVector(tc.Vel(ed.kk - 1))
+    ed.bias_p = ed.estimate.atConstantBias(tc.Bias(ed.kk - 1))
     ed.pred = ed.pim.predict(
         gtsam.NavState(ed.pose_p, ed.vel_p), ed.bias_p)
     info['pred_heading_deg'] = heading_from_pose(ed.pred.pose())
-    ed.v3.insert(tc.Xpose(ed.kk), ed.pred.pose())
-    ed.v3.insert(tc.Vel(ed.kk), ed.pred.velocity())
-    ed.v3.insert(tc.Bias(ed.kk), ed.bias_p)
-    _tc_pim.add_imu_chain(tc, ed.g3, ed.v3, ed.kk, ed.pim,
+    ed.values.insert(tc.Xpose(ed.kk), ed.pred.pose())
+    ed.values.insert(tc.Vel(ed.kk), ed.pred.velocity())
+    ed.values.insert(tc.Bias(ed.kk), ed.bias_p)
+    _tc_pim.add_imu_chain(tc, ed.graph, ed.values, ed.kk, ed.pim,
                         ed.pose_p, ed.vel_p, info)
     return None

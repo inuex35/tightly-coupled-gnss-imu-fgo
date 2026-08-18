@@ -20,9 +20,9 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery
-from . import isam as _tc_solver
+from . import isam as _tc_isam
 
 
 def _compute_postfit_diagnostics(tc, ed):
@@ -30,8 +30,8 @@ def _compute_postfit_diagnostics(tc, ed):
     info = ed.info
     sq = _satq.get_sat_quality(tc)
     if tc.cfg.diag_main_ddpr_res:
-        main_res_pre_fde, per_sat_res, pair_rows = _tc_postfit.main_ddpr_residuals(tc, 
-            ed.g3, ed.est2, with_pairs=True)
+        main_res_pre_fde, per_sat_res, pair_rows = _tc_residuals.main_ddpr_residuals(tc, 
+            ed.graph, ed.estimate, with_pairs=True)
         info['main_ddpr_res'] = main_res_pre_fde
         info['main_ddpr_per_sat'] = per_sat_res
         info['main_ddpr_pairs'] = pair_rows
@@ -47,7 +47,7 @@ def _compute_postfit_diagnostics(tc, ed):
         tc._cached_ddpr_res_pre = None
         tc._mres_signals.reset()
     if tc.cfg.diag_factor_residuals:
-        all_res = _tc_postfit.all_factor_residuals(tc, ed.g3, ed.est2)
+        all_res = _tc_residuals.all_factor_residuals(tc, ed.graph, ed.estimate)
         for tag, (rms, n) in all_res.items():
             info[f'fres_{tag}'] = rms
             info[f'fcnt_{tag}'] = n
@@ -93,13 +93,13 @@ def _compute_postfit_diagnostics(tc, ed):
             sat_snr_dbhz=info.get('sat_snr_dbhz'))
 
     if tc.cfg.fde_enable:
-        ed.est2 = _tc_postfit.apply_fde(tc, 
-            ed.g3, ed.kk, ed.nv, ed.est2, info)
+        ed.estimate = _tc_residuals.apply_fde(tc, 
+            ed.graph, ed.kk, ed.nv, ed.estimate, info)
 
     # Pose after FDE re-solve
-    ed.pose_tc = ed.est2.atPose3(tc.Xpose(ed.kk))
+    ed.pose_tc = ed.estimate.atPose3(tc.Xpose(ed.kk))
     info['post_heading_deg'] = heading_from_pose(ed.pose_tc)
-    tc.tc_bias = ed.est2.atConstantBias(tc.Bias(ed.kk))
+    tc.tc_bias = ed.estimate.atConstantBias(tc.Bias(ed.kk))
     enu_tc = np.array(ed.pose_tc.translation())
     ed.ecef_tc = ed.R @ enu_tc + tc.base_ecef
 
@@ -118,8 +118,8 @@ def _compute_postfit_diagnostics(tc, ed):
             v_truth.insert(tc.Xpose(ed.kk),
                            gtsam.Pose3(ed.pose_tc.rotation(),
                                         gtsam.Point3(*truth_body_enu)))
-            truth_res, truth_per_sat, truth_pair_rows = _tc_postfit.main_ddpr_residuals(tc, 
-                ed.g3, v_truth, with_pairs=True)
+            truth_res, truth_per_sat, truth_pair_rows = _tc_residuals.main_ddpr_residuals(tc, 
+                ed.graph, v_truth, with_pairs=True)
             info['ddpr_res_at_truth'] = float(truth_res)
             info['ddpr_per_sat_at_truth'] = (
                 dict(truth_per_sat) if truth_per_sat else {}

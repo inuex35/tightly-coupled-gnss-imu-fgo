@@ -15,7 +15,7 @@ import gtsam
 from ..utils import parse_lever
 
 
-def add_nhc_factor(tc, g3, kk, speed, gyro_mean_rh=None):
+def add_nhc_factor(tc, graph, kk, speed, gyro_mean_rh=None):
     """Non-Holonomic Constraint at rear-axle center in the FLU body frame."""
     if not tc.cfg.nhc_enable or speed < tc.cfg.nhc_min_speed:
         return False
@@ -30,7 +30,7 @@ def add_nhc_factor(tc, g3, kk, speed, gyro_mean_rh=None):
         np.array([1e3,
                   float(tc.cfg.nhc_sigma_lat),
                   float(tc.cfg.nhc_sigma_vert)]))
-    g3.add(gtsam.NhcFactor(
+    graph.add(gtsam.NhcFactor(
         tc.Xpose(kk), tc.Vel(kk), omega,
         np.asarray(lever, dtype=float),
         float(speed), noise, np.zeros(3)))

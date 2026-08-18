@@ -72,10 +72,10 @@ def _zupt_should_fire(tc, n_imu, info, vel_prev, gnss_available):
     return stats
 
 
-def _add_zero_velocity_prior(tc, g3, kk, info, sigma):
+def _add_zero_velocity_prior(tc, graph, kk, info, sigma):
     if sigma <= 0:
         return False
-    g3.add(gtsam.PriorFactorVector(
+    graph.add(gtsam.PriorFactorVector(
         tc.Vel(kk),
         np.zeros(3, dtype=np.float64),
         gtsam.noiseModel.Isotropic.Sigma(3, sigma)))
@@ -83,12 +83,12 @@ def _add_zero_velocity_prior(tc, g3, kk, info, sigma):
     return True
 
 
-def _add_zaru_factor(tc, g3, kk, info, sigma_rot):
+def _add_zaru_factor(tc, graph, kk, info, sigma_rot):
     if sigma_rot <= 0 or kk <= 0:
         return False
     sigmas_pose = np.array(
         [sigma_rot, sigma_rot, sigma_rot, 1e3, 1e3, 1e3])
-    g3.add(gtsam.BetweenFactorPose3(
+    graph.add(gtsam.BetweenFactorPose3(
         tc.Xpose(kk - 1), tc.Xpose(kk),
         gtsam.Pose3(),
         gtsam.noiseModel.Diagonal.Sigmas(sigmas_pose)))
@@ -96,7 +96,7 @@ def _add_zaru_factor(tc, g3, kk, info, sigma_rot):
     return True
 
 
-def _maybe_capture_or_apply_anchor(tc, g3, kk, info, rec, pose_prev,
+def _maybe_capture_or_apply_anchor(tc, graph, kk, info, rec, pose_prev,
                                     sig_t, sig_r):
     if rec is None or sig_t <= 0 or sig_r <= 0:
         return False
@@ -109,7 +109,7 @@ def _maybe_capture_or_apply_anchor(tc, g3, kk, info, rec, pose_prev,
         return True
     sigmas_anchor = np.array(
         [sig_r, sig_r, sig_r, sig_t, sig_t, sig_t])
-    g3.add(gtsam.PriorFactorPose3(
+    graph.add(gtsam.PriorFactorPose3(
         tc.Xpose(kk),
         rec.zupt_anchor_pose,
         gtsam.noiseModel.Diagonal.Sigmas(sigmas_anchor)))
@@ -117,7 +117,7 @@ def _maybe_capture_or_apply_anchor(tc, g3, kk, info, rec, pose_prev,
     return True
 
 
-def add_zupt_factors(tc, g3, kk, imu_idx_prev, n_imu, info,
+def add_zupt_factors(tc, graph, kk, imu_idx_prev, n_imu, info,
                              pose_prev=None, gnss_available=True,
                              vel_prev=None):
     """GICI-style ZUPT, callable from optimize.py and the recovery
@@ -150,12 +150,12 @@ def add_zupt_factors(tc, g3, kk, imu_idx_prev, n_imu, info,
     cfg = tc.cfg
     any_added = False
     any_added |= _add_zero_velocity_prior(
-        tc, g3, kk, info, float(cfg.zupt_sigma_zero_velocity))
+        tc, graph, kk, info, float(cfg.zupt_sigma_zero_velocity))
     any_added |= _add_zaru_factor(
-        tc, g3, kk, info, float(getattr(cfg, 'zupt_sigma_zero_rotation', 0.0)))
+        tc, graph, kk, info, float(getattr(cfg, 'zupt_sigma_zero_rotation', 0.0)))
     if not gnss_available:
         any_added |= _maybe_capture_or_apply_anchor(
-            tc, g3, kk, info, rec, pose_prev,
+            tc, graph, kk, info, rec, pose_prev,
             float(getattr(cfg, 'zupt_anchor_sigma_translation', 0.0)),
             float(getattr(cfg, 'zupt_anchor_sigma_rotation', 0.0)))
     return any_added
@@ -168,7 +168,7 @@ def add_zupt_factors_for_stage(tc, ed):
     points where DD has not constrained pose this epoch.
     """
     return add_zupt_factors(
-        tc, ed.g3, ed.kk,
+        tc, ed.graph, ed.kk,
         int(getattr(ed, 'imu_idx_prev', tc.imu_idx)),
         int(getattr(ed, 'n_imu', 0)),
         ed.info,

@@ -25,7 +25,7 @@ from .runtime_state import (
     AmbiguityState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
 from .preprocess.sat_quality import SatQualityState
-from .optimize import isam as _tc_solver
+from .optimize import isam as _tc_isam
 from .preprocess import prefit as _tc_prefit
 from .utils import sorted_sys_ids
 
@@ -449,7 +449,7 @@ class ImuGnssTc:
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
         return ecef_body + R_body @ lever_arr
 
-    def _compute_max_dd_frac(self, est2, obs_sd, sat, ns):
+    def _compute_max_dd_frac(self, estimate, obs_sd, sat, ns):
         """Max |DD_N − round(DD_N)| across systems+freqs — indicator of pose bias."""
         max_frac = 0.0
         for sys_id in sorted_sys_ids(obs_sd.sig):
@@ -462,17 +462,17 @@ class ImuGnssTc:
                 if f >= len(lams):
                     continue
                 k_ref = self._sat_states.at(ref_s, f).amb_key
-                if k_ref is None or not est2.exists(k_ref):
+                if k_ref is None or not estimate.exists(k_ref):
                     continue
-                n_ref = est2.atDouble(k_ref)
+                n_ref = estimate.atDouble(k_ref)
                 for ji in idx_sys:
                     js = sat[ji]
                     if js == ref_s:
                         continue
                     k_j = self._sat_states.at(js, f).amb_key
-                    if k_j is None or not est2.exists(k_j):
+                    if k_j is None or not estimate.exists(k_j):
                         continue
-                    dd_cyc = n_ref - est2.atDouble(k_j)
+                    dd_cyc = n_ref - estimate.atDouble(k_j)
                     frac = abs(dd_cyc - round(dd_cyc))
                     if frac > max_frac:
                         max_frac = frac
@@ -535,7 +535,7 @@ class ImuGnssTc:
 
         # Phase 1 ns<4: cannot form DD, just advance time
         if self.phase == 1 and ns < 4:
-            return _tc_recovery.finalize_epoch(self, self.nav.x[0:3], 'FLT', 0, info, obs)
+            return _tc_recovery.advance_epoch_and_pack(self, self.nav.x[0:3], 'FLT', 0, info, obs)
 
         if self.phase == 1:
             return self._run_init_epoch(
@@ -546,7 +546,7 @@ class ImuGnssTc:
             ref_vel, ref_ecef, info, ns, init_ecef, R)
 
 
-    _make_isam2 = staticmethod(_tc_solver.make_isam2)
+    _make_isam2 = staticmethod(_tc_isam.make_isam2)
     process_imu_only = _tc_recovery.process_imu_only
     _run_init_epoch = _initialization.run_init_epoch
     _run_tc_epoch = _tightly_coupled.run_tc_epoch

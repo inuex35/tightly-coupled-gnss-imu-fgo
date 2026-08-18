@@ -180,9 +180,9 @@ def add_doppler_factors(tc, ed):
     rows, scale = screen_rows(tc, ed, rows)
 
     cb_prev, drift_prev = 0.0, None
-    if chain_prev == kk - 1 and ed.est2 is not None:
+    if chain_prev == kk - 1 and ed.estimate is not None:
         try:
-            cb_prev = float(ed.est2.atDouble(tc.Clk(kk - 1)))
+            cb_prev = float(ed.estimate.atDouble(tc.Clk(kk - 1)))
             # Clk(kk-2) is already marginalized out of the lag window, so the
             # realized drift has to come from what we cached last epoch.
             if tc._doppler_cb_prev is not None:
@@ -201,7 +201,7 @@ def add_doppler_factors(tc, ed):
     drift_mps = (drift_prev if drift_prev is not None
                  else _estimate_clock_drift(tc, ed, rows))
     cb_init = cb_prev + drift_mps * dt / rCST.CLIGHT     # [s]
-    ed.v3.insert(tc.Clk(kk), cb_init)
+    ed.values.insert(tc.Clk(kk), cb_init)
     ed.info['doppler_drift_mps'] = drift_mps
 
     if chain_prev != kk - 1:
@@ -218,16 +218,16 @@ def add_doppler_factors(tc, ed):
             cb_code = _tc_clock.estimate_clock_bias(tc, ed)
             if cb_code is not None:
                 cb_init = cb_code
-                ed.v3.update(tc.Clk(kk), cb_init)
+                ed.values.update(tc.Clk(kk), cb_init)
                 anchor_sigma = float(tc.cfg.clock_pr_anchor_sigma)
-        ed.g3.add(gtsam.PriorFactorDouble(
+        ed.graph.add(gtsam.PriorFactorDouble(
             tc.Clk(kk), cb_init, tc._noise1(anchor_sigma)))
         tc._doppler_clk_last = kk
         ed.info['doppler_chain'] = 'anchored'
         return
 
     # Constant-drift prediction, loose enough that the Dopplers own the drift.
-    ed.g3.add(gtsam.BetweenFactorDouble(
+    ed.graph.add(gtsam.BetweenFactorDouble(
         tc.Clk(kk - 1), tc.Clk(kk), cb_init - cb_prev,
         tc._noise1(float(tc.cfg.doppler_clk_rw) * dt / rCST.CLIGHT)))
     tc._doppler_clk_last = kk
@@ -266,7 +266,7 @@ def add_doppler_factors(tc, ed):
     rr = np.asarray(ed.pred_ecef, dtype=float)
     n = 0
     for s, p_sat, v_sat, d_obs, lam, el, snr in rows:
-        ed.g3.add(gtsam.DopplerFactorArm(
+        ed.graph.add(gtsam.DopplerFactorArm(
             tc.Xpose(kk), tc.Vel(kk), tc.Clk(kk - 1), tc.Clk(kk),
             d_obs, lam,
             np.asarray(p_sat, dtype=float), np.asarray(v_sat, dtype=float),

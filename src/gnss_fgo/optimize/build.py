@@ -3,8 +3,8 @@
 DD code/phase factors, the BetweenFactor chain on continuing ambiguities,
 the propagate-prior fallback when the DD set is too thin to solve, and the
 optional measurement families (Doppler raw/SD, undifferenced clock PR,
-TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``ed.g3`` /
-``ed.v3``; nothing here talks to the smoother.
+TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``ed.graph`` /
+``ed.values``; nothing here talks to the smoother.
 """
 
 import os
@@ -22,9 +22,9 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery
-from . import isam as _tc_solver
+from . import isam as _tc_isam
 
 
 def _build_factor_block(tc, ed, prev_smode):
@@ -32,7 +32,7 @@ def _build_factor_block(tc, ed, prev_smode):
     info = ed.info
     # DD factor construction
     ed.nv = _tc_factors.build_dd_factors(tc, 
-        ed.g3, ed.v3, ed.obs, ed.obsb, ed.obs_sd,
+        ed.graph, ed.values, ed.obs, ed.obsb, ed.obs_sd,
         ed.rs, ed.rsb, ed.sat, ed.el, ed.iu, ed.ir_map,
         ed.pred_ecef, tc.Xpose(ed.kk), tc.lever_arm_tc,
         tc.amb_keys_tc,
@@ -70,7 +70,7 @@ def _build_factor_block(tc, ed, prev_smode):
                                    else sig_between_flt)
                 else:
                     sig_between = sig_between_fix
-                ed.g3.add(gtsam.BetweenFactorDouble(
+                ed.graph.add(gtsam.BetweenFactorDouble(
                     k_old, k_new, 0.0,
                     tc._noise1(sig_between)))
                 n_between += 1
@@ -89,15 +89,15 @@ def _build_factor_block(tc, ed, prev_smode):
 
     if ed.nv < tc.cfg.min_dd_for_solve:
         info['propagate_prior'] = ed.nv
-        ed.g3.addPriorPose3(
+        ed.graph.addPriorPose3(
             tc.Xpose(ed.kk), ed.pred.pose(),
             gtsam.noiseModel.Isotropic.Sigma(
                 6, tc.cfg.propagate_pose_sigma))
-        ed.g3.addPriorVector(
+        ed.graph.addPriorVector(
             tc.Vel(ed.kk), ed.pred.velocity(),
             gtsam.noiseModel.Isotropic.Sigma(
                 3, tc.cfg.propagate_vel_sigma))
-        ed.g3.addPriorConstantBias(
+        ed.graph.addPriorConstantBias(
             tc.Bias(ed.kk), ed.bias_p,
             gtsam.noiseModel.Isotropic.Sigma(
                 6, tc.cfg.propagate_bias_sigma))
@@ -107,7 +107,7 @@ def _build_factor_block(tc, ed, prev_smode):
             for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
                 if (s, f) in ed.prev_amb_tc:
                     _, n_prev = ed.prev_amb_tc[(s, f)]
-                    ed.g3.add(gtsam.PriorFactorDouble(
+                    ed.graph.add(gtsam.PriorFactorDouble(
                         k_new, n_prev, amb_noise))
                     n_anchored += 1
             info['n_anchored'] = n_anchored
@@ -127,11 +127,11 @@ def _build_factor_block(tc, ed, prev_smode):
 
     try:
         speed_for_nhc = float(np.linalg.norm(
-            np.array(ed.est2.atVector(tc.Vel(ed.kk - 1)))[:2]))
+            np.array(ed.estimate.atVector(tc.Vel(ed.kk - 1)))[:2]))
     except RuntimeError:
         speed_for_nhc = float(np.linalg.norm(
             np.array(ed.pred.velocity())[:2]))
-    if _tc_nhc.add_nhc_factor(tc, ed.g3, ed.kk, speed_for_nhc,
+    if _tc_nhc.add_nhc_factor(tc, ed.graph, ed.kk, speed_for_nhc,
                             gyro_mean_rh=ed.gyro_mean):
         info['nhc'] = True
 
@@ -152,7 +152,7 @@ def _build_factor_block(tc, ed, prev_smode):
                 boot_sigma = float(os.environ.get('BOOT_DDPR_SIGMA', '0.5'))
                 sigmas = np.array([1e6, 1e6, 1e6,
                                    boot_sigma, boot_sigma, boot_sigma])
-                ed.g3.addPriorPose3(
+                ed.graph.addPriorPose3(
                     tc.Xpose(ed.kk), pose_ls,
                     gtsam.noiseModel.Diagonal.Sigmas(sigmas))
                 info['bootstrap_ddpr_prior_nv'] = int(n_ls)

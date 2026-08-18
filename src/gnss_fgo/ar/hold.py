@@ -16,7 +16,7 @@ import numpy as np
 import gtsam
 
 from ..utils import sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 
 
 def _collect_held_sat_freq_keys(tc, amb_dict):
@@ -74,7 +74,7 @@ def _apply_holds_phase2_with_gate(tc, hg, key_pose, anchor_added):
         if res_pre is not None:
             try:
                 est_post = isam.calculateEstimate()
-                res_post, _ = _tc_postfit.main_ddpr_residuals(
+                res_post, _ = _tc_residuals.main_ddpr_residuals(
                     tc, full_graph, est_post)
             except (RuntimeError, IndexError):
                 res_post = None

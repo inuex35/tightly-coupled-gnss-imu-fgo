@@ -20,9 +20,9 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery
-from . import isam as _tc_solver
+from . import isam as _tc_isam
 
 
 _AR_OUTCOME_CODES = {
@@ -62,7 +62,7 @@ def _ar_eligibility(tc, ed):
         return False
     if tc.ar_max_frac < 0.5:
         max_frac = tc._compute_max_dd_frac(
-            ed.est2, ed.obs_sd, ed.sat, ed.ns)
+            ed.estimate, ed.obs_sd, ed.sat, ed.ns)
         ed.info['max_frac'] = max_frac
         if max_frac > tc.ar_max_frac:
             return False
@@ -83,7 +83,7 @@ def _run_ar_with_marginals(tc, ed):
     tc.nav.x[0:3] = tc._antenna_ecef(ed.pose_tc, ed.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.write_marginals(tc,
-        tc.isam2.getFactors(), ed.est2,
+        tc.isam2.getFactors(), ed.estimate,
         tc.Xpose(ed.kk), amb_snapshot)
     # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
     # the geometry cannot support an integer decision, do not attempt
@@ -101,13 +101,13 @@ def _run_ar_with_marginals(tc, ed):
         return
     ed.nb, ed.xa = _tc_ar.run_ar(tc,
         ed.obs, ed.rs, ed.vs, ed.dts,
-        ed.sat, ed.el, ed.iu, ed.est2,
+        ed.sat, ed.el, ed.iu, ed.estimate,
         tc.Xpose(ed.kk), amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     xv_delta = float(tc.cfg.ar_ddpr_xvalidate_delta_thresh or 0.0)
     if (xv_thr > 0.0 or xv_delta > 0.0) and ed.nb > 0 and ed.xa is not None:
         try:
-            cur_pose = ed.est2.atPose3(tc.Xpose(ed.kk))
+            cur_pose = ed.estimate.atPose3(tc.Xpose(ed.kk))
             R_body_to_ecef = tc.ecef_T_nav.compose(
                 cur_pose).rotation().matrix()
             lever_arr = (np.array(tc.lever_arm_tc)
@@ -119,7 +119,7 @@ def _run_ar_with_marginals(tc, ed):
             xa_pose = gtsam.Pose3(cur_pose.rotation(), body_nav_xa)
             v_xa = gtsam.Values()
             v_xa.insert(tc.Xpose(ed.kk), xa_pose)
-            res_xa, _ = _tc_postfit.main_ddpr_residuals(tc, ed.g3, v_xa)
+            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, ed.graph, v_xa)
             info['ar_ddpr_xvalidate_res_at_xa'] = float(res_xa)
             res_pre = tc._cached_ddpr_res_pre
             if res_pre is not None:

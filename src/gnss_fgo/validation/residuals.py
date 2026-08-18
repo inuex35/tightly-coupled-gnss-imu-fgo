@@ -7,8 +7,8 @@ from .. import state as _tc_state
 from .. import recovery as _tc_recovery
 
 
-def all_factor_residuals(tc, g3, est2):
-    """RMS of each factor type in the live graph evaluated at est2."""
+def all_factor_residuals(tc, graph, estimate):
+    """RMS of each factor type in the live graph evaluated at estimate."""
     # Buckets keyed by factor class substring → (sum_sq, count)
     buckets = {
         'DDPR':       [0.0, 0],   # DoubleDifferencePseudorange
@@ -24,12 +24,12 @@ def all_factor_residuals(tc, g3, est2):
         'Other':      [0.0, 0],
     }
     custom_cp_local = set(tc._last_custom_ddcp_local)
-    for i in range(g3.size()):
-        fac = g3.at(i)
+    for i in range(graph.size()):
+        fac = graph.at(i)
         if fac is None:
             continue
         try:
-            err = float(fac.error(est2))
+            err = float(fac.error(estimate))
         except RuntimeError:
             continue
         tname = type(fac).__name__
@@ -62,13 +62,13 @@ def all_factor_residuals(tc, g3, est2):
     return out
 
 
-def _choose_ddpr_iter_indices(tag_map, g3):
-    """Decide whether to iterate just the tagged DDPR indices (per-epoch ``g3``) or the full graph. Returns ``(iter_indices, skip_type_check)``."""
-    g3_size = g3.size()
+def _choose_ddpr_iter_indices(tag_map, graph):
+    """Decide whether to iterate just the tagged DDPR indices (per-epoch ``graph``) or the full graph. Returns ``(iter_indices, skip_type_check)``."""
+    g3_size = graph.size()
     if not tag_map or max(tag_map.keys()) >= g3_size:
         return range(g3_size), False
     try:
-        probe = g3.at(next(iter(tag_map.keys())))
+        probe = graph.at(next(iter(tag_map.keys())))
         if probe is None or 'Pseudorange' not in type(probe).__name__:
             return range(g3_size), False
     except (RuntimeError, StopIteration):
@@ -76,22 +76,22 @@ def _choose_ddpr_iter_indices(tag_map, g3):
     return sorted(tag_map.keys()), True
 
 
-def _ddpr_factor_error(fac, est2, tc, pr_base, rebuild_for_robust):
-    """Return the DDPR factor's chi-squared error at ``est2``."""
+def _ddpr_factor_error(fac, estimate, tc, pr_base, rebuild_for_robust):
+    """Return the DDPR factor's chi-squared error at ``estimate``."""
     del pr_base
     try:
         if rebuild_for_robust:
-            pose = est2.atPose3(fac.keys()[0])
+            pose = estimate.atPose3(fac.keys()[0])
             r = float(fac.evaluateError(pose)[0])
             sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
             return 0.5 * (r / sigma_pr_m) ** 2
-        return fac.error(est2)
+        return fac.error(estimate)
     except RuntimeError:
         return None
 
 
-def main_ddpr_residuals(tc, g3, est2, with_pairs=False):
-    """DDPR residuals in main graph at est2."""
+def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
+    """DDPR residuals in main graph at estimate."""
     sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
     res_sq = []
     per_sat = {}
@@ -102,14 +102,14 @@ def main_ddpr_residuals(tc, g3, est2, with_pairs=False):
     rebuild_for_robust = tc.cfg.huber_pr > 0
     pr_base = (gtsam.noiseModel.Isotropic.Sigma(1, sigma_pr_m)
                if rebuild_for_robust else None)
-    iter_indices, skip_type_check = _choose_ddpr_iter_indices(tag_map, g3)
+    iter_indices, skip_type_check = _choose_ddpr_iter_indices(tag_map, graph)
     for i in iter_indices:
-        fac = g3.at(i)
+        fac = graph.at(i)
         if fac is None:
             continue
         if not skip_type_check and 'Pseudorange' not in type(fac).__name__:
             continue
-        err = _ddpr_factor_error(fac, est2, tc, pr_base, rebuild_for_robust)
+        err = _ddpr_factor_error(fac, estimate, tc, pr_base, rebuild_for_robust)
         if err is None:
             continue
         res_m = float(np.sqrt(2.0 * max(err, 0.0)) * sigma_pr_m)
@@ -134,7 +134,7 @@ def main_ddpr_residuals(tc, g3, est2, with_pairs=False):
     return rms_all, per_sat
 
 
-def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
+def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
     """Helper: collect (fi, residual_in_meters) for current-epoch DD factors."""
     pr_entries = []
     cp_entries = []
@@ -148,7 +148,7 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, est2):
             fname == 'CustomFactor' and custom_cp_keys
             and tuple(int(k) for k in fac.keys()) in custom_cp_keys)
         try:
-            err = fac.error(est2)
+            err = fac.error(estimate)
         except RuntimeError:
             continue
         if 'Pseudorange' in fname:
@@ -218,7 +218,7 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
                 _st.amb_gen += 1
 
 
-def apply_fde(tc, g3, kk, nv, est2, info):
+def apply_fde(tc, graph, kk, nv, estimate, info):
     """GICI-style Fault Detection and Exclusion."""
     use_median = bool(int(os.environ.get('FDE_MEDIAN_SUB', '0')))
     max_iter = max(1, tc.cfg.fde_max_iter)
@@ -227,9 +227,9 @@ def apply_fde(tc, g3, kk, nv, est2, info):
     for _it in range(max_iter):
         factors_all = tc.isam2.getFactors()
         nf_total = factors_all.size()
-        fi_start = 0 if iterative else max(0, nf_total - g3.size())
+        fi_start = 0 if iterative else max(0, nf_total - graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
-            tc, factors_all, fi_start, nf_total, est2)
+            tc, factors_all, fi_start, nf_total, estimate)
         # GICI-style median subtract removes pose-common-mode bias.
         pr_median = (float(np.median([r for _, r in pr_entries]))
                    if use_median and pr_entries else 0.0)
@@ -250,7 +250,7 @@ def apply_fde(tc, g3, kk, nv, est2, info):
                 _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
                                      value=info['fde_skipped'],
                                      skip_if_active=True)
-                return est2
+                return estimate
 
         _fde_reset_rejected_amb(tc, factors_all, reject_fi)
         total_rejected += len(reject_fi)
@@ -260,16 +260,16 @@ def apply_fde(tc, g3, kk, nv, est2, info):
                 gtsam.FixedLagSmootherKeyTimestampMap(), reject_fi)
             est_fde = tc.isam2.calculateEstimate()
             if est_fde.exists(tc.Xpose(kk)):
-                est2 = est_fde
+                estimate = est_fde
         except (RuntimeError, IndexError):
             break
         # Single-pass: one removal batch, done.
         if not iterative:
             info['fde_reject'] = total_rejected
-            return est2
+            return estimate
     if total_rejected:
         info['fde_reject'] = total_rejected
-    return est2
+    return estimate
 
 
 def _ddpr_multipath_dominated(tc, info):
@@ -293,7 +293,7 @@ def _ddpr_multipath_dominated(tc, info):
     return False
 
 
-def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
+def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map, kk, info, nb=0):
     """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
     main_res = info.get('main_ddpr_res', 0.0)
@@ -301,7 +301,7 @@ def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
         return None
     if _ddpr_multipath_dominated(tc, info):
         return None
-    pred_res = _compute_res_at_pred(tc, g3, pred, kk, info)
+    pred_res = _compute_res_at_pred(tc, graph, pred, kk, info)
     fast = _ddpr_sanity_fast_path(
         tc, main_res, pose_tc, pred, pred_res, obs, info, nb=nb)
     if fast is not None:
@@ -320,7 +320,7 @@ def run_ddpr_sanity(tc, g3, est2, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
         return _ddpr_sanity_anchor_fallback(
             tc, pose_tc, pred, pred_res, info, obs)
     return _ddpr_sanity_apply_reset(
-        tc, anchor, est2, pose_tc, pred, pred_res, g3, kk, info, obs)
+        tc, anchor, estimate, pose_tc, pred, pred_res, graph, kk, info, obs)
 
 
 def _ddpr_sanity_gdop_ok(tc, info):
@@ -340,12 +340,12 @@ def _ddpr_sanity_anchor_fallback(tc, pose_tc, pred, pred_res, info, obs):
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
 
 
-def _compute_res_at_pred(tc, g3, pred, kk, info):
+def _compute_res_at_pred(tc, graph, pred, kk, info):
     """DDPR residual evaluated at the IMU-predicted pose."""
     try:
         v_pred = gtsam.Values()
         v_pred.insert(tc.Xpose(kk), pred.pose())
-        res, _ = main_ddpr_residuals(tc, g3, v_pred)
+        res, _ = main_ddpr_residuals(tc, graph, v_pred)
         info['ddpr_res_at_pred'] = res
         return float(res)
     except RuntimeError:
@@ -384,7 +384,7 @@ def _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs):
         tc._pim_discontinuity = True
     report_t = _sanity_report_translation(tc, pose_tc, pred, pred_res, info)
     ecef_tc_now = tc.R_enu2ecef @ report_t + tc.base_ecef
-    return _tc_recovery.finalize_epoch(tc, ecef_tc_now, 'FLT', 0, info, obs)
+    return _tc_recovery.advance_epoch_and_pack(tc, ecef_tc_now, 'FLT', 0, info, obs)
 
 
 def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=0):
@@ -413,7 +413,7 @@ def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=
         tc._pim_discontinuity = True
     report_t = _sanity_report_translation(tc, pose_tc, pred, pred_res, info)
     ecef_tc_now = tc.R_enu2ecef @ report_t + tc.base_ecef
-    return _tc_recovery.finalize_epoch(tc, ecef_tc_now, 'FLT', 0, info, obs)
+    return _tc_recovery.advance_epoch_and_pack(tc, ecef_tc_now, 'FLT', 0, info, obs)
 
 
 def _ddpr_sanity_trigger(tc, main_res, info):
@@ -482,7 +482,7 @@ def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
     return True
 
 
-def _ddpr_sanity_apply_reset(tc, anchor, est2, pose_tc, pred, pred_res,
-                              g3, kk, info, obs):
+def _ddpr_sanity_apply_reset(tc, anchor, estimate, pose_tc, pred, pred_res,
+                              graph, kk, info, obs):
     """Stage 5: recover from a wrong-basin lock via DDCP removal + N"""
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)

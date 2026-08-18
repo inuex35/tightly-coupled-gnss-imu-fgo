@@ -3,12 +3,12 @@
 import numpy as np
 
 from .. import recovery as _tc_recovery
-from . import residuals as _tc_postfit
+from . import residuals as _tc_residuals
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'ecef_tc', 'el', 'est2', 'g3', 'info', 'ir_map', 'iu', 'kk',
+    'R', 'ecef_tc', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'kk',
     'nb', 'obs', 'obs_sd', 'obsb', 'pose_tc', 'pred', 'rs', 'rsb',
     'sat', 'tag', 'xa',
 )
@@ -93,8 +93,8 @@ def _maybe_run_ddpr_sanity(tc, ed):
     info = ed.info
     if not tc.cfg.ddpr_sanity_enable:
         return None
-    return _tc_postfit.run_ddpr_sanity(tc,
-        ed.g3, ed.est2, ed.pose_tc, ed.ecef_tc, ed.pred,
+    return _tc_residuals.run_ddpr_sanity(tc,
+        ed.graph, ed.estimate, ed.pose_tc, ed.ecef_tc, ed.pred,
         ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,
         ed.sat, ed.el, ed.iu, ed.ir_map, ed.kk, info,
         nb=ed.nb)
