@@ -94,7 +94,7 @@ def screen_rows(tc, ed, rows):
     p_r = np.asarray(ed.pred_ecef, dtype=float)
     A, b, keep = [], [], []
     for row in rows:
-        _s, p_sat, v_sat, d_obs, lam = row[0], row[1], row[2], row[3], row[4]
+        p_sat, v_sat, d_obs, lam = row[1], row[2], row[3], row[4]
         d_vec = np.asarray(p_sat, dtype=float) - p_r
         rho = float(np.linalg.norm(d_vec))
         if rho < 1.0:
