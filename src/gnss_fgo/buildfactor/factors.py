@@ -7,8 +7,8 @@ from cssrlib.gnss import uGNSS, geodist, SAT_SYS_ARR, rCST
 from ..utils.geometry import is_bds_geo as _is_bds_geo
 from ..utils.robust import maybe_robust as _maybe_robust
 
-from ..preprocess import sat_quality as _satq
-from ..preprocess import prefit as _tc_prefit
+from .. import sat_quality as _satq
+from . import prefit as _tc_prefit
 from .factors_support import compute_cp_build_policy, get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 from ..utils import sorted_amb_keys, sorted_sys_ids

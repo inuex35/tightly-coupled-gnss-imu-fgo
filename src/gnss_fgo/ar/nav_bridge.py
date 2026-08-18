@@ -28,7 +28,7 @@ import os
 import numpy as np
 import gtsam
 
-from ..preprocess import sat_quality as _satq
+from .. import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 

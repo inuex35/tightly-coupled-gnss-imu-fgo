@@ -20,7 +20,7 @@ from ..buildfactor import tdcp as _tc_tdcp
 from ..buildfactor import factors as _tc_factors
 from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
-from ..preprocess import sat_quality as _satq
+from .. import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
 from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery

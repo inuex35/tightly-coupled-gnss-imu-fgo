@@ -2,12 +2,11 @@
 
 import numpy as np
 
-from . import sat_quality as _satq
+from .. import sat_quality as _satq
 from ..state import effective_cp_hold_epochs
 from . import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
 from .. import recovery as _tc_recovery
-from ..buildfactor import doppler_sd as _tc_doppler_sd
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
@@ -54,18 +53,12 @@ def _gdop_gate_and_skip(tc, ed):
     info['nsat'] = ed.ns
     if not (gdop_val < tc.cfg.gdop_max
             and ed.ns >= tc.cfg.nsat_min):
-        if tc.cfg.doppler_skip_aid and tc.cfg.doppler_sd_sigma > 0:
-            # The skipped epoch still has 4-6 tracked satellites whose
-            # Doppler bounds the velocity (NHC leaves vertical free and
-            # the canyon drift is mostly U). Factors land in ed.graph,
-            # which process_gdop_skip solves.
-            _update_pred_ecef(tc, ed)
-            _tc_doppler_sd.add_sd_doppler_factors(tc, ed, in_outage=True)
+        _update_pred_ecef(tc, ed)
         return _tc_recovery.process_gdop_skip(tc,
             ed.obs, ed.kk, ed.graph, ed.values, ed.R, info,
             imu_idx_prev=ed.imu_idx_prev,
             gyro_mean=getattr(ed, 'gyro_mean', None),
-            vel_prev=getattr(ed, 'vel_p', None))
+            vel_prev=getattr(ed, 'vel_p', None), ed=ed)
 
 
 
