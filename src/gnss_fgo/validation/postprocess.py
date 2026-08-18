@@ -3,6 +3,7 @@
 import numpy as np
 
 from .. import recovery as _tc_recovery
+from .. import sanity as _tc_sanity
 from . import residuals as _tc_residuals
 
 
@@ -93,7 +94,7 @@ def _maybe_run_ddpr_sanity(tc, ed):
     info = ed.info
     if not tc.cfg.ddpr_sanity_enable:
         return None
-    return _tc_residuals.run_ddpr_sanity(tc,
+    return _tc_sanity.run_ddpr_sanity(tc,
         ed.graph, ed.estimate, ed.pose_tc, ed.ecef_tc, ed.pred,
         ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,
         ed.sat, ed.el, ed.iu, ed.ir_map, ed.kk, info,

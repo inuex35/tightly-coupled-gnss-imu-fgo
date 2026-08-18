@@ -3,7 +3,7 @@
 import numpy as np
 
 from cssrlib.gnss import time2gpst
-from ..buildfactor import factors as _tc_factors
+from ..buildfactor.factors_support import get_wavelengths as _get_wavelengths
 
 
 def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
@@ -18,7 +18,7 @@ def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
 
     for i in range(ns):
         s = sat[i]
-        lams = _tc_factors.get_wavelengths(tc, obs_sd, s)
+        lams = _get_wavelengths(tc, obs_sd, s)
 
         for f in range(nf):
             current_sats.add((s, f))
@@ -202,7 +202,7 @@ def _compute_mw_n_wl(tc, obs, iu_idx, s, f):
     Pf = obs.P[iu_idx, f]
     if L1 == 0.0 or Lf == 0.0 or P1 == 0.0 or Pf == 0.0:
         return None
-    lams = _tc_factors.get_wavelengths(tc, obs, s)
+    lams = _get_wavelengths(tc, obs, s)
     if len(lams) <= f or lams[0] <= 0 or lams[f] <= 0 or lams[0] == lams[f]:
         return None
     f1 = 1.0 / lams[0]      # cycles/m equivalent (c cancels out below)
