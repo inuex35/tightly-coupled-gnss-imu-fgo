@@ -21,7 +21,7 @@ from ..buildfactor import nhc as _tc_nhc
 from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery
 
 
@@ -34,9 +34,9 @@ def _solve_isam2(tc, ed):
             if tc._sat_states.at(*sf).amb_key is not None:
                 extra.append(k_old)
         extra.extend(tc._doppler_keep_keys)
-        fls_update(tc, ed.g3, ed.v3, ed.kk, keep_keys=extra,
+        fls_update(tc, ed.graph, ed.values, ed.kk, keep_keys=extra,
                          remove_indices=ed.remove_indices)
-        ed.est2 = tc.isam2.calculateEstimate()
+        ed.estimate = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         # ValueError: ISAM2 marginalization raises it ("Asking to remove
         # variables from the variable index that are not unused") when a

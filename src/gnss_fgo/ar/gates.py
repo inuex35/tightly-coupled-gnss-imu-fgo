@@ -15,7 +15,7 @@ These are policy, not resolution: nothing here touches LAMBDA's inputs.
 import numpy as np
 import gtsam
 
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 
 
 def should_skip_ar_precheck(tc):
@@ -122,7 +122,7 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
             v_xa = gtsam.Values()
             v_xa.insert(key_pose,
                         gtsam.Pose3(cur_pose.rotation(), body_nav))
-            res_xa, _ = _tc_postfit.main_ddpr_residuals(tc, ed.g3, v_xa)
+            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, ed.graph, v_xa)
         except (RuntimeError, ValueError, IndexError):
             res_xa = None
         if res_pre is not None and res_xa is not None:

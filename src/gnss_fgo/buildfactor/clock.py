@@ -100,7 +100,7 @@ def add_clock_pr_factors(tc, ed):
     for _s, p_sat, pr, dts, el in _iono_free_rows(tc, ed):
         model = gtsam.noiseModel.Isotropic.Sigma(
             1, sigma / max(np.sin(el), 0.1))
-        ed.g3.add(gtsam.PseudorangeFactorArm(
+        ed.graph.add(gtsam.PseudorangeFactorArm(
             tc.Xpose(int(ed.kk)), tc.Clk(int(ed.kk)), pr, p_sat, lever,
             tc.ecef_T_nav, dts, model))
         n += 1

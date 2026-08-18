@@ -51,9 +51,9 @@ class EpochData:
     pim: Any = None                    # PreintegratedCombinedMeasurements
     n_imu: int = 0                     # samples integrated this epoch
     gyro_mean: np.ndarray | None = None  # body-frame mean gyro (3,)
-    g3: Any = None                     # gtsam.NonlinearFactorGraph
-    v3: Any = None                     # gtsam.Values (initial vals)
-    est2: Any = None                   # gtsam.Values (smoother est)
+    graph: Any = None                     # gtsam.NonlinearFactorGraph
+    values: Any = None                     # gtsam.Values (initial vals)
+    estimate: Any = None                   # gtsam.Values (smoother est)
     pose_p:  Any = None                # gtsam.Pose3 — Xpose(kk-1)
     vel_p:   np.ndarray | None = None  # vel(kk-1)
     bias_p:  Any = None                # imuBias.ConstantBias(kk-1)

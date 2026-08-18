@@ -21,7 +21,7 @@ def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
                                        rsb, sat, el, iu, ir_map,
                                        sol, info, R)
     tc._last_sol_ecef = np.array(sol)
-    return _tc_recovery.finalize_epoch(tc, sol, tag, nb, info, obs)
+    return _tc_recovery.advance_epoch_and_pack(tc, sol, tag, nb, info, obs)
 
 
 def _p1_fresh_restart(tc):
