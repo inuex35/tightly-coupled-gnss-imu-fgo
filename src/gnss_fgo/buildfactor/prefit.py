@@ -8,11 +8,9 @@ Future hooks: Mahalanobis χ² per-sat gate, two-stage
 Doppler×IMU velocity outlier test (see refactor_plan.md).
 """
 
-import os
 import numpy as np
 
 from cssrlib.gnss import uGNSS
-from ..utils import get_wavelengths as _utils_get_wavelengths
 
 from ..utils import is_bds_geo as _utils_is_bds_geo
 

@@ -14,7 +14,6 @@ the monolith-era names importable -- callers and long-lived probes address
 """
 
 import numpy as np
-import gtsam
 
 from . import gates as ar_gates
 from . import hold as ar_hold
@@ -23,7 +22,6 @@ from . import problem as ar_problem
 from . import retry as ar_retry
 from . import subset as ar_subset
 from .ambiguity_resolver import AmbiguityResolver
-from ..utils import sorted_amb_items
 
 # Compatibility re-exports: external callers and long-lived probes address
 # these through ar.*; the implementations moved but the names did not.
