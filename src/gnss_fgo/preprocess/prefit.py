@@ -68,14 +68,14 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     # Fresh pick: highest-elevation, excluding BDS GEO and high-residual sats
     last_res = tc._last_per_sat_res
     thresh = tc.cfg.per_sat_res_thresh
-    def ok(i):
+    def is_ref_candidate(i):
         s = sat[i]
         if sys_id == uGNSS.BDS and _utils_is_bds_geo(s):
             return False
         if last_res.get(s, 0.0) > thresh:
             return False
         return True
-    pool = [i for i in idx_sys if ok(i)]
+    pool = [i for i in idx_sys if is_ref_candidate(i)]
     if not pool:
         # Fallback: drop multipath filter (keep only GEO filter)
         pool = [i for i in idx_sys

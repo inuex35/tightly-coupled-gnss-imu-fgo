@@ -12,10 +12,10 @@ from ..buildfactor import doppler_sd as _tc_doppler_sd
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'el', 'est2', 'g3', 'imu_idx_prev', 'info', 'ir_map', 'iu',
+    'R', 'el', 'estimate', 'graph', 'imu_idx_prev', 'info', 'ir_map', 'iu',
     'kk', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_enu', 'pred',
     'prev_amb_tc', 'remove_indices', 'rs', 'sat', 'skip_cp_now',
-    'slip_keys', 'v3',
+    'slip_keys', 'values',
 )
 STAGE_WRITES = (
     'el[*]', 'iu[*]', 'pred_ecef', 'pred_enu', 'prev_amb_tc',
@@ -38,10 +38,10 @@ def run(tc, ed):
         info['fresh_amb_bootstrap'] = int(tc._tc_fresh_amb_epochs)
     sq = _satq.get_sat_quality(tc)
 
-    forced_hold = _collect_sat_telemetry_and_holds(tc, ed, sq)
+    forced_hold = _collect_telemetry_and_tick_holds(tc, ed, sq)
     sq.forced_hold_per_sat = forced_hold
 
-    _carry_prev_amb(tc, ed, fresh_amb_bootstrap, forced_hold)
+    _carry_prev_amb_and_rotate_keys(tc, ed, fresh_amb_bootstrap, forced_hold)
     _update_pred_ecef(tc, ed)
     return None
 
@@ -57,20 +57,20 @@ def _gdop_gate_and_skip(tc, ed):
         if tc.cfg.doppler_skip_aid and tc.cfg.doppler_sd_sigma > 0:
             # The skipped epoch still has 4-6 tracked satellites whose
             # Doppler bounds the velocity (NHC leaves vertical free and
-            # the canyon drift is mostly U). Factors land in ed.g3,
+            # the canyon drift is mostly U). Factors land in ed.graph,
             # which process_gdop_skip solves.
             _update_pred_ecef(tc, ed)
             _tc_doppler_sd.add_sd_doppler_factors(tc, ed, in_outage=True)
         return _tc_recovery.process_gdop_skip(tc,
-            ed.obs, ed.kk, ed.g3, ed.v3, ed.R, info,
+            ed.obs, ed.kk, ed.graph, ed.values, ed.R, info,
             imu_idx_prev=ed.imu_idx_prev,
             gyro_mean=getattr(ed, 'gyro_mean', None),
             vel_prev=getattr(ed, 'vel_p', None))
 
 
 
-def _collect_sat_telemetry_and_holds(tc, ed, sq):
-    """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick + CP-lock update + residual-based hold extension. Returns ``forced_hold`` set populated by ``sq.tick``."""
+def _collect_telemetry_and_tick_holds(tc, ed, sq):
+    """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick, CP-lock update, and the global CP-hold countdown/release decision. Returns the ``forced_hold`` set."""
     info = ed.info
     # Cycle slip detection + CMC multipath detection
     n_reset, ed.remove_indices, n_cmc, ed.slip_keys = \
@@ -137,8 +137,8 @@ def _collect_sat_telemetry_and_holds(tc, ed, sq):
 
 
 
-def _carry_prev_amb(tc, ed, fresh_amb_bootstrap, forced_hold):
-    """Step 6 — copy previous-epoch ambiguity values onto ``ed.prev_amb_tc`` for the BetweenN chain, skipping forced-hold sats and entire-epoch CP-hold."""
+def _carry_prev_amb_and_rotate_keys(tc, ed, fresh_amb_bootstrap, forced_hold):
+    """Step 6 — copy prev-epoch N values onto ``ed.prev_amb_tc`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skips forced-hold sats and whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     ed.prev_amb_tc = {}
     if fresh_amb_bootstrap:
@@ -151,8 +151,8 @@ def _carry_prev_amb(tc, ed, fresh_amb_bootstrap, forced_hold):
             if (s, f) in forced_hold:
                 tc._sat_states.get(s, f).amb_gen += 1
                 continue
-            if ed.est2.exists(k):
-                ed.prev_amb_tc[(s, f)] = (k, ed.est2.atDouble(k))
+            if ed.estimate.exists(k):
+                ed.prev_amb_tc[(s, f)] = (k, ed.estimate.atDouble(k))
     for st in tc._sat_states.values():
         st.amb_key = None
     if fresh_amb_bootstrap:

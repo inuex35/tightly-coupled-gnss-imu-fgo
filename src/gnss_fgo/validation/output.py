@@ -10,7 +10,7 @@ from .. import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
-STAGE_READS = ('R', 'est2', 'info', 'kk', 'nb', 'obs', 'sol', 'tag')
+STAGE_READS = ('R', 'estimate', 'info', 'kk', 'nb', 'obs', 'sol', 'tag')
 STAGE_WRITES = ()
 
 
@@ -24,7 +24,7 @@ def run(tc, ed):
     # Diagnostic: FLS re-optimization drift of pose(kk-1)
     try:
         if ed.kk > 0:
-            prev_pose_now = ed.est2.atPose3(tc.Xpose(ed.kk - 1))
+            prev_pose_now = ed.estimate.atPose3(tc.Xpose(ed.kk - 1))
             prev_enu_now = np.array(prev_pose_now.translation())
             prev_ecef_now = ed.R @ prev_enu_now + tc.base_ecef
             prev_ant_now = tc._antenna_ecef(
@@ -42,5 +42,5 @@ def run(tc, ed):
         info['fls_update_ms'] = float(
             tc._fls_update_last_ms)
     tc._last_per_sat_res = info.get('main_ddpr_per_sat', {})
-    return _tc_recovery.finalize_epoch(tc, 
+    return _tc_recovery.advance_epoch_and_pack(tc, 
         ed.sol, ed.tag, ed.nb, info, ed.obs)

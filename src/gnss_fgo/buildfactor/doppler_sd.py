@@ -84,7 +84,7 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
             # 2152 m blackout drift without it, 25 m with it).
             noise = gtsam.noiseModel.Robust.Create(
                 gtsam.noiseModel.mEstimator.Huber.Create(huber), noise)
-        ed.g3.add(gtsam.SingleDifferenceDopplerFactorArm(
+        ed.graph.add(gtsam.SingleDifferenceDopplerFactorArm(
             tc.Xpose(kk), tc.Vel(kk),
             row[3], ref[3],                 # measured Doppler [Hz]
             row[4], ref[4],                 # wavelength [m/cycle]

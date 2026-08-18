@@ -15,21 +15,21 @@ from ..buildfactor import zupt as _tc_zupt
 from ..preprocess import prefit as _tc_prefit
 from ..preprocess import sat_quality as _satq
 from ..utils import heading_from_pose, sorted_amb_items
-from ..validation import residuals as _tc_postfit
+from ..validation import residuals as _tc_residuals
 from .. import recovery as _tc_recovery
-from . import isam as _tc_solver
+from . import isam as _tc_isam
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'bias_p', 'dts', 'ecef_tc', 'el', 'est2', 'g3', 'gyro_mean',
+    'R', 'bias_p', 'dts', 'ecef_tc', 'el', 'estimate', 'graph', 'gyro_mean',
     'info', 'ir_map', 'iu', 'kk', 'nb', 'ns', 'nv', 'obs', 'obs_sd',
     'obsb', 'pose_tc', 'pred_ecef', 'pred', 'prev_amb_tc',
     'remove_indices', 'rs', 'rsb', 'sat', 'skip_cp_now', 'slip_keys',
-    'v3', 'vs',
+    'values', 'vs',
 )
 STAGE_WRITES = (
-    'ecef_tc', 'est2', 'nb', 'nv', 'pose_tc', 'prev_amb_tc[*]', 'xa',
+    'ecef_tc', 'estimate', 'nb', 'nv', 'pose_tc', 'prev_amb_tc[*]', 'xa',
 )
 
 
