@@ -2,9 +2,7 @@
 
 import numpy as np
 
-from .. import recovery as _tc_recovery
 from .. import sanity as _tc_sanity
-from . import residuals as _tc_residuals
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

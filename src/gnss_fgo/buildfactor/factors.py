@@ -398,11 +398,9 @@ class DdFactorBuilder:
     def run(self):
         """Build all DD factors for this call and return the factor count"""
         tc = self.tc
-        obs = self.obs
         obs_sd = self.obs_sd
         sat = self.sat
         el = self.el
-        iu = self.iu
         amb_dict = self.amb_dict
         dd_epoch = self.dd_epoch
         slip_keys = self.slip_keys

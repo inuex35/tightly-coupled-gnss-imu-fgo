@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import gtsam
 
-from cssrlib.gnss import rCST, sat2prn, uGNSS
+from cssrlib.gnss import sat2prn
 
 from .pipeline_helpers import sorted_sys_ids
 from .robust import maybe_robust

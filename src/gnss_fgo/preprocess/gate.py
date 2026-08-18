@@ -3,7 +3,6 @@
 import numpy as np
 
 from .. import sat_quality as _satq
-from ..state import effective_cp_hold_epochs
 from . import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
 from .. import recovery as _tc_recovery
