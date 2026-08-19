@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import cssrlib.rinex as rn
 import cssrlib.gnss as gn
-from cssrlib.gnss import rSigRnx, uTYP, ecef2pos, satazel, sat2prn
+from cssrlib.gnss import uTYP, ecef2pos, sat2prn
 from cssrlib.ephemeris import satposs
 from gnss_fgo import ImuGnssTc, load_imu_csv
 from gnss_fgo.utils import R_ENU2NED, R_FRD2FLU
@@ -42,31 +42,6 @@ def _format_sat_freq(sat, freq):
     sys_i, prn = sat2prn(int(sat))
     sys_ch = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}.get(sys_i, '?')
     return f"{sys_ch}{prn:02d}f{int(freq)}"
-
-
-def _format_dirty_reset(detail):
-    parts = []
-    for item in detail:
-        parts.append(
-            f"{_format_sat_freq(item['sat'], item['freq'])}"
-            f":res={item['ddpr_res']:.2f}"
-            f"/cppr={item['cp_pr_reject']}"
-            f"/hold={item['hold_epochs']}"
-        )
-    return ",".join(parts)
-
-
-def _format_dirty_penalized(detail):
-    parts = []
-    for item in detail:
-        extra = f"/cool={item['cooldown_epochs']}" if item['cooldown_epochs'] > 0 else ""
-        parts.append(
-            f"{_format_sat_freq(item['sat'], item['freq'])}"
-            f":res={item['ddpr_res']:.2f}"
-            f"/cppr={item['cp_pr_reject']}"
-            f"/sus={item['suspect_streak']}{extra}"
-        )
-    return ",".join(parts)
 
 
 def _pose_rph_deg(tc):
@@ -353,10 +328,6 @@ def main():
                     extra += f"(truth={ddpr_err:.2f})"
                 if 'ddpr_res' in info:
                     extra += f" res={info['ddpr_res']:.2f}"
-            if 'ddpr_untrusted_res' in info:
-                extra += f" UNTRUSTED_RES({info['ddpr_untrusted_res']:.2f})"
-            if 'ddpr_jump' in info:
-                extra += f" JUMP({info['ddpr_jump']:.1f})"
             if info.get('nhc'):
                 extra += " NHC"
             if 'lambda_correction' in info:
@@ -389,16 +360,6 @@ def main():
                     sys_i, prn = sat2prn(sw)
                     sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
                     extra += f" worst={sys_ch}{prn:02d}:{rw:.1f}"
-            if 'dirty_sat_reset' in info:
-                extra += f" DIRTY_RESET(n={info['dirty_sat_reset']})"
-                detail = info.get('dirty_sat_reset_detail')
-                if detail:
-                    extra += f"[{_format_dirty_reset(detail)}]"
-            if 'dirty_sat_penalized' in info:
-                extra += f" DIRTY_PEN(n={info['dirty_sat_penalized']})"
-                detail = info.get('dirty_sat_penalized_detail')
-                if detail:
-                    extra += f"[{_format_dirty_penalized(detail)}]"
             if int(info.get('held_release_flt_count', 0) or 0) > 0:
                 s_rel = int(info.get('held_release_flt_sat', 0) or 0)
                 f_rel = int(info.get('held_release_flt_freq', 0) or 0)
