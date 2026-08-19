@@ -7,8 +7,8 @@ from .. import sanity as _tc_sanity
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'ecef_tc', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'kk',
-    'nb', 'obs', 'obs_sd', 'obsb', 'pose_tc', 'pred', 'rs', 'rsb',
+    'R_enu2ecef', 'ecef_tc', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'key_idx',
+    'nb', 'obs', 'obs_sd', 'obsb', 'pose_tc', 'pred_nav', 'rs', 'rsb',
     'sat', 'tag', 'xa',
 )
 STAGE_WRITES = (
@@ -64,51 +64,51 @@ def _release_suspicious_held_on_flt(tc, info):
     return 1
 
 
-def run(tc, ed):
+def run(tc, epoch):
     """Stage D: post-solve accuracy policy."""
-    _record_innovation(tc, ed)
-    sanity_result = _maybe_run_ddpr_sanity(tc, ed)
+    _record_innovation(tc, epoch)
+    sanity_result = _maybe_run_ddpr_sanity(tc, epoch)
     if sanity_result is not None:
         return sanity_result
-    ed.sol, ed.tag, ed.nb = _decide_fix_or_flt(tc, ed)
-    _update_streaks_and_post_hooks(tc, ed)
+    epoch.sol, epoch.tag, epoch.nb = _decide_fix_or_flt(tc, epoch)
+    _update_streaks_and_post_hooks(tc, epoch)
     return None
 
 
-def _record_innovation(tc, ed):
+def _record_innovation(tc, epoch):
     """Phase D-1 — record |pose_tc - IMU-predicted pose| as the innovation diagnostic."""
-    info = ed.info
+    info = epoch.info
     # Innovation vs IMU prediction (diagnostic + next-epoch CP-hold trigger)
-    pred_ecef = (ed.R @ np.array(ed.pred.pose().translation())
+    pred_ecef = (epoch.R_enu2ecef @ np.array(epoch.pred_nav.pose().translation())
                  + tc.base_ecef)
-    innov = np.linalg.norm(ed.ecef_tc - pred_ecef)
+    innov = np.linalg.norm(epoch.ecef_tc - pred_ecef)
     info['innovation'] = innov
     # Innovation CP-hold trigger disabled — pure-form pipeline.
 
 
 
-def _maybe_run_ddpr_sanity(tc, ed):
+def _maybe_run_ddpr_sanity(tc, epoch):
     """Phase D-2 — opt-in DDPR sanity warm-reset (cfg.ddpr_sanity_enable). Returns the recovery early-return tuple when sanity fires, else None."""
-    info = ed.info
+    info = epoch.info
     if not tc.cfg.ddpr_sanity_enable:
         return None
     return _tc_sanity.run_ddpr_sanity(tc,
-        ed.graph, ed.estimate, ed.pose_tc, ed.ecef_tc, ed.pred,
-        ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,
-        ed.sat, ed.el, ed.iu, ed.ir_map, ed.kk, info,
-        nb=ed.nb)
+        epoch.graph, epoch.estimate, epoch.pose_tc, epoch.ecef_tc, epoch.pred_nav,
+        epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
+        epoch.sat, epoch.el, epoch.iu, epoch.ir_map, epoch.key_idx, info,
+        nb=epoch.nb)
 
 
-def _decide_fix_or_flt(tc, ed):
+def _decide_fix_or_flt(tc, epoch):
     """Stage D step 3 — lambda_correction / weak-fix / low-nb gates.
 
     Pure decision: returns ``(sol, tag, nb)``; the caller applies it.
     """
-    info = ed.info
+    info = epoch.info
     # FIX / FLT tag decision + FLT DDPR-LS fallback
-    pose_tc_antenna = tc._antenna_ecef(ed.pose_tc, ed.ecef_tc)
-    if tc.nav.smode == 4 and ed.nb > 0:
-        lc = float(np.linalg.norm(ed.xa[0:3] - pose_tc_antenna))
+    pose_tc_antenna = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
+    if tc.nav.smode == 4 and epoch.nb > 0:
+        lc = float(np.linalg.norm(epoch.xa[0:3] - pose_tc_antenna))
         info['lambda_correction'] = lc
         prev_was_flt = int(info.get('prev_smode', 0)) == 5
         prev_fix_streak_max = max(
@@ -136,36 +136,36 @@ def _decide_fix_or_flt(tc, ed):
             info['lambda_corr_hard_reject'] = lc
             return pose_tc_antenna, 'FLT', 0
         elif (tc.cfg.low_nb_fix_reject_nb_max > 0
-                and ed.nb <= tc.cfg.low_nb_fix_reject_nb_max
+                and epoch.nb <= tc.cfg.low_nb_fix_reject_nb_max
                 and (not tc.cfg.low_nb_fix_only_after_flt or low_nb_fresh)):
             info['weak_fix_reject'] = True
-            info['weak_fix_reject_nb'] = ed.nb
+            info['weak_fix_reject_nb'] = epoch.nb
             info['weak_fix_reject_lc'] = lc
             info['weak_fix_reject_main_ddpr_res'] = main_res
             return pose_tc_antenna, 'FLT', 0
         elif (tc.cfg.weak_fix_nb_max > 0
-                and ed.nb <= tc.cfg.weak_fix_nb_max
+                and epoch.nb <= tc.cfg.weak_fix_nb_max
                 and (not tc.cfg.weak_fix_only_after_flt or weak_fix_fresh)
                 and ((tc.cfg.weak_fix_lambda_corr_max > 0
                       and lc > tc.cfg.weak_fix_lambda_corr_max)
                      or (tc.cfg.weak_fix_main_ddpr_res_max > 0
                          and main_res > tc.cfg.weak_fix_main_ddpr_res_max))):
             info['weak_fix_reject'] = True
-            info['weak_fix_reject_nb'] = ed.nb
+            info['weak_fix_reject_nb'] = epoch.nb
             info['weak_fix_reject_lc'] = lc
             info['weak_fix_reject_main_ddpr_res'] = main_res
             return pose_tc_antenna, 'FLT', 0
         else:
-            return ed.xa[0:3], 'FIX', ed.nb
+            return epoch.xa[0:3], 'FIX', epoch.nb
     else:
-        return pose_tc_antenna, 'FLT', ed.nb
+        return pose_tc_antenna, 'FLT', epoch.nb
 
 
 
-def _update_streaks_and_post_hooks(tc, ed):
+def _update_streaks_and_post_hooks(tc, epoch):
     """Phase D-4 — per-sat fix-streak update."""
-    info = ed.info
-    if ed.tag == 'FIX':
+    info = epoch.info
+    if epoch.tag == 'FIX':
         for (s, f), _ in tc._sat_states.amb_items():
             try:
                 held = (1 <= s <= tc.nav.fix.shape[0]

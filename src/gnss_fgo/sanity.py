@@ -36,14 +36,14 @@ def _ddpr_multipath_dominated(tc, info):
 
 
 def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
-                     rs, rsb, sat, el, iu, ir_map, kk, info, nb=0):
+                     rs, rsb, sat, el, iu, ir_map, key_idx, info, nb=0):
     """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
     main_res = info.get('main_ddpr_res', 0.0)
     if not _ddpr_sanity_trigger(tc, main_res, info):
         return None
     if _ddpr_multipath_dominated(tc, info):
         return None
-    pred_res = _compute_res_at_pred(tc, graph, pred, kk, info)
+    pred_res = _compute_res_at_pred(tc, graph, pred, key_idx, info)
     fast = _ddpr_sanity_fast_path(
         tc, main_res, pose_tc, pred, pred_res, obs, info, nb=nb)
     if fast is not None:
@@ -62,7 +62,7 @@ def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_
         return _ddpr_sanity_anchor_fallback(
             tc, pose_tc, pred, pred_res, info, obs)
     return _ddpr_sanity_apply_reset(
-        tc, anchor, estimate, pose_tc, pred, pred_res, graph, kk, info, obs)
+        tc, anchor, estimate, pose_tc, pred, pred_res, graph, key_idx, info, obs)
 
 
 def _ddpr_sanity_gdop_ok(tc, info):
@@ -82,11 +82,11 @@ def _ddpr_sanity_anchor_fallback(tc, pose_tc, pred, pred_res, info, obs):
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
 
 
-def _compute_res_at_pred(tc, graph, pred, kk, info):
+def _compute_res_at_pred(tc, graph, pred, key_idx, info):
     """DDPR residual evaluated at the IMU-predicted pose."""
     try:
         v_pred = gtsam.Values()
-        v_pred.insert(tc.Xpose(kk), pred.pose())
+        v_pred.insert(tc.Xpose(key_idx), pred.pose())
         res, _ = _tc_residuals.main_ddpr_residuals(tc, graph, v_pred)
         info['ddpr_res_at_pred'] = res
         return float(res)
@@ -225,6 +225,6 @@ def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
 
 
 def _ddpr_sanity_apply_reset(tc, anchor, estimate, pose_tc, pred, pred_res,
-                              graph, kk, info, obs):
+                              graph, key_idx, info, obs):
     """Stage 5: recover from a wrong-basin lock via DDCP removal + N"""
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)

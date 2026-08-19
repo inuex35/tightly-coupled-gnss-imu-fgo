@@ -78,30 +78,30 @@ def _make_tdcp_factor(key_prev, key_curr, key_clk,
     return gtsam.CustomFactor(noise, [key_prev, key_curr, key_clk], error_fn)
 
 
-def add_tdcp_factors(tc, ed):
-    """Add undifferenced TDCP factors between Xpose(kk-1) and Xpose(kk)."""
+def add_tdcp_factors(tc, epoch):
+    """Add undifferenced TDCP factors between Xpose(key_idx-1) and Xpose(key_idx)."""
     sigma = float(getattr(tc.cfg, 'tdcp_sigma', 0.0) or 0.0)
     prev = getattr(tc, '_tdcp_prev', None)
     # Snapshot the current epoch for the next one.
     snap = {}
-    obs = ed.obs
+    obs = epoch.obs
     f = 0
-    for idx_pos, k in enumerate(ed.iu):
-        s = int(ed.sat[idx_pos])
+    for idx_pos, k in enumerate(epoch.iu):
+        s = int(epoch.sat[idx_pos])
         L = float(obs.L[k, f]) if f < obs.L.shape[1] else 0.0
         lam = float(tc._sat_states.at(s, f).amb_lam or 0.0)
         if L == 0.0 or lam <= 0.0:
             continue
-        if (s, f) in (getattr(ed, 'slip_keys', None) or ()):
+        if (s, f) in (getattr(epoch, 'slip_keys', None) or ()):
             continue
-        rs_xyz = np.asarray(ed.rs[k, :3], dtype=float)
+        rs_xyz = np.asarray(epoch.rs[k, :3], dtype=float)
         if not np.isfinite(rs_xyz).all() or np.linalg.norm(rs_xyz) < 1e3:
             continue
-        dts = float(ed.dts[k]) if ed.dts is not None else 0.0
+        dts = float(epoch.dts[k]) if epoch.dts is not None else 0.0
         snap[s] = (L * lam, rs_xyz, dts)
-    tc._tdcp_prev = {'kk': ed.kk, 'sats': snap}
+    tc._tdcp_prev = {'key_idx': epoch.key_idx, 'sats': snap}
 
-    if sigma <= 0 or prev is None or prev.get('kk') != ed.kk - 1:
+    if sigma <= 0 or prev is None or prev.get('key_idx') != epoch.key_idx - 1:
         return 0
     prev_sats = prev['sats']
     common = sorted(s for s in snap if s in prev_sats)
@@ -114,23 +114,23 @@ def add_tdcp_factors(tc, ed):
     lever_arr = (np.array(tc.lever_arm_tc)
                  if getattr(tc, 'lever_arm_tc', None) is not None
                  else np.zeros(3))
-    key_prev = tc.Xpose(ed.kk - 1)
-    key_curr = tc.Xpose(ed.kk)
-    key_clk = gtsam.symbol('d', ed.kk)
-    ed.values.insert(key_clk, 0.0)
+    key_prev = tc.Xpose(epoch.key_idx - 1)
+    key_curr = tc.Xpose(epoch.key_idx)
+    key_clk = gtsam.symbol('d', epoch.key_idx)
+    epoch.values.insert(key_clk, 0.0)
     # Weak prior keeps the clock-delta variable determinate even if all
     # TDCP factors get FDE-removed later.
-    ed.graph.addPriorDouble(key_clk, 0.0, tc._noise1(1.0e4))
+    epoch.graph.addPriorDouble(key_clk, 0.0, tc._noise1(1.0e4))
     n = 0
     for s in common:
         dphi = snap[s][0] - prev_sats[s][0]
         # Satellite clock advanced by (dts_k - dts_{k-1}); the phase moved
         # with it — correct the observable back to pure geometry+rx clock.
         dphi += rCST.CLIGHT * (snap[s][2] - prev_sats[s][2])
-        ed.graph.add(_make_tdcp_factor(
+        epoch.graph.add(_make_tdcp_factor(
             key_prev, key_curr, key_clk,
             prev_sats[s][1], snap[s][1],
             dphi, lever_arr, tc.ecef_T_nav, noise))
         n += 1
-    ed.info['n_tdcp'] = n
+    epoch.info['n_tdcp'] = n
     return n

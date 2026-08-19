@@ -3,8 +3,8 @@
 DD code/phase factors, the BetweenFactor chain on continuing ambiguities,
 the propagate-prior fallback when the DD set is too thin to solve, and the
 optional measurement families (Doppler raw/SD, undifferenced clock PR,
-TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``ed.graph`` /
-``ed.values``; nothing here talks to the smoother.
+TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``epoch.graph`` /
+``epoch.values``; nothing here talks to the smoother.
 """
 
 
@@ -22,21 +22,21 @@ from .. import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 
-def _build_factor_block(tc, ed, prev_smode):
+def _build_factor_block(tc, epoch, prev_smode):
     """Stage C1 — DD factors + BetweenN chain + propagate-prior fallback + (Doppler / NHC / ZUPT / bootstrap-DDPR) priors."""
-    info = ed.info
+    info = epoch.info
     # DD factor construction
-    ed.nv = _tc_factors.build_dd_factors(tc, 
-        ed.graph, ed.values, ed.obs, ed.obsb, ed.obs_sd,
-        ed.rs, ed.rsb, ed.sat, ed.el, ed.iu, ed.ir_map,
-        ed.pred_ecef, tc.Xpose(ed.kk), tc.lever_arm_tc,
+    epoch.nv = _tc_factors.build_dd_factors(tc, 
+        epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
+        epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
+        epoch.pred_ecef, tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
         tc.amb_keys_tc,
-        track_indices=True, dd_epoch=ed.kk,
-        prev_amb_values=ed.prev_amb_tc,
-        skip_cp=ed.skip_cp_now, slip_keys=ed.slip_keys)
+        track_indices=True, dd_epoch=epoch.key_idx,
+        prev_amb_values=epoch.prev_amb_values,
+        skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
     sq = _satq.get_sat_quality(tc)
     sat_lock_age = {}
-    for s in ed.sat:
+    for s in epoch.sat:
         s = int(s)
         ages = [
             int(sq.cp_lock_streak.get((s, f), 0))
@@ -53,10 +53,10 @@ def _build_factor_block(tc, ed, prev_smode):
     warmup = max(0, int(tc.cfg.sigma_n_between_warmup))
     streak_map = tc._fix_streak
     n_between = 0
-    if not ed.skip_cp_now and tc.cfg.betweenn_enable:
+    if not epoch.skip_cp_now and tc.cfg.betweenn_enable:
         for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-            if (s, f) in ed.prev_amb_tc:
-                k_old, _ = ed.prev_amb_tc[(s, f)]
+            if (s, f) in epoch.prev_amb_values:
+                k_old, _ = epoch.prev_amb_values[(s, f)]
                 if last_flt:
                     sig_between = sig_between_flt
                 elif warmup > 0 and streak_map is not None:
@@ -65,11 +65,11 @@ def _build_factor_block(tc, ed, prev_smode):
                                    else sig_between_flt)
                 else:
                     sig_between = sig_between_fix
-                ed.graph.add(gtsam.BetweenFactorDouble(
+                epoch.graph.add(gtsam.BetweenFactorDouble(
                     k_old, k_new, 0.0,
                     tc._noise1(sig_between)))
                 n_between += 1
-    info['n_dd'] = ed.nv
+    info['n_dd'] = epoch.nv
     if tc._last_hold_gauge_rel:
         info['hold_gauge_rel'] = list(tc._last_hold_gauge_rel)
         tc._last_hold_gauge_rel = []
@@ -82,73 +82,73 @@ def _build_factor_block(tc, ed, prev_smode):
     tc._last_cp_pr_reject = 0
     tc._last_rejc_wipe = 0
 
-    if ed.nv < tc.cfg.min_dd_for_solve:
-        info['propagate_prior'] = ed.nv
-        ed.graph.addPriorPose3(
-            tc.Xpose(ed.kk), ed.pred.pose(),
+    if epoch.nv < tc.cfg.min_dd_for_solve:
+        info['propagate_prior'] = epoch.nv
+        epoch.graph.addPriorPose3(
+            tc.Xpose(epoch.key_idx), epoch.pred_nav.pose(),
             gtsam.noiseModel.Isotropic.Sigma(
                 6, tc.cfg.propagate_pose_sigma))
-        ed.graph.addPriorVector(
-            tc.Vel(ed.kk), ed.pred.velocity(),
+        epoch.graph.addPriorVector(
+            tc.Vel(epoch.key_idx), epoch.pred_nav.velocity(),
             gtsam.noiseModel.Isotropic.Sigma(
                 3, tc.cfg.propagate_vel_sigma))
-        ed.graph.addPriorConstantBias(
-            tc.Bias(ed.kk), ed.bias_p,
+        epoch.graph.addPriorConstantBias(
+            tc.Bias(epoch.key_idx), epoch.bias_prev,
             gtsam.noiseModel.Isotropic.Sigma(
                 6, tc.cfg.propagate_bias_sigma))
-        if not ed.skip_cp_now:
+        if not epoch.skip_cp_now:
             n_anchored = 0
             amb_noise = tc._noise1(tc.cfg.propagate_amb_sigma)
             for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-                if (s, f) in ed.prev_amb_tc:
-                    _, n_prev = ed.prev_amb_tc[(s, f)]
-                    ed.graph.add(gtsam.PriorFactorDouble(
+                if (s, f) in epoch.prev_amb_values:
+                    _, n_prev = epoch.prev_amb_values[(s, f)]
+                    epoch.graph.add(gtsam.PriorFactorDouble(
                         k_new, n_prev, amb_noise))
                     n_anchored += 1
             info['n_anchored'] = n_anchored
     info['n_between'] = n_between
 
     # Raw per-satellite Doppler factors (opt-in via cfg.doppler_sigma)
-    _tc_doppler.add_doppler_factors(tc, ed)
+    _tc_doppler.add_doppler_factors(tc, epoch)
 
     # Undifferenced pseudoranges pinning the clock chain the Doppler needs
-    _tc_clock.add_clock_pr_factors(tc, ed)
+    _tc_clock.add_clock_pr_factors(tc, epoch)
 
     # Between-satellite differenced Doppler (clock-free; cfg.doppler_sd_sigma)
-    _tc_doppler_sd.add_sd_doppler_factors(tc, ed)
+    _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
 
     # TDCP relative-displacement constraints (rover-only carrier deltas)
-    _tc_tdcp.add_tdcp_factors(tc, ed)
+    _tc_tdcp.add_tdcp_factors(tc, epoch)
 
     try:
         speed_for_nhc = float(np.linalg.norm(
-            np.array(ed.estimate.atVector(tc.Vel(ed.kk - 1)))[:2]))
+            np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
     except RuntimeError:
         speed_for_nhc = float(np.linalg.norm(
-            np.array(ed.pred.velocity())[:2]))
-    if _tc_nhc.add_nhc_factor(tc, ed.graph, ed.kk, speed_for_nhc,
-                            gyro_mean_rh=ed.gyro_mean):
+            np.array(epoch.pred_nav.velocity())[:2]))
+    if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx, speed_for_nhc,
+                            gyro_mean_rh=epoch.gyro_mean):
         info['nhc'] = True
 
-    _tc_zupt.add_zupt_factors_for_stage(tc, ed)
+    _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
 
     bootstrap_ddpr_epochs = int(
         tc._tc_bootstrap_ddpr_epochs or 0)
     if bootstrap_ddpr_epochs > 0:
         try:
             ecef_ls, n_ls, res_ls = tc._ddpr_only_position(
-                ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,
-                ed.sat, ed.el, ed.iu, ed.ir_map, ed.pred.pose())
+                epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
+                epoch.sat, epoch.el, epoch.iu, epoch.ir_map, epoch.pred_nav.pose())
             if ecef_ls is not None and n_ls >= 4:
-                body_enu_ls = ed.R.T @ (np.asarray(ecef_ls) - tc.base_ecef)
+                body_enu_ls = epoch.R_enu2ecef.T @ (np.asarray(ecef_ls) - tc.base_ecef)
                 pose_ls = gtsam.Pose3(
-                    ed.pred.pose().rotation(),
+                    epoch.pred_nav.pose().rotation(),
                     gtsam.Point3(*body_enu_ls))
                 boot_sigma = float(tc.cfg.boot_ddpr_sigma)
                 sigmas = np.array([1e6, 1e6, 1e6,
                                    boot_sigma, boot_sigma, boot_sigma])
-                ed.graph.addPriorPose3(
-                    tc.Xpose(ed.kk), pose_ls,
+                epoch.graph.addPriorPose3(
+                    tc.Xpose(epoch.key_idx), pose_ls,
                     gtsam.noiseModel.Diagonal.Sigmas(sigmas))
                 info['bootstrap_ddpr_prior_nv'] = int(n_ls)
                 info['bootstrap_ddpr_prior_res'] = float(res_ls)

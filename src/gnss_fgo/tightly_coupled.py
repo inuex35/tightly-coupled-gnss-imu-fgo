@@ -207,15 +207,16 @@ def transition_to_tc(tc, collected_fixes):
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
-                    obs_sd, ir_map, ref_vel, ref_ecef, info, ns, init_ecef, R):
+                    obs_sd, ir_map, ref_vel, ref_ecef, info, ns, init_ecef,
+                    R_enu2ecef):
     """Phase 2: IMU/GNSS TC pipeline."""
-    ed = make_epoch_data(
+    epoch = make_epoch_data(
         obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-        ref_vel, ref_ecef, info, ns, init_ecef, R)
+        ref_vel, ref_ecef, info, ns, init_ecef, R_enu2ecef)
     for stage in (preprocess.run, gate.run,
                   optimize.run, postprocess.run,
                   output.run):
-        result = stage(tc, ed)
+        result = stage(tc, epoch)
         if result is not None:
             return result
     raise RuntimeError("tightly-coupled pipeline did not terminate")

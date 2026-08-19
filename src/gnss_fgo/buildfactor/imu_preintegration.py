@@ -87,47 +87,47 @@ def build_pim_from_idx(tc, bias, imu_idx, target_tow=None):
         target_tow=target_tow)
 
 
-def add_imu_chain(tc, graph, values, kk, pim, pose_p, vel_p, info):
+def add_imu_chain(tc, graph, values, key_idx, pim, pose_p, vel_prev, info):
     """Attach the IMU chain or break it after a reset."""
     if tc._pim_discontinuity:
         info['pim_discontinuity'] = True
         bias_for_pred = tc.tc_bias if tc.tc_bias is not None \
             else tc.tc_bias_init
         try:
-            nav_p = gtsam.NavState(pose_p, vel_p)
+            nav_p = gtsam.NavState(pose_p, vel_prev)
             nav_pred = pim.predict(nav_p, bias_for_pred)
             seed_pose = nav_pred.pose()
             seed_vel = np.array(nav_pred.velocity())
         except RuntimeError:
             dt = float(tc._epoch_dt)
-            seed_trans = np.array(pose_p.translation()) + vel_p * dt
+            seed_trans = np.array(pose_p.translation()) + vel_prev * dt
             seed_pose = gtsam.Pose3(pose_p.rotation(),
                                      gtsam.Point3(*seed_trans))
-            seed_vel = vel_p
-        values.update(tc.Xpose(kk), seed_pose)
-        values.update(tc.Vel(kk), seed_vel)
+            seed_vel = vel_prev
+        values.update(tc.Xpose(key_idx), seed_pose)
+        values.update(tc.Vel(key_idx), seed_vel)
         trans_sig = float(tc.cfg.pim_break_trans_sigma)
-        graph.addPriorPose3(tc.Xpose(kk), seed_pose,
+        graph.addPriorPose3(tc.Xpose(key_idx), seed_pose,
             gtsam.noiseModel.Diagonal.Sigmas(
                 np.array([0.1, 0.1, 0.3, trans_sig, trans_sig, trans_sig])))
-        graph.addPriorVector(tc.Vel(kk), seed_vel,
+        graph.addPriorVector(tc.Vel(key_idx), seed_vel,
             gtsam.noiseModel.Isotropic.Sigma(3, 2.0))
         bias_anchor = tc.tc_bias if tc.tc_bias is not None \
             else tc.tc_bias_init
-        graph.addPriorConstantBias(tc.Bias(kk), bias_anchor,
+        graph.addPriorConstantBias(tc.Bias(key_idx), bias_anchor,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
         tc._pim_discontinuity = False
         return
 
     graph.add(gtsam.CombinedImuFactor(
-        tc.Xpose(kk - 1), tc.Vel(kk - 1),
-        tc.Xpose(kk), tc.Vel(kk),
-        tc.Bias(kk - 1), tc.Bias(kk), pim))
+        tc.Xpose(key_idx - 1), tc.Vel(key_idx - 1),
+        tc.Xpose(key_idx), tc.Vel(key_idx),
+        tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
     graph.add(gtsam.BetweenFactorConstantBias(
-        tc.Bias(kk - 1), tc.Bias(kk),
+        tc.Bias(key_idx - 1), tc.Bias(key_idx),
         gtsam.imuBias.ConstantBias(np.zeros(3), np.zeros(3)),
         bias_between_noise(tc)))
     bias_anchor = bias_prior_anchor(tc, tc.tc_bias)
     if bias_anchor is not None:
-        graph.addPriorConstantBias(tc.Bias(kk), bias_anchor,
+        graph.addPriorConstantBias(tc.Bias(key_idx), bias_anchor,
             bias_prior_noise(tc))
