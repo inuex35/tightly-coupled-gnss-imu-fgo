@@ -45,16 +45,14 @@ def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
     skip_if_active=True prevents re-trigger during active hold (fde/innovation
     would fire every epoch during recovery, creating infinite loop).
     """
-    if skip_if_active and tc._recov_cp_hold > 0:
-        return False
-    hold_n = effective_cp_hold_epochs(tc)
-    tc._recov_cp_hold = max(tc._recov_cp_hold, hold_n)
-    tc._recov_cp_release_streak = 0
-    sq = getattr(tc, '_sat_quality', None)
-    if sq is not None:
-        sq.clear()
-    info[f'cp_hold_{reason}'] = value if value is not None else True
-    return True
+    fired = tc._recovery.start_cp_hold(
+        effective_cp_hold_epochs(tc), reason, info, value=value,
+        skip_if_active=skip_if_active)
+    if fired:
+        sq = getattr(tc, '_sat_quality', None)
+        if sq is not None:
+            sq.clear()
+    return fired
 
 
 def effective_cp_hold_epochs(tc) -> int:

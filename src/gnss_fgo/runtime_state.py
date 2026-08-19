@@ -226,6 +226,43 @@ class RecoveryState:
     zupt_anchor_pose: object = None
     zupt_anchor_start_ep: int | None = None
 
+    def start_cp_hold(self, hold_n, reason, info, value=None,
+                      skip_if_active=False):
+        """Engage global CP-hold for ``hold_n`` epochs (idempotent max).
+
+        skip_if_active prevents re-trigger during an active hold —
+        fde/innovation would otherwise fire every epoch of the recovery
+        and loop forever.
+        """
+        if skip_if_active and self.recov_cp_hold > 0:
+            return False
+        self.recov_cp_hold = max(self.recov_cp_hold, hold_n)
+        self.recov_cp_release_streak = 0
+        info[f'cp_hold_{reason}'] = value if value is not None else True
+        return True
+
+    def tick_cp_hold(self, cfg, last_res, info):
+        """One CP-hold countdown step (call only while the hold is active).
+
+        Decrements the hold; with a release threshold configured, the
+        hold only expires after ``recov_cp_release_count`` consecutive
+        quiet epochs (main DDPR res <= recov_cp_release_thresh) —
+        otherwise it re-arms for one more epoch.
+        """
+        self.recov_cp_hold -= 1
+        thr = float(cfg.recov_cp_release_thresh)
+        if thr > 0:
+            if last_res > 0 and last_res <= thr:
+                self.recov_cp_release_streak += 1
+            else:
+                self.recov_cp_release_streak = 0
+            if (self.recov_cp_hold <= 0
+                    and self.recov_cp_release_streak
+                    < int(cfg.recov_cp_release_count)):
+                self.recov_cp_hold = 1
+                info['recov_cp_release_wait'] = last_res
+        info['recov_cp_hold'] = self.recov_cp_hold + 1
+
     def reset(self):
         self.skip_count = 0
         self.recov_cp_hold = 0
