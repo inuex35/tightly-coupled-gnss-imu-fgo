@@ -70,7 +70,7 @@ def run(tc, ed):
     sanity_result = _maybe_run_ddpr_sanity(tc, ed)
     if sanity_result is not None:
         return sanity_result
-    _decide_fix_or_flt(tc, ed)
+    ed.sol, ed.tag, ed.nb = _decide_fix_or_flt(tc, ed)
     _update_streaks_and_post_hooks(tc, ed)
     return None
 
@@ -100,7 +100,10 @@ def _maybe_run_ddpr_sanity(tc, ed):
 
 
 def _decide_fix_or_flt(tc, ed):
-    """Phase D-3 — apply lambda_correction / weak-fix / low-nb gates and emit ed.sol / ed.tag / ed.nb."""
+    """Stage D step 3 — lambda_correction / weak-fix / low-nb gates.
+
+    Pure decision: returns ``(sol, tag, nb)``; the caller applies it.
+    """
     info = ed.info
     # FIX / FLT tag decision + FLT DDPR-LS fallback
     pose_tc_antenna = tc._antenna_ecef(ed.pose_tc, ed.ecef_tc)
@@ -127,15 +130,11 @@ def _decide_fix_or_flt(tc, ed):
         if (tc.cfg.lambda_corr_max > 0
                 and lc > tc.cfg.lambda_corr_max):
             info['lambda_corr_reject'] = lc
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
+            return pose_tc_antenna, 'FLT', 0
         elif (tc.cfg.lambda_corr_hard_max > 0
                 and lc > tc.cfg.lambda_corr_hard_max):
             info['lambda_corr_hard_reject'] = lc
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
+            return pose_tc_antenna, 'FLT', 0
         elif (tc.cfg.low_nb_fix_reject_nb_max > 0
                 and ed.nb <= tc.cfg.low_nb_fix_reject_nb_max
                 and (not tc.cfg.low_nb_fix_only_after_flt or low_nb_fresh)):
@@ -143,9 +142,7 @@ def _decide_fix_or_flt(tc, ed):
             info['weak_fix_reject_nb'] = ed.nb
             info['weak_fix_reject_lc'] = lc
             info['weak_fix_reject_main_ddpr_res'] = main_res
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
+            return pose_tc_antenna, 'FLT', 0
         elif (tc.cfg.weak_fix_nb_max > 0
                 and ed.nb <= tc.cfg.weak_fix_nb_max
                 and (not tc.cfg.weak_fix_only_after_flt or weak_fix_fresh)
@@ -157,15 +154,11 @@ def _decide_fix_or_flt(tc, ed):
             info['weak_fix_reject_nb'] = ed.nb
             info['weak_fix_reject_lc'] = lc
             info['weak_fix_reject_main_ddpr_res'] = main_res
-            ed.sol = pose_tc_antenna
-            ed.tag = 'FLT'
-            ed.nb = 0
+            return pose_tc_antenna, 'FLT', 0
         else:
-            ed.sol = ed.xa[0:3]
-            ed.tag = 'FIX'
+            return ed.xa[0:3], 'FIX', ed.nb
     else:
-        ed.sol = pose_tc_antenna
-        ed.tag = 'FLT'
+        return pose_tc_antenna, 'FLT', ed.nb
 
 
 
