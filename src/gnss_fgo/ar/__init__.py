@@ -23,14 +23,6 @@ from . import retry as ar_retry
 from . import subset as ar_subset
 from .ambiguity_resolver import AmbiguityResolver
 
-# Compatibility re-exports: external callers and long-lived probes address
-# these through ar.*; the implementations moved but the names did not.
-write_marginals = nav_bridge.publish_marginals
-should_skip_ar_precheck = ar_gates.should_skip_ar_precheck
-_validate_fix = ar_gates.validate_fix
-_ar_context_reject = ar_gates.context_reject
-_ratio_from_last_lambda = ar_subset.ratio_from_last_lambda
-_apply_fix_and_hold = ar_hold.apply_fix_and_hold
 
 
 def _resolve_native(tc, sat_list):
@@ -114,11 +106,11 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
     nb, xa = _run_lambda_attempts(tc, sat, el, amb_dict)
     if nb <= 0:
         return 0, None
-    if not _validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
+    if not ar_gates.validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
                          estimate=estimate, key_pose=key_pose):
         return 0, None
     if tc.nav.armode == 3:
-        if not _apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
+        if not ar_hold.apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
             return 0, None
     tc.nav.smode = 4
     return nb, xa
