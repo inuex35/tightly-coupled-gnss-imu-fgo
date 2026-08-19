@@ -270,7 +270,7 @@ class ImuGnssTc:
         self.amb_lam = {}
 
         self.amb_init_epoch = {}
-        self._sat_quality = SatQualityState()
+        self._sat_quality = SatQualityState(self._sat_states)
         self.ar_wait_new = self.cfg.ar_wait_new
 
         self.amb_factor_indices = {}
