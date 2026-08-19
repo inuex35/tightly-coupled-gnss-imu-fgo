@@ -23,7 +23,6 @@ knows what it is touching.
 
 """
 
-import os
 
 import numpy as np
 import gtsam
@@ -111,7 +110,7 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     tc.nav.vsat[:, :] = 0
     tc.nav.x[tc.nav.na:] = 0
     cp_visible_sf = set(tc._ar_cp_visible_sf)
-    hold_epochs = int(os.environ.get('HELD_VSAT_HOLD_EPOCHS', '0') or 0)
+    hold_epochs = 0   # grace window experiment: measured no win
     last_visible = tc._cp_visible_sf_last_ep
     if last_visible is None:
         last_visible = {}

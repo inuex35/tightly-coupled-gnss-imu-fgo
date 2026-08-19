@@ -4,7 +4,6 @@ No EKF — position from GTSAM, covariance from GTSAM Marginals.
 DD factors (C++ nonlinear), AR via cssrlib LAMBDA, fix-and-hold.
 """
 
-import os
 import numpy as np
 import gtsam
 from cssrlib.rtk import rtkpos
@@ -21,7 +20,7 @@ class GtsamRtk(rtkpos):
         self.epoch = 0
         self.epoch_time = 0.0
 
-        lag = float(os.environ.get('LAG', '0'))
+        lag = 0.0
         params = gtsam.ISAM2Params()
         params.setRelinearizeThreshold(0.01)
         params.relinearizeSkip = 1
@@ -34,12 +33,12 @@ class GtsamRtk(rtkpos):
 
         self.amb_keys = {}
         self.current_estimate = None
-        self.sigma_pr = float(os.environ.get('SIG_PR', '0.3'))
-        self.sigma_cp = float(os.environ.get('SIG_CP', '0.003'))
-        self.sigma_dyn = float(os.environ.get('SIG_DYN', '0.1'))
-        self.sigma_amb0 = float(os.environ.get('SIG_AMB', '30.0'))
-        self.huber_pr = float(os.environ.get('HUBER_PR', '0'))
-        self.nav.armode = int(os.environ.get('AR_MODE', '3'))
+        self.sigma_pr = 0.3
+        self.sigma_cp = 0.003
+        self.sigma_dyn = 0.1
+        self.sigma_amb0 = 30.0
+        self.huber_pr = 0.0
+        self.nav.armode = 3   # fix-and-hold
 
     def X(self, ep): return gtsam.symbol('x', ep)
     def N(self, sat, f): return gtsam.symbol('n', sat * 10 + f)

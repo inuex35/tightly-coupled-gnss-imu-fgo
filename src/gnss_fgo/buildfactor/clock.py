@@ -41,19 +41,19 @@ def _tropo_delay(obs_t, pos, el_rad):
     return (hs + wet) * m
 
 
-def _iono_free_rows(tc, ed):
+def _iono_free_rows(tc, epoch):
     """(satellite, ECEF position, IF pseudorange [m], sat clock [s], el [rad])."""
-    pos = ecef2pos(np.asarray(ed.pred_ecef, dtype=float))
+    pos = ecef2pos(np.asarray(epoch.pred_ecef, dtype=float))
     rows = []
-    for si, i_obs in enumerate(ed.iu):
-        s = int(ed.sat[si])
+    for si, i_obs in enumerate(epoch.iu):
+        s = int(epoch.sat[si])
         sys_i = sat2prn(s)[0]
         if sys_i != uGNSS.GPS:
             continue
-        sigs = ed.obs_sd.sig.get(sys_i, {}).get(uTYP.C, [])
+        sigs = epoch.obs_sd.sig.get(sys_i, {}).get(uTYP.C, [])
         if len(sigs) < 2:
             continue
-        p1, p2 = ed.obs.P[i_obs, 0], ed.obs.P[i_obs, 1]
+        p1, p2 = epoch.obs.P[i_obs, 0], epoch.obs.P[i_obs, 1]
         if p1 == 0.0 or p2 == 0.0:
             continue
         f1, f2 = sigs[0].frequency(), sigs[1].frequency()
@@ -61,48 +61,48 @@ def _iono_free_rows(tc, ed):
             continue
         g = (f1 * f1) / (f1 * f1 - f2 * f2)
         pr_if = g * p1 - (g - 1.0) * p2
-        el = float(ed.el[si])
-        rows.append((s, np.asarray(ed.rs[i_obs, :3], dtype=float),
-                     pr_if - _tropo_delay(ed.obs.t, pos, el),
-                     float(ed.dts[i_obs]), el))
+        el = float(epoch.el[si])
+        rows.append((s, np.asarray(epoch.rs[i_obs, :3], dtype=float),
+                     pr_if - _tropo_delay(epoch.obs.t, pos, el),
+                     float(epoch.dts[i_obs]), el))
     return rows
 
 
-def estimate_clock_bias(tc, ed):
+def estimate_clock_bias(tc, epoch):
     """Receiver clock bias from the code solution [s], or None.
 
     Median over satellites of ``(PR - range)/c + dts``. The chain's level is
     arbitrary as far as the Doppler factors are concerned, but as soon as
     pseudoranges observe it, it has to start at the value they mean.
     """
-    rows = _iono_free_rows(tc, ed)
+    rows = _iono_free_rows(tc, epoch)
     if not rows:
         return None
-    p_r = np.asarray(ed.pred_ecef, dtype=float)
+    p_r = np.asarray(epoch.pred_ecef, dtype=float)
     vals = [(pr - float(np.linalg.norm(np.asarray(p_sat) - p_r)))
             / rCST.CLIGHT + dts for _s, p_sat, pr, dts, _el in rows]
     return float(np.median(vals))
 
 
-def add_clock_pr_factors(tc, ed):
-    """Add PseudorangeFactorArm on [Xpose(kk), Clk(kk)] when enabled.
+def add_clock_pr_factors(tc, epoch):
+    """Add PseudorangeFactorArm on [Xpose(key_idx), Clk(key_idx)] when enabled.
 
-    Requires the Doppler builder to have created Clk(kk) for this epoch --
+    Requires the Doppler builder to have created Clk(key_idx) for this epoch --
     the clock states exist for the Doppler factors, and these pseudoranges
     are here to make them observable, not the other way round.
     """
     sigma = float(tc.cfg.clock_pr_sigma)
-    if sigma <= 0 or ed.kk is None or tc._doppler_clk_last != int(ed.kk):
+    if sigma <= 0 or epoch.key_idx is None or tc._doppler_clk_last != int(epoch.key_idx):
         return
 
     lever = np.asarray(tc.lever_arm, dtype=float)
     n = 0
-    for _s, p_sat, pr, dts, el in _iono_free_rows(tc, ed):
+    for _s, p_sat, pr, dts, el in _iono_free_rows(tc, epoch):
         model = gtsam.noiseModel.Isotropic.Sigma(
             1, sigma / max(np.sin(el), 0.1))
-        ed.graph.add(gtsam.PseudorangeFactorArm(
-            tc.Xpose(int(ed.kk)), tc.Clk(int(ed.kk)), pr, p_sat, lever,
+        epoch.graph.add(gtsam.PseudorangeFactorArm(
+            tc.Xpose(int(epoch.key_idx)), tc.Clk(int(epoch.key_idx)), pr, p_sat, lever,
             tc.ecef_T_nav, dts, model))
         n += 1
     if n:
-        ed.info['clock_pr_n'] = n
+        epoch.info['clock_pr_n'] = n

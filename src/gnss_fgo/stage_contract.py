@@ -85,7 +85,7 @@ def validate_pipeline(order=_DEFAULT_ORDER):
         unknown = (reads | writes) - all_fields
         if unknown:
             errors.append(
-                f'stage {name!r} touches unknown ed field(s): '
+                f'stage {name!r} touches unknown epoch field(s): '
                 f'{sorted(unknown)}')
         available |= writes
         summary.append((name, sorted(reads), sorted(writes_raw)))
