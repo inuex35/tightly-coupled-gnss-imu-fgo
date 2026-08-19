@@ -62,7 +62,7 @@ def _run_ar_with_marginals(tc, epoch):
     """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
     info = epoch.info
     if tc.cfg.ar_precheck_skip:
-        skip_ar, skip_detail = _tc_ar.should_skip_ar_precheck(tc)
+        skip_ar, skip_detail = _tc_ar.ar_gates.should_skip_ar_precheck(tc)
         if skip_ar:
             info['ar_skipped_precheck'] = True
             info.update({f'ar_skipped_{k}': v
@@ -71,7 +71,7 @@ def _run_ar_with_marginals(tc, epoch):
     tc._cur_ed = epoch                 # for the fix-vs-LS gate in run_ar
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
-    _tc_ar.write_marginals(tc,
+    _tc_ar.nav_bridge.publish_marginals(tc,
         tc.isam2.getFactors(), epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot)
     # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says

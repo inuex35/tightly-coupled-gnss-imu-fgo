@@ -393,66 +393,67 @@ class DdFactorBuilder:
         return sigma_base * np.sqrt(2)
 
     def run(self):
-        """Build all DD factors for this call and return the factor count"""
-        tc = self.tc
-        obs_sd = self.obs_sd
-        sat = self.sat
-        el = self.el
-        amb_dict = self.amb_dict
-        dd_epoch = self.dd_epoch
-        slip_keys = self.slip_keys
-        nf = self.nf
-        ns = self.ns
-        new_amb = self.new_amb
-        _is_fresh_pair = self.is_fresh_pair
+        """Build all DD factors: one constellation at a time, one
+        (ref, target) pair per remaining satellite, PR + CP per band.
+        Returns the factor count."""
         nv = 0
-
-        sat_sys_for_obs = SAT_SYS_ARR[np.asarray(sat[:ns], dtype=np.int32)]
-        for sys_id in sorted_sys_ids(obs_sd.sig):
+        sat_sys_for_obs = SAT_SYS_ARR[
+            np.asarray(self.sat[:self.ns], dtype=np.int32)]
+        for sys_id in sorted_sys_ids(self.obs_sd.sig):
             idx_sys = np.where(sat_sys_for_obs == int(sys_id))[0].tolist()
             if len(idx_sys) < 2:
                 continue
-            ref_idx, ref_sat = self._select_ref_for_system(
-                sys_id, idx_sys, sat, el, amb_dict, slip_keys)
-            lams = get_wavelengths(tc, obs_sd, ref_sat)
-            (ref_pt, ref_base_pt, ref_xyz,
-             ref_base_xyz) = self._compute_ref_geometry(ref_idx, ref_sat)
-
-            cmc_skip = tc._sat_states.cmc_skip_dd
-            skip_bds_geo = bool(tc.cfg.exclude_bds_geo)
-            for j_idx in idx_sys:
-                if j_idx == ref_idx:
-                    continue
-                j_sat = sat[j_idx]
-                if (skip_bds_geo
-                        and SAT_SYS_ARR[j_sat] == uGNSS.BDS
-                        and _is_bds_geo(j_sat)):
-                    continue
-                (j_pt, j_base_pt, j_xyz,
-                 j_base_xyz) = self._compute_pair_geometry(j_idx, j_sat)
-
-                sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
-                sat_xyz = (ref_xyz, j_xyz, ref_base_xyz, j_base_xyz)
-                for f in range(nf):
-                    if (j_sat, f) in cmc_skip:
-                        continue
-                    # Pair-level features used by both PR and CP build.
-                    fresh_pair = _is_fresh_pair(ref_sat, j_sat, f)
-                    # PR factor: CPなし (L信号不在) でも追加する
-                    pr_obs = self._build_pr_for_pair(
-                        ref_idx, j_idx, ref_sat, j_sat, f,
-                        sat_pts)
-                    if pr_obs is None:
-                        continue
-                    nv += 1
-                    nv += self._build_cp_for_pair(
-                        sys_id, ref_idx, j_idx, ref_sat, j_sat, f, lams,
-                        sat_pts, sat_xyz, pr_obs,
-                        fresh_pair,
-                        amb_dict, new_amb, dd_epoch)
-
-        amb_dict.update(new_amb)
+            nv += self._build_system(sys_id, idx_sys)
+        self.amb_dict.update(self.new_amb)
         self.nv = nv
+        return nv
+
+    def _build_system(self, sys_id, idx_sys):
+        """All DD pairs of one constellation against its reference sat."""
+        tc = self.tc
+        ref_idx, ref_sat = self._select_ref_for_system(
+            sys_id, idx_sys, self.sat, self.el, self.amb_dict,
+            self.slip_keys)
+        lams = get_wavelengths(tc, self.obs_sd, ref_sat)
+        ref_geom = self._compute_ref_geometry(ref_idx, ref_sat)
+        skip_bds_geo = bool(tc.cfg.exclude_bds_geo)
+        nv = 0
+        for j_idx in idx_sys:
+            if j_idx == ref_idx:
+                continue
+            j_sat = self.sat[j_idx]
+            if (skip_bds_geo
+                    and SAT_SYS_ARR[j_sat] == uGNSS.BDS
+                    and _is_bds_geo(j_sat)):
+                continue
+            nv += self._build_pair(sys_id, ref_idx, ref_sat, ref_geom,
+                                   lams, j_idx, j_sat)
+        return nv
+
+    def _build_pair(self, sys_id, ref_idx, ref_sat, ref_geom, lams,
+                    j_idx, j_sat):
+        """PR + CP factors for one (ref, j) pair across all bands."""
+        ref_pt, ref_base_pt, ref_xyz, ref_base_xyz = ref_geom
+        (j_pt, j_base_pt, j_xyz,
+         j_base_xyz) = self._compute_pair_geometry(j_idx, j_sat)
+        sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
+        sat_xyz = (ref_xyz, j_xyz, ref_base_xyz, j_base_xyz)
+        cmc_skip = self.tc._sat_states.cmc_skip_dd
+        nv = 0
+        for f in range(self.nf):
+            if (j_sat, f) in cmc_skip:
+                continue
+            fresh_pair = self.is_fresh_pair(ref_sat, j_sat, f)
+            # PR factor: added even without CP (no L signal present)
+            pr_obs = self._build_pr_for_pair(
+                ref_idx, j_idx, ref_sat, j_sat, f, sat_pts)
+            if pr_obs is None:
+                continue
+            nv += 1
+            nv += self._build_cp_for_pair(
+                sys_id, ref_idx, j_idx, ref_sat, j_sat, f, lams,
+                sat_pts, sat_xyz, pr_obs, fresh_pair,
+                self.amb_dict, self.new_amb, self.dd_epoch)
         return nv
 
 
