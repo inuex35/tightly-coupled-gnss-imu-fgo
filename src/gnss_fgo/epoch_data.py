@@ -1,5 +1,12 @@
 """Structured context passed through the Phase 2 pipeline stages.
 
+Write convention (enforced by review, checked by stage_contract):
+EpochData fields are written ONLY at stage top-level functions —
+``run(tc, epoch)`` of Stages A/B/D/E and the C1–C4 sub-stage functions.
+Helpers below them are pure: they return values, the stage applies
+them. Stage A is the initializer and populates most fields; later
+stages own the fields their STAGE_WRITES tuple declares.
+
 The five stages run in sequence:
 
     preprocess  →  gate  →  optimize  →  postprocess  →  output

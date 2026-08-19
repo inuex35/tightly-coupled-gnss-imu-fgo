@@ -26,7 +26,7 @@ def _build_factor_block(tc, epoch, prev_smode):
     """Stage C1 — DD factors + BetweenN chain + propagate-prior fallback + (Doppler / NHC / ZUPT / bootstrap-DDPR) priors."""
     info = epoch.info
     # DD factor construction
-    epoch.nv = _tc_factors.build_dd_factors(tc, 
+    nv = _tc_factors.build_dd_factors(tc, 
         epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
         epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
         epoch.pred_ecef, tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
@@ -34,6 +34,7 @@ def _build_factor_block(tc, epoch, prev_smode):
         track_indices=True, dd_epoch=epoch.key_idx,
         prev_amb_values=epoch.prev_amb_values,
         skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
+    epoch.nv = nv
     sq = _satq.get_sat_quality(tc)
     sat_lock_age = {}
     for s in epoch.sat:
