@@ -36,11 +36,13 @@ def run(tc, epoch):
         info['fresh_amb_bootstrap'] = int(tc._tc_fresh_amb_epochs)
     sq = _satq.get_sat_quality(tc)
 
-    forced_hold = _collect_telemetry_and_tick_holds(tc, epoch, sq)
+    (forced_hold, epoch.remove_indices, epoch.slip_keys,
+     epoch.skip_cp_now) = _collect_telemetry_and_tick_holds(tc, epoch, sq)
     sq.forced_hold_per_sat = forced_hold
 
-    _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap, forced_hold)
-    _update_pred_ecef(tc, epoch)
+    epoch.prev_amb_values = _carry_prev_amb_and_rotate_keys(
+        tc, epoch, fresh_amb_bootstrap, forced_hold)
+    epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
     return None
 
 
@@ -52,7 +54,7 @@ def _gdop_gate_and_skip(tc, epoch):
     info['nsat'] = epoch.ns
     if not (gdop_val < tc.cfg.gdop_max
             and epoch.ns >= tc.cfg.nsat_min):
-        _update_pred_ecef(tc, epoch)
+        epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
         return _tc_recovery.process_gdop_skip(tc,
             epoch.obs, epoch.key_idx, epoch.graph, epoch.values, epoch.R_enu2ecef, info,
             imu_idx_prev=epoch.imu_idx_prev,
@@ -65,8 +67,8 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick, CP-lock update, and the global CP-hold countdown/release decision. Returns the ``forced_hold`` set."""
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
-    n_reset, epoch.remove_indices, n_cmc, epoch.slip_keys = \
-        _tc_slip_detect.detect_slips_and_manage_amb(tc, 
+    n_reset, remove_indices, n_cmc, slip_keys = \
+        _tc_slip_detect.detect_slips_and_manage_amb(tc,
             epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu,
             obsb=epoch.obsb, ir_map=epoch.ir_map)
     info['n_slip'] = n_reset
@@ -76,7 +78,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     # Slip burst CP-hold trigger disabled — pure-form pipeline.
 
     # skip_cp_now reflects active global CP-hold (any trigger source).
-    epoch.skip_cp_now = tc._recov_cp_hold > 0
+    skip_cp_now = tc._recov_cp_hold > 0
     info['sat_el_deg'] = {
         int(epoch.sat[i]): float(np.degrees(epoch.el[i]))
         for i in range(len(epoch.sat))
@@ -107,8 +109,8 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
         for s in epoch.sat
         for f in range(tc.nav.nf)
     }
-    sq.update_cp_lock(visible_keys, slip_keys=epoch.slip_keys, forced_hold=forced_hold)
-    if epoch.skip_cp_now:
+    sq.update_cp_lock(visible_keys, slip_keys=slip_keys, forced_hold=forced_hold)
+    if skip_cp_now:
         tc._recov_cp_hold -= 1
         thr = float(tc.cfg.recov_cp_release_thresh)
         if thr > 0:
@@ -124,7 +126,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
                 tc._recov_cp_hold = 1
                 info['recov_cp_release_wait'] = last_res
         info['recov_cp_hold'] = tc._recov_cp_hold + 1
-    return forced_hold
+    return forced_hold, remove_indices, slip_keys, skip_cp_now
 
 
 
@@ -132,7 +134,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
 def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap, forced_hold):
     """Step 6 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skips forced-hold sats and whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
-    epoch.prev_amb_values = {}
+    prev_amb_values = {}
     if fresh_amb_bootstrap:
         pass
     elif epoch.skip_cp_now:
@@ -144,20 +146,20 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap, forced_hold)
                 tc._sat_states.get(s, f).amb_gen += 1
                 continue
             if epoch.estimate.exists(k):
-                epoch.prev_amb_values[(s, f)] = (k, epoch.estimate.atDouble(k))
+                prev_amb_values[(s, f)] = (k, epoch.estimate.atDouble(k))
     for st in tc._sat_states.values():
         st.amb_key = None
     if fresh_amb_bootstrap:
         tc._tc_fresh_amb_epochs = max(
             0, int(tc._tc_fresh_amb_epochs) - 1)
+    return prev_amb_values
 
 
 
-def _update_pred_ecef(tc, epoch):
-    """Step 7 — write ``epoch.pred_enu`` and ``epoch.pred_ecef`` from the IMU-predicted pose, using the antenna lever arm."""
-    epoch.pred_enu = np.array(epoch.pred_nav.pose().translation())
-    pred_body_ecef = epoch.R_enu2ecef @ epoch.pred_enu + tc.base_ecef
-    epoch.pred_ecef = tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)
-    return None
+def _predict_antenna_position(tc, epoch):
+    """Step 7 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
+    pred_enu = np.array(epoch.pred_nav.pose().translation())
+    pred_body_ecef = epoch.R_enu2ecef @ pred_enu + tc.base_ecef
+    return pred_enu, tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)
 
 
