@@ -211,6 +211,28 @@ def _outage_anchor_bias_prior(tc, graph, key_idx):
         gtsam.noiseModel.Diagonal.Sigmas(sigmas))
 
 
+def _outage_solve_and_adopt(tc, graph, values, key_idx, skip_remove_indices,
+                            R_enu2ecef, info, record_error=False):
+    """Shared outage-epoch tail: FLS update, adopt the solved pose into
+    nav.x, refresh tc.tc_bias. Returns the antenna ECEF (or the previous
+    nav.x[0:3] when the solve fails)."""
+    try:
+        _tc_isam.fls_update(tc, graph, values, key_idx,
+                         keep_keys=tc._sat_states.amb_key_values(),
+                         remove_indices=skip_remove_indices or None)
+        estimate = tc.isam2.calculateEstimate()
+        pose_tc = estimate.atPose3(tc.Xpose(key_idx))
+        tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
+        ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
+        sol = tc._antenna_ecef(pose_tc, ecef_tc)
+        tc.nav.x[0:3] = sol
+        return sol
+    except (RuntimeError, IndexError, ValueError) as ex:
+        if record_error:
+            info['error'] = str(ex)
+        return tc.nav.x[0:3]
+
+
 def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
                       imu_idx_prev=None, gyro_mean=None, vel_prev=None,
                       epoch=None):
@@ -253,17 +275,8 @@ def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
             tc.Vel(key_idx - 1), np.asarray(gdop_vel_prev, dtype=float),
             gtsam.noiseModel.Isotropic.Sigma(
                 3, tc.cfg.propagate_vel_sigma))
-    try:
-        _tc_isam.fls_update(tc, graph, values, key_idx,
-                         keep_keys=tc._sat_states.amb_key_values(),
-                         remove_indices=skip_remove_indices or None)
-        estimate = tc.isam2.calculateEstimate()
-        pose_tc = estimate.atPose3(tc.Xpose(key_idx))
-        tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
-        ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
-        tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
-    except (RuntimeError, IndexError, ValueError):
-        pass
+    _outage_solve_and_adopt(tc, graph, values, key_idx,
+                            skip_remove_indices, R_enu2ecef, info)
     tc.nav.smode = 5
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
@@ -320,19 +333,9 @@ def process_imu_only(tc, obs):
     _outage_add_pseudo_measurements(
         tc, graph, key_idx, info, imu_idx_prev, pose_p, vel_prev, gyro_mean)
 
-    try:
-        _tc_isam.fls_update(tc, graph, values, key_idx,
-                         keep_keys=tc._sat_states.amb_key_values(),
-                         remove_indices=skip_remove_indices or None)
-        estimate = tc.isam2.calculateEstimate()
-        pose_tc = estimate.atPose3(tc.Xpose(key_idx))
-        tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
-        ecef_tc = R @ np.array(pose_tc.translation()) + tc.base_ecef
-        sol = tc._antenna_ecef(pose_tc, ecef_tc)
-        tc.nav.x[0:3] = sol
-    except (RuntimeError, IndexError, ValueError) as ex:
-        info['error'] = str(ex)
-        sol = tc.nav.x[0:3]
+    sol = _outage_solve_and_adopt(tc, graph, values, key_idx,
+                                  skip_remove_indices, R, info,
+                                  record_error=True)
 
     tc.nav.smode = 5
     return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)

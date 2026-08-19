@@ -184,7 +184,7 @@ def transition_to_tc(tc, collected_fixes):
         est_init = tc.isam2.calculateEstimate()
 
         # Write marginals for LAMBDA
-        _tc_ar.write_marginals(tc, 
+        _tc_ar.nav_bridge.publish_marginals(tc, 
             tc.isam2.getFactors(), est_init,
             tc.Xpose(n - 1), tc._sat_states.amb_keys_dict())
 

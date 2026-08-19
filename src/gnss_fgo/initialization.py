@@ -148,7 +148,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
     enu_e = np.array(est.atPose3(tc.Xp(ep)).translation())
     tc.nav.x[0:3] = R @ enu_e + tc.base_ecef
 
-    _tc_ar.write_marginals(tc, 
+    _tc_ar.nav_bridge.publish_marginals(tc, 
         tc.isam.getFactors(), est, tc.Xp(ep), tc.amb_keys)
 
     tc.nav.smode = 5
