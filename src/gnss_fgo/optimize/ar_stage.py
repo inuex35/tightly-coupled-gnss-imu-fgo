@@ -43,24 +43,24 @@ _AR_DIAG_ATTRS = (
 )
 
 
-def _ar_eligibility(tc, ed):
+def _ar_eligibility(tc, epoch):
     """Return True iff this epoch should run LAMBDA AR."""
-    if ed.kk < tc.cfg.n_collect + 3:
+    if epoch.key_idx < tc.cfg.n_collect + 3:
         return False
     if tc._recov_cp_hold > 0:
         return False
     if tc.ar_max_frac < 0.5:
         max_frac = tc._compute_max_dd_frac(
-            ed.estimate, ed.obs_sd, ed.sat, ed.ns)
-        ed.info['max_frac'] = max_frac
+            epoch.estimate, epoch.obs_sd, epoch.sat, epoch.ns)
+        epoch.info['max_frac'] = max_frac
         if max_frac > tc.ar_max_frac:
             return False
     return True
 
 
-def _run_ar_with_marginals(tc, ed):
-    """Pre-check, write_marginals + per_sat gate + run_ar; populate ed.nb, ed.xa, info[ar_skipped*]."""
-    info = ed.info
+def _run_ar_with_marginals(tc, epoch):
+    """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
+    info = epoch.info
     if tc.cfg.ar_precheck_skip:
         skip_ar, skip_detail = _tc_ar.should_skip_ar_precheck(tc)
         if skip_ar:
@@ -68,12 +68,12 @@ def _run_ar_with_marginals(tc, ed):
             info.update({f'ar_skipped_{k}': v
                          for k, v in skip_detail.items()})
             return
-    tc._cur_ed = ed                 # for the fix-vs-LS gate in run_ar
-    tc.nav.x[0:3] = tc._antenna_ecef(ed.pose_tc, ed.ecef_tc)
+    tc._cur_ed = epoch                 # for the fix-vs-LS gate in run_ar
+    tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.write_marginals(tc,
-        tc.isam2.getFactors(), ed.estimate,
-        tc.Xpose(ed.kk), amb_snapshot)
+        tc.isam2.getFactors(), epoch.estimate,
+        tc.Xpose(epoch.key_idx), amb_snapshot)
     # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
     # the geometry cannot support an integer decision, do not attempt
     # AR. At 7 sats / GDOP~10 a 9 m vertical basin costs only ~1.7 m of
@@ -88,27 +88,27 @@ def _run_ar_with_marginals(tc, ed):
         info['ar_gdop_skip'] = True
         tc._last_ar_outcome = 'gdop_gate'
         return
-    ed.nb, ed.xa = _tc_ar.run_ar(tc,
-        ed.obs, ed.rs, ed.vs, ed.dts,
-        ed.sat, ed.el, ed.iu, ed.estimate,
-        tc.Xpose(ed.kk), amb_snapshot)
+    epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
+        epoch.obs, epoch.rs, epoch.vs, epoch.dts,
+        epoch.sat, epoch.el, epoch.iu, epoch.estimate,
+        tc.Xpose(epoch.key_idx), amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     xv_delta = float(tc.cfg.ar_ddpr_xvalidate_delta_thresh or 0.0)
-    if (xv_thr > 0.0 or xv_delta > 0.0) and ed.nb > 0 and ed.xa is not None:
+    if (xv_thr > 0.0 or xv_delta > 0.0) and epoch.nb > 0 and epoch.xa is not None:
         try:
-            cur_pose = ed.estimate.atPose3(tc.Xpose(ed.kk))
+            cur_pose = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
             R_body_to_ecef = tc.ecef_T_nav.compose(
                 cur_pose).rotation().matrix()
             lever_arr = (np.array(tc.lever_arm_tc)
                          if getattr(tc, 'lever_arm_tc', None) is not None
                          else np.zeros(3))
-            body_ecef_xa = np.asarray(ed.xa[0:3]) - R_body_to_ecef @ lever_arr
+            body_ecef_xa = np.asarray(epoch.xa[0:3]) - R_body_to_ecef @ lever_arr
             body_nav_xa = tc.ecef_T_nav.transformTo(
                 gtsam.Point3(*body_ecef_xa))
             xa_pose = gtsam.Pose3(cur_pose.rotation(), body_nav_xa)
             v_xa = gtsam.Values()
-            v_xa.insert(tc.Xpose(ed.kk), xa_pose)
-            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, ed.graph, v_xa)
+            v_xa.insert(tc.Xpose(epoch.key_idx), xa_pose)
+            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, epoch.graph, v_xa)
             info['ar_ddpr_xvalidate_res_at_xa'] = float(res_xa)
             res_pre = tc._cached_ddpr_res_pre
             if res_pre is not None:
@@ -121,8 +121,8 @@ def _run_ar_with_marginals(tc, ed):
                 reject = True
             if reject:
                 info['ar_ddpr_xvalidate_reject'] = True
-                ed.nb = 0
-                ed.xa = None
+                epoch.nb = 0
+                epoch.xa = None
                 tc.nav.smode = 5
         except (RuntimeError, ValueError):
             pass
@@ -155,7 +155,7 @@ def _record_ar_diagnostics(tc, info):
             info['ar_subset_ratio'] = float(ar_subset_dbg.get('ratio', 0.0))
 
 
-def _ar_starvation_reset(tc, ed):
+def _ar_starvation_reset(tc, epoch):
     """Purge cold-biased float arcs after prolonged ratio starvation.
 
     A float that settled into a biased-but-smooth basin (e.g. after a
@@ -176,29 +176,29 @@ def _ar_starvation_reset(tc, ed):
     if outcome != 'lambda_zero':
         return
     tc._ar_starve_streak = int(getattr(tc, '_ar_starve_streak', 0) or 0) + 1
-    ed.info['ar_starve_streak'] = tc._ar_starve_streak
+    epoch.info['ar_starve_streak'] = tc._ar_starve_streak
     if tc._ar_starve_streak < n_max or tc._recov_cp_hold > 0:
         return
     res_pre = tc._cached_ddpr_res_pre
     if res_pre is not None and float(res_pre) > float(tc.cfg.ar_starve_max_res):
         return                      # NLOS storm — arcs are load-bearing
     n_removed = _tc_recovery.reset_ambiguities_with_cp_hold(tc)
-    ed.info['ar_starve_reset'] = n_removed
+    epoch.info['ar_starve_reset'] = n_removed
     tc._ar_starve_streak = 0
 
 
-def _run_lambda_ar(tc, ed):
+def _run_lambda_ar(tc, epoch):
     """Stage C3 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
     tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5
-    ed.nb = 0
-    ed.xa = None
-    if not _ar_eligibility(tc, ed):
+    epoch.nb = 0
+    epoch.xa = None
+    if not _ar_eligibility(tc, epoch):
         return None
-    _run_ar_with_marginals(tc, ed)
-    _ar_starvation_reset(tc, ed)
-    _record_ar_diagnostics(tc, ed.info)
+    _run_ar_with_marginals(tc, epoch)
+    _ar_starvation_reset(tc, epoch)
+    _record_ar_diagnostics(tc, epoch.info)
     return None
 
 

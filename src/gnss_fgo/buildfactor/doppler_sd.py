@@ -21,7 +21,7 @@ import gtsam
 from .doppler import _doppler_rows, screen_rows
 
 
-def add_sd_doppler_factors(tc, ed, in_outage=False):
+def add_sd_doppler_factors(tc, epoch, in_outage=False):
     """Add one SD Doppler factor per satellite, against the epoch reference.
 
     ``in_outage=True`` is the GDOP-skip path: no DD set exists by
@@ -30,18 +30,18 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
     worth the most (the canyon drift is what it bounds).
     """
     sigma = float(tc.cfg.doppler_sd_sigma)
-    if sigma <= 0 or ed.kk is None:
+    if sigma <= 0 or epoch.key_idx is None:
         return
     if not in_outage:
         gdop_max = float(tc.cfg.doppler_gdop_max)
-        if gdop_max > 0 and float(ed.info.get('gdop', 0.0) or 0.0) > gdop_max:
-            ed.info['doppler_sd_skipped'] = 'gdop'
+        if gdop_max > 0 and float(epoch.info.get('gdop', 0.0) or 0.0) > gdop_max:
+            epoch.info['doppler_sd_skipped'] = 'gdop'
             return
-        if tc.cfg.doppler_require_dd and ed.nv < tc.cfg.min_dd_for_solve:
-            ed.info['doppler_sd_skipped'] = int(ed.nv)
+        if tc.cfg.doppler_require_dd and epoch.nv < tc.cfg.min_dd_for_solve:
+            epoch.info['doppler_sd_skipped'] = int(epoch.nv)
             return
 
-    rows, scale = screen_rows(tc, ed, _doppler_rows(tc, ed))
+    rows, scale = screen_rows(tc, epoch, _doppler_rows(tc, epoch))
     if len(rows) < 2:
         return
 
@@ -59,14 +59,14 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
     ref, sigma_ref = rows[i_ref], sigmas[i_ref]
 
     omega = np.zeros(3)
-    if ed.gyro_mean is not None:
+    if epoch.gyro_mean is not None:
         bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
                      else np.zeros(3))
-        omega = np.asarray(ed.gyro_mean, dtype=float) - bias_gyro
+        omega = np.asarray(epoch.gyro_mean, dtype=float) - bias_gyro
 
-    kk = int(ed.kk)
+    key_idx = int(epoch.key_idx)
     lever = np.asarray(tc.lever_arm, dtype=float)
-    rr = np.asarray(ed.pred_ecef, dtype=float)
+    rr = np.asarray(epoch.pred_ecef, dtype=float)
     n = 0
     huber = float(tc.cfg.doppler_huber)
     for row, sig in zip(rows, sigmas):
@@ -84,8 +84,8 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
             # 2152 m blackout drift without it, 25 m with it).
             noise = gtsam.noiseModel.Robust.Create(
                 gtsam.noiseModel.mEstimator.Huber.Create(huber), noise)
-        ed.graph.add(gtsam.SingleDifferenceDopplerFactorArm(
-            tc.Xpose(kk), tc.Vel(kk),
+        epoch.graph.add(gtsam.SingleDifferenceDopplerFactorArm(
+            tc.Xpose(key_idx), tc.Vel(key_idx),
             row[3], ref[3],                 # measured Doppler [Hz]
             row[4], ref[4],                 # wavelength [m/cycle]
             np.asarray(row[1], dtype=float), np.asarray(row[2], dtype=float),
@@ -95,5 +95,5 @@ def add_sd_doppler_factors(tc, ed, in_outage=False):
             noise))
         n += 1
     if n:
-        ed.info['doppler_sd_n'] = n
-        ed.info['doppler_sd_ref'] = int(ref[0])
+        epoch.info['doppler_sd_n'] = n
+        epoch.info['doppler_sd_ref'] = int(ref[0])

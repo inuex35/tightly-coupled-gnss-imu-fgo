@@ -1,5 +1,12 @@
 """Structured context passed through the Phase 2 pipeline stages.
 
+Write convention (enforced by review, checked by stage_contract):
+EpochData fields are written ONLY at stage top-level functions —
+``run(tc, epoch)`` of Stages A/B/D/E and the C1–C4 sub-stage functions.
+Helpers below them are pure: they return values, the stage applies
+them. Stage A is the initializer and populates most fields; later
+stages own the fields their STAGE_WRITES tuple declares.
+
 The five stages run in sequence:
 
     preprocess  →  gate  →  optimize  →  postprocess  →  output
@@ -41,10 +48,10 @@ class EpochData:
     info: dict                     # per-epoch diagnostics dict
     ns:  int                       # number of usable sats
     init_ecef:  np.ndarray                # initial-pose ECEF (3,)
-    R:   np.ndarray                # ECEF→ENU rotation (3,3)
+    R_enu2ecef: np.ndarray         # ENU→ECEF rotation (3,3)
 
     # ── Filled by `preprocess` ─────────────────────────────────────
-    kk: int | None = None              # current Phase-2 epoch index
+    key_idx: int | None = None              # current Phase-2 epoch index
     is_recovery: bool = False          # epoch follows skip_count > 0
     tow: float | None = None           # GPS time-of-week
     imu_idx_prev: int | None = None    # IMU cursor before PIM build
@@ -54,10 +61,10 @@ class EpochData:
     graph: Any = None                     # gtsam.NonlinearFactorGraph
     values: Any = None                     # gtsam.Values (initial vals)
     estimate: Any = None                   # gtsam.Values (smoother est)
-    pose_p:  Any = None                # gtsam.Pose3 — Xpose(kk-1)
-    vel_p:   np.ndarray | None = None  # vel(kk-1)
-    bias_p:  Any = None                # imuBias.ConstantBias(kk-1)
-    pred:    Any = None                # gtsam.NavState (predicted)
+    pose_p:  Any = None                # gtsam.Pose3 — Xpose(key_idx-1)
+    vel_prev:   np.ndarray | None = None  # vel(key_idx-1)
+    bias_prev:  Any = None                # imuBias.ConstantBias(key_idx-1)
+    pred_nav: Any = None               # gtsam.NavState (predicted)
 
     # ── Filled by `gate` ──────────────────────────────────────────
     remove_indices: list = field(default_factory=list)
@@ -65,12 +72,12 @@ class EpochData:
     skip_cp_now: bool = False
     pred_enu:  np.ndarray | None = None  # IMU-pred antenna ENU (3,)
     pred_ecef: np.ndarray | None = None  # IMU-pred antenna ECEF (3,)
-    prev_amb_tc: dict = field(default_factory=dict)
+    prev_amb_values: dict = field(default_factory=dict)
 
     # ── Filled by `optimize` ──────────────────────────────────────
     nv: int = 0                        # # DD factors built
-    pose_tc:  Any = None               # smoother Pose3 (kk)
-    ecef_tc:  np.ndarray | None = None # antenna ECEF (3,) at kk
+    pose_tc:  Any = None               # smoother Pose3 (key_idx)
+    ecef_tc:  np.ndarray | None = None # antenna ECEF (3,) at key_idx
     nb: int = 0                        # # accepted DDs after FDE
     xa: np.ndarray | None = None       # LAMBDA-fixed full state vec
 

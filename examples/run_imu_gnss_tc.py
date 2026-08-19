@@ -8,15 +8,10 @@ Usage:
   python run_imu_gnss_tc.py <rover.obs> <base.obs> <nav_file> <imu.csv> <reference.csv>
 
 Environment variables:
-  MAX_EP       : max epochs (default: end of rover.obs;
-                 set to 'all'/'auto'/'0' or unset = process to end)
-  VEL_THRESH   : velocity threshold for Phase 2 transition (default 1.0 m/s)
-  IMU_SCALE    : IMU noise scale factor (default 10)
-  LEVER_EP     : epochs after transition to enable lever arm (default 10)
+  MAX_EP       : max epochs (default: end of rover.obs)
   LEVER_ARM    : lever arm x,y,z in body FLU (default "0.31,0,0.55")
-  SIG_PR       : pseudorange sigma (default 0.3 m)
-  SIG_CP       : carrier phase sigma (default 0.003 m)
-  AR_MODE      : 0=off, 3=fix-and-hold (default 3)
+  SAVE_NPZ     : write per-epoch diagnostics to this path
+  (pipeline knobs: every TcConfig field is an env var — see config.py)
 """
 
 import sys

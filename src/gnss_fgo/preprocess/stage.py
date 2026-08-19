@@ -1,7 +1,7 @@
 """Stage A — PIM build, IMU prediction, IMU chain attach.
 
 Bumps tc_epoch, integrates IMU up to the GNSS TOW, and seeds Xpose/Vel/
-Bias(kk) at the predicted state. If the previous Xpose was already
+Bias(key_idx) at the predicted state. If the previous Xpose was already
 marginalised out of the FLS window we attempt a DDPR warm-reset
 through ``recovery.try_ddpr_reset`` rather than continue.
 """
@@ -17,70 +17,70 @@ from .. import recovery as _tc_recovery
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R', 'bias_p', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'kk',
-    'n_imu', 'obs', 'obs_sd', 'obsb', 'pim', 'pose_p', 'init_ecef', 'pred',
-    'rs', 'rsb', 'sat', 'values', 'vel_p',
+    'R_enu2ecef', 'bias_prev', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'key_idx',
+    'n_imu', 'obs', 'obs_sd', 'obsb', 'pim', 'pose_p', 'init_ecef', 'pred_nav',
+    'rs', 'rsb', 'sat', 'values', 'vel_prev',
 )
 STAGE_WRITES = (
-    'bias_p', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'is_recovery',
-    'kk', 'n_imu', 'pim', 'pose_p', 'pred', 'tow', 'values', 'vel_p',
+    'bias_prev', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'is_recovery',
+    'key_idx', 'n_imu', 'pim', 'pose_p', 'pred_nav', 'tow', 'values', 'vel_prev',
 )
 
 
-def run(tc, ed):
+def run(tc, epoch):
     """Stage A: IMU preintegration + pose/vel prediction from ISAM2 prior.
 
-    Populates ed: kk, pim, n_imu, gyro_mean, is_recovery,
-      graph, values, estimate, pose_p, vel_p, bias_p, pred.
+    Populates epoch: key_idx, pim, n_imu, gyro_mean, is_recovery,
+      graph, values, estimate, pose_p, vel_prev, bias_prev, pred.
     Early-return when n_imu==0 (no IMU samples) or prev pose is
     marginalized out (warm-reset via DDPR if possible).
     """
-    info = ed.info
+    info = epoch.info
     tc.tc_epoch += 1
-    ed.kk = tc.tc_epoch
-    info['tc_epoch'] = ed.kk
+    epoch.key_idx = tc.tc_epoch
+    info['tc_epoch'] = epoch.key_idx
 
     # IMU preintegration: integrate up to current GNSS epoch TOW.
-    # Relaxed PIM on recovery so stale pose(kk-1) doesn't tightly bind.
-    ed.is_recovery = getattr(tc, 'skip_count', 0) > 0
-    ed.imu_idx_prev = tc.imu_idx
-    _, tow_obs = time2gpst(ed.obs.t)
-    ed.tow = tow_obs
-    ed.pim, ed.n_imu, ed.gyro_mean = _tc_pim.build_pim(tc, 
+    # Relaxed PIM on recovery so stale pose(key_idx-1) doesn't tightly bind.
+    epoch.is_recovery = getattr(tc, 'skip_count', 0) > 0
+    epoch.imu_idx_prev = tc.imu_idx
+    _, tow_obs = time2gpst(epoch.obs.t)
+    epoch.tow = tow_obs
+    epoch.pim, epoch.n_imu, epoch.gyro_mean = _tc_pim.build_pim(tc, 
         tc.tc_bias, target_tow=tow_obs)
-    info['n_imu'] = ed.n_imu
-    if ed.n_imu == 0:
+    info['n_imu'] = epoch.n_imu
+    if epoch.n_imu == 0:
         return _tc_recovery.advance_epoch_and_pack(tc, 
-            tc.nav.x[0:3], 'FLT', 0, info, ed.obs)
+            tc.nav.x[0:3], 'FLT', 0, info, epoch.obs)
 
-    ed.graph = gtsam.NonlinearFactorGraph()
-    ed.values = gtsam.Values()
-    ed.estimate = tc.isam2.calculateEstimate()
+    epoch.graph = gtsam.NonlinearFactorGraph()
+    epoch.values = gtsam.Values()
+    epoch.estimate = tc.isam2.calculateEstimate()
 
-    if not ed.estimate.exists(tc.Xpose(ed.kk - 1)):
-        info['prev_pose_missing'] = ed.kk - 1
+    if not epoch.estimate.exists(tc.Xpose(epoch.key_idx - 1)):
+        info['prev_pose_missing'] = epoch.key_idx - 1
         dummy_pose = gtsam.Pose3(gtsam.Rot3.Identity(),
-            gtsam.Point3(*(ed.R.T @ (ed.init_ecef - tc.base_ecef))))
+            gtsam.Point3(*(epoch.R_enu2ecef.T @ (epoch.init_ecef - tc.base_ecef))))
         ecef_ddpr_pm, ok = _tc_recovery.try_ddpr_reset(tc, 
-            ed.obs, ed.obsb, ed.obs_sd, ed.rs, ed.rsb,
-            ed.sat, ed.el, ed.iu, ed.ir_map,
+            epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
+            epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
             dummy_pose, dummy_pose.rotation(), np.zeros(3),
             info, 'ddpr_prev_missing_recover')
         if ok:
             return _tc_recovery.advance_epoch_and_pack(tc, 
-                ecef_ddpr_pm, 'FLT', 0, info, ed.obs)
+                ecef_ddpr_pm, 'FLT', 0, info, epoch.obs)
         return _tc_recovery.advance_epoch_and_pack(tc, 
-            tc.nav.x[0:3], 'FLT', 0, info, ed.obs)
+            tc.nav.x[0:3], 'FLT', 0, info, epoch.obs)
 
-    ed.pose_p = ed.estimate.atPose3(tc.Xpose(ed.kk - 1))
-    ed.vel_p = ed.estimate.atVector(tc.Vel(ed.kk - 1))
-    ed.bias_p = ed.estimate.atConstantBias(tc.Bias(ed.kk - 1))
-    ed.pred = ed.pim.predict(
-        gtsam.NavState(ed.pose_p, ed.vel_p), ed.bias_p)
-    info['pred_heading_deg'] = heading_from_pose(ed.pred.pose())
-    ed.values.insert(tc.Xpose(ed.kk), ed.pred.pose())
-    ed.values.insert(tc.Vel(ed.kk), ed.pred.velocity())
-    ed.values.insert(tc.Bias(ed.kk), ed.bias_p)
-    _tc_pim.add_imu_chain(tc, ed.graph, ed.values, ed.kk, ed.pim,
-                        ed.pose_p, ed.vel_p, info)
+    epoch.pose_p = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx - 1))
+    epoch.vel_prev = epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1))
+    epoch.bias_prev = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx - 1))
+    epoch.pred_nav = epoch.pim.predict(
+        gtsam.NavState(epoch.pose_p, epoch.vel_prev), epoch.bias_prev)
+    info['pred_heading_deg'] = heading_from_pose(epoch.pred_nav.pose())
+    epoch.values.insert(tc.Xpose(epoch.key_idx), epoch.pred_nav.pose())
+    epoch.values.insert(tc.Vel(epoch.key_idx), epoch.pred_nav.velocity())
+    epoch.values.insert(tc.Bias(epoch.key_idx), epoch.bias_prev)
+    _tc_pim.add_imu_chain(tc, epoch.graph, epoch.values, epoch.key_idx, epoch.pim,
+                        epoch.pose_p, epoch.vel_prev, info)
     return None

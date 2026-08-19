@@ -1,6 +1,5 @@
 """Recovery actions — paths the runner takes when the normal optimize"""
 
-import os
 import numpy as np
 import gtsam
 
@@ -179,30 +178,25 @@ def _outage_tick_sat_outc(tc, info):
     return skip_remove_indices
 
 
-def _outage_add_pseudo_measurements(tc, graph, kk, info, imu_idx_prev,
+def _outage_add_pseudo_measurements(tc, graph, key_idx, info, imu_idx_prev,
                                       pose_prev, vel_prev, gyro_mean):
     """Outage-path pseudo-measurements (NHC + ZUPT/ZARU/anchor)."""
     speed_for_nhc = (
         float(np.linalg.norm(np.asarray(vel_prev, dtype=float)[:2]))
         if vel_prev is not None else 0.0)
-    if _add_nhc_factor(tc, graph, kk, speed_for_nhc, gyro_mean_rh=gyro_mean):
+    if _add_nhc_factor(tc, graph, key_idx, speed_for_nhc, gyro_mean_rh=gyro_mean):
         info['nhc'] = True
     if imu_idx_prev is None:
         return
     n_imu = int(info.get('n_imu', tc.imu_idx - imu_idx_prev) or 0)
     _add_zupt_factor_inplace(
-        tc, graph, kk, imu_idx_prev, n_imu, info,
+        tc, graph, key_idx, imu_idx_prev, n_imu, info,
         pose_prev=pose_prev, gnss_available=False, vel_prev=vel_prev)
 
 
-def _outage_anchor_bias_prior(tc, graph, kk):
-    """Add the SKIP-only tight bias prior to ``graph`` at epoch ``kk``."""
-    legacy = os.environ.get('SKIP_BIAS_PRIOR_SIGMA')
-    legacy_default = float(legacy) if legacy is not None else None
-    sig_acc_default = legacy_default if legacy_default is not None else 1e-4
-    sig_gyro_default = legacy_default if legacy_default is not None else 3e-6
-    sig_acc = float(os.environ.get('SKIP_BIAS_PRIOR_SIGMA_ACC', sig_acc_default))
-    sig_gyro = float(os.environ.get('SKIP_BIAS_PRIOR_SIGMA_GYRO', sig_gyro_default))
+def _outage_anchor_bias_prior(tc, graph, key_idx):
+    """Add the SKIP-only tight bias prior to ``graph`` at epoch ``key_idx``."""
+    sig_acc, sig_gyro = 1e-4, 3e-6   # outage bias-anchor sigmas (measured)
     if sig_acc <= 0 and sig_gyro <= 0:
         return
     if sig_acc <= 0:
@@ -213,34 +207,34 @@ def _outage_anchor_bias_prior(tc, graph, kk):
     sigmas = np.array([sig_acc, sig_acc, sig_acc,
                        sig_gyro, sig_gyro, sig_gyro], dtype=np.float64)
     graph.addPriorConstantBias(
-        tc.Bias(kk), bias_anchor,
+        tc.Bias(key_idx), bias_anchor,
         gtsam.noiseModel.Diagonal.Sigmas(sigmas))
 
 
-def process_gdop_skip(tc, obs, kk, graph, values, R_enu2ecef, info,
+def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
                       imu_idx_prev=None, gyro_mean=None, vel_prev=None,
-                      ed=None):
+                      epoch=None):
     """Bad GNSS geometry: IMU-only epoch. Advances state + keeps amb keys alive.
 
-    When ``ed`` is passed and doppler_skip_aid is on, SD Doppler factors
+    When ``epoch`` is passed and doppler_skip_aid is on, SD Doppler factors
     are injected first — the epoch's only velocity observation (the
     canyon drift is mostly vertical, which NHC leaves free).
     """
-    if (ed is not None and tc.cfg.doppler_skip_aid
+    if (epoch is not None and tc.cfg.doppler_skip_aid
             and tc.cfg.doppler_sd_sigma > 0):
-        _tc_doppler_sd.add_sd_doppler_factors(tc, ed, in_outage=True)
+        _tc_doppler_sd.add_sd_doppler_factors(tc, epoch, in_outage=True)
     _outage_advance_skip_count(tc, info, source='gdop')
     skip_remove_indices = _outage_tick_sat_outc(tc, info)
-    _outage_anchor_bias_prior(tc, graph, kk)
+    _outage_anchor_bias_prior(tc, graph, key_idx)
     try:
         est_now = tc.isam2.calculateEstimate()
-        gdop_pose_prev = est_now.atPose3(tc.Xpose(kk - 1))
-        gdop_vel_prev = np.array(est_now.atVector(tc.Vel(kk - 1)))
+        gdop_pose_prev = est_now.atPose3(tc.Xpose(key_idx - 1))
+        gdop_vel_prev = np.array(est_now.atVector(tc.Vel(key_idx - 1)))
     except (RuntimeError, IndexError, ValueError):
         gdop_pose_prev = None
         gdop_vel_prev = vel_prev
     _outage_add_pseudo_measurements(
-        tc, graph, kk, info, imu_idx_prev,
+        tc, graph, key_idx, info, imu_idx_prev,
         gdop_pose_prev, gdop_vel_prev, gyro_mean)
     # Gauge anchor: with GNSS skipped the epoch graph is relative-only
     # (IMU between + NHC + bias prior) and consecutive skips leave the
@@ -251,21 +245,21 @@ def process_gdop_skip(tc, obs, kk, graph, values, R_enu2ecef, info,
     # moves the new epoch freely on a bounded leash.
     if gdop_pose_prev is not None:
         graph.addPriorPose3(
-            tc.Xpose(kk - 1), gdop_pose_prev,
+            tc.Xpose(key_idx - 1), gdop_pose_prev,
             gtsam.noiseModel.Isotropic.Sigma(
                 6, tc.cfg.propagate_pose_sigma))
     if gdop_vel_prev is not None:
         graph.addPriorVector(
-            tc.Vel(kk - 1), np.asarray(gdop_vel_prev, dtype=float),
+            tc.Vel(key_idx - 1), np.asarray(gdop_vel_prev, dtype=float),
             gtsam.noiseModel.Isotropic.Sigma(
                 3, tc.cfg.propagate_vel_sigma))
     try:
-        _tc_isam.fls_update(tc, graph, values, kk,
+        _tc_isam.fls_update(tc, graph, values, key_idx,
                          keep_keys=tc._sat_states.amb_key_values(),
                          remove_indices=skip_remove_indices or None)
         estimate = tc.isam2.calculateEstimate()
-        pose_tc = estimate.atPose3(tc.Xpose(kk))
-        tc.tc_bias = estimate.atConstantBias(tc.Bias(kk))
+        pose_tc = estimate.atPose3(tc.Xpose(key_idx))
+        tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
         ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
         tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
     except (RuntimeError, IndexError, ValueError):
@@ -293,8 +287,8 @@ def process_imu_only(tc, obs):
 
     # Phase 2: advance graph with IMU factor only
     tc.tc_epoch += 1
-    kk = tc.tc_epoch
-    info['tc_epoch'] = kk
+    key_idx = tc.tc_epoch
+    info['tc_epoch'] = key_idx
 
     skip_remove_indices = _outage_tick_sat_outc(tc, info)
 
@@ -309,30 +303,30 @@ def process_imu_only(tc, obs):
     graph = gtsam.NonlinearFactorGraph()
     values = gtsam.Values()
     estimate = tc.isam2.calculateEstimate()
-    if not estimate.exists(tc.Xpose(kk - 1)):
+    if not estimate.exists(tc.Xpose(key_idx - 1)):
         # Previous pose marginalised — can't build IMU factor.
         return advance_epoch_and_pack(
             tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
 
-    pose_p = estimate.atPose3(tc.Xpose(kk - 1))
-    vel_p = estimate.atVector(tc.Vel(kk - 1))
-    bias_p = estimate.atConstantBias(tc.Bias(kk - 1))
-    pred = pim.predict(gtsam.NavState(pose_p, vel_p), bias_p)
-    values.insert(tc.Xpose(kk), pred.pose())
-    values.insert(tc.Vel(kk), pred.velocity())
-    values.insert(tc.Bias(kk), bias_p)
-    _tc_pim.add_imu_chain(tc, graph, values, kk, pim, pose_p, vel_p, info)
-    _outage_anchor_bias_prior(tc, graph, kk)
+    pose_p = estimate.atPose3(tc.Xpose(key_idx - 1))
+    vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
+    bias_prev = estimate.atConstantBias(tc.Bias(key_idx - 1))
+    pred = pim.predict(gtsam.NavState(pose_p, vel_prev), bias_prev)
+    values.insert(tc.Xpose(key_idx), pred.pose())
+    values.insert(tc.Vel(key_idx), pred.velocity())
+    values.insert(tc.Bias(key_idx), bias_prev)
+    _tc_pim.add_imu_chain(tc, graph, values, key_idx, pim, pose_p, vel_prev, info)
+    _outage_anchor_bias_prior(tc, graph, key_idx)
     _outage_add_pseudo_measurements(
-        tc, graph, kk, info, imu_idx_prev, pose_p, vel_p, gyro_mean)
+        tc, graph, key_idx, info, imu_idx_prev, pose_p, vel_prev, gyro_mean)
 
     try:
-        _tc_isam.fls_update(tc, graph, values, kk,
+        _tc_isam.fls_update(tc, graph, values, key_idx,
                          keep_keys=tc._sat_states.amb_key_values(),
                          remove_indices=skip_remove_indices or None)
         estimate = tc.isam2.calculateEstimate()
-        pose_tc = estimate.atPose3(tc.Xpose(kk))
-        tc.tc_bias = estimate.atConstantBias(tc.Bias(kk))
+        pose_tc = estimate.atPose3(tc.Xpose(key_idx))
+        tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
         ecef_tc = R @ np.array(pose_tc.translation()) + tc.base_ecef
         sol = tc._antenna_ecef(pose_tc, ecef_tc)
         tc.nav.x[0:3] = sol
@@ -344,7 +338,7 @@ def process_imu_only(tc, obs):
     return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
 
 
-def handle_solve_exception(tc, ex, pred, bias_p, kk, obs, obsb, obs_sd,
+def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
                             rs, rsb, sat, el, iu, ir_map, info):
     """Main solve failed (numerical). Try DDPR warm-reset; else IMU prior fallback."""
     info['error'] = str(ex)
@@ -357,17 +351,17 @@ def handle_solve_exception(tc, ex, pred, bias_p, kk, obs, obsb, obs_sd,
     try:
         g_fb = gtsam.NonlinearFactorGraph()
         v_fb = gtsam.Values()
-        v_fb.insert(tc.Xpose(kk), pred.pose())
-        v_fb.insert(tc.Vel(kk), pred.velocity())
-        v_fb.insert(tc.Bias(kk), bias_p)
-        g_fb.addPriorPose3(tc.Xpose(kk), pred.pose(),
+        v_fb.insert(tc.Xpose(key_idx), pred.pose())
+        v_fb.insert(tc.Vel(key_idx), pred.velocity())
+        v_fb.insert(tc.Bias(key_idx), bias_prev)
+        g_fb.addPriorPose3(tc.Xpose(key_idx), pred.pose(),
             gtsam.noiseModel.Isotropic.Sigma(6, 1.0))
-        g_fb.addPriorVector(tc.Vel(kk), pred.velocity(),
+        g_fb.addPriorVector(tc.Vel(key_idx), pred.velocity(),
             gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
-        g_fb.addPriorConstantBias(tc.Bias(kk), bias_p,
+        g_fb.addPriorConstantBias(tc.Bias(key_idx), bias_prev,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.1))
-        _tc_isam.fls_update(tc, g_fb, v_fb, kk)
-        tc.tc_bias = bias_p
+        _tc_isam.fls_update(tc, g_fb, v_fb, key_idx)
+        tc.tc_bias = bias_prev
     except (RuntimeError, IndexError, ValueError):
         pass
     return advance_epoch_and_pack(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)

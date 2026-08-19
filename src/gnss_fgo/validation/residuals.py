@@ -1,6 +1,5 @@
 """Post-fit residual tests + DDPR sanity escalation (Stage C/D support)."""
 
-import os
 import numpy as np
 import gtsam
 from .. import state as _tc_state
@@ -217,9 +216,9 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
                 _st.amb_gen += 1
 
 
-def apply_fde(tc, graph, kk, nv, estimate, info):
+def apply_fde(tc, graph, key_idx, nv, estimate, info):
     """GICI-style Fault Detection and Exclusion."""
-    use_median = bool(int(os.environ.get('FDE_MEDIAN_SUB', '0')))
+    use_median = False   # median-subtraction experiment: measured no win
     max_iter = max(1, tc.cfg.fde_max_iter)
     iterative = max_iter > 1
     total_rejected = 0
@@ -258,7 +257,7 @@ def apply_fde(tc, graph, kk, nv, estimate, info):
                 gtsam.NonlinearFactorGraph(), gtsam.Values(),
                 gtsam.FixedLagSmootherKeyTimestampMap(), reject_fi)
             est_fde = tc.isam2.calculateEstimate()
-            if est_fde.exists(tc.Xpose(kk)):
+            if est_fde.exists(tc.Xpose(key_idx)):
                 estimate = est_fde
         except (RuntimeError, IndexError):
             break

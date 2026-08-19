@@ -1,6 +1,5 @@
 """Phase 2 — moving CombinedImuFactor + DDFactorArm pipeline."""
 
-import os
 import numpy as np
 import gtsam
 
@@ -201,22 +200,23 @@ def transition_to_tc(tc, collected_fixes):
     tc.phase = 2
     tc._tc_fresh_amb_epochs = 0
     boot_ddpr_epochs = int(
-        os.environ.get('BOOT_DDPR_EPOCHS', '20'))
+        tc.cfg.boot_ddpr_epochs)
     tc._tc_bootstrap_ddpr_epochs = max(0, boot_ddpr_epochs)
 
     return pitch_rad, roll_rad, heading_rad, bias_acc, bias_gyro
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
-                    obs_sd, ir_map, ref_vel, ref_ecef, info, ns, init_ecef, R):
+                    obs_sd, ir_map, ref_vel, ref_ecef, info, ns, init_ecef,
+                    R_enu2ecef):
     """Phase 2: IMU/GNSS TC pipeline."""
-    ed = make_epoch_data(
+    epoch = make_epoch_data(
         obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-        ref_vel, ref_ecef, info, ns, init_ecef, R)
+        ref_vel, ref_ecef, info, ns, init_ecef, R_enu2ecef)
     for stage in (preprocess.run, gate.run,
                   optimize.run, postprocess.run,
                   output.run):
-        result = stage(tc, ed)
+        result = stage(tc, epoch)
         if result is not None:
             return result
     raise RuntimeError("tightly-coupled pipeline did not terminate")
