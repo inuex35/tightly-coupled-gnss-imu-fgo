@@ -24,7 +24,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import cssrlib.rinex as rn
 import cssrlib.gnss as gn
 from cssrlib.gnss import uTYP, ecef2pos, sat2prn
-from cssrlib.ephemeris import satposs
 from gnss_fgo import ImuGnssTc, load_imu_csv
 from gnss_fgo.utils import R_ENU2NED, R_FRD2FLU
 from gnss_fgo.utils.sig_autodetect import auto_detect_signals
@@ -102,8 +101,8 @@ def main():
     rov_picks_by_sys = {}
     for s in sigs:
         rov_picks_by_sys.setdefault(s.sys, set()).add(int(s.sig) // 100)
-    for sys, bands in rov_picks_by_sys.items():
-        rov_typ_d = {int(s.sig) // 100: s for s in dec.sig_map.get(sys, {}).values()
+    for sys_id, bands in rov_picks_by_sys.items():
+        rov_typ_d = {int(s.sig) // 100: s for s in dec.sig_map.get(sys_id, {}).values()
                      if s.typ == uTYP.D}
         for band in bands:
             if band in rov_typ_d:
@@ -307,7 +306,6 @@ def main():
             e_msg = info['error'].replace('\n', ' | ').replace('(', '[').replace(')', ']')
             extra += f" ERR[{e_msg[:200]}]"
         if info['phase'] == 2 and 'bias_acc' in info:
-            ba = info['bias_acc']
             slip = info.get('n_slip', 0)
             mf = info.get('max_frac', 0)
             extra += f" frac={mf:.2f}"
@@ -412,7 +410,6 @@ def main():
         print(f"  N RMS:  {np.sqrt(np.mean(enu_all[:,1]**2)):.4f}m")
         print(f"  U RMS:  {np.sqrt(np.mean(enu_all[:,2]**2)):.4f}m")
         if fix:
-            ef = np.array([r['enu'] for r in fix])
             e3f = np.array([r['err'] for r in fix])
             print(f"  Fix 3D RMS: {np.sqrt(np.mean(e3f**2)):.4f}m")
 
