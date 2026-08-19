@@ -1,6 +1,5 @@
 """Post-fit residual tests + DDPR sanity escalation (Stage C/D support)."""
 
-import os
 import numpy as np
 import gtsam
 from .. import state as _tc_state
@@ -219,7 +218,7 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
 
 def apply_fde(tc, graph, kk, nv, estimate, info):
     """GICI-style Fault Detection and Exclusion."""
-    use_median = bool(int(os.environ.get('FDE_MEDIAN_SUB', '0')))
+    use_median = False   # median-subtraction experiment: measured no win
     max_iter = max(1, tc.cfg.fde_max_iter)
     iterative = max_iter > 1
     total_rejected = 0

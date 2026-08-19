@@ -1,6 +1,5 @@
 """DD pseudorange / carrier-phase factor builder for the TC graph."""
 
-import os
 import numpy as np
 import gtsam
 from cssrlib.gnss import uGNSS, geodist, SAT_SYS_ARR, rCST
@@ -257,9 +256,7 @@ class DdFactorBuilder:
         ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
             tc, sys_id, idx_sys, sat, el)
         if prev_ref is not None and prev_ref != ref_sat:
-            reset_on_ref_switch = bool(
-                os.environ.get('REF_SWITCH_RESET_ALWAYS', '0') != '0')
-            if reset_on_ref_switch or slip_keys is None:
+            if slip_keys is None:
                 reset_sys = [(s, f) for (s, f) in sorted_amb_keys(amb_dict)
                              if SAT_SYS_ARR[s] == sys_id]
                 for key in reset_sys:

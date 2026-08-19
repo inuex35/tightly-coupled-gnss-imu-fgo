@@ -7,7 +7,6 @@ TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``ed.graph`` /
 ``ed.values``; nothing here talks to the smoother.
 """
 
-import os
 
 import numpy as np
 import gtsam
@@ -145,7 +144,7 @@ def _build_factor_block(tc, ed, prev_smode):
                 pose_ls = gtsam.Pose3(
                     ed.pred.pose().rotation(),
                     gtsam.Point3(*body_enu_ls))
-                boot_sigma = float(os.environ.get('BOOT_DDPR_SIGMA', '0.5'))
+                boot_sigma = float(tc.cfg.boot_ddpr_sigma)
                 sigmas = np.array([1e6, 1e6, 1e6,
                                    boot_sigma, boot_sigma, boot_sigma])
                 ed.graph.addPriorPose3(

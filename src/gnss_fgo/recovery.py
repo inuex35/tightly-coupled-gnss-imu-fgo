@@ -1,6 +1,5 @@
 """Recovery actions — paths the runner takes when the normal optimize"""
 
-import os
 import numpy as np
 import gtsam
 
@@ -197,12 +196,7 @@ def _outage_add_pseudo_measurements(tc, graph, kk, info, imu_idx_prev,
 
 def _outage_anchor_bias_prior(tc, graph, kk):
     """Add the SKIP-only tight bias prior to ``graph`` at epoch ``kk``."""
-    legacy = os.environ.get('SKIP_BIAS_PRIOR_SIGMA')
-    legacy_default = float(legacy) if legacy is not None else None
-    sig_acc_default = legacy_default if legacy_default is not None else 1e-4
-    sig_gyro_default = legacy_default if legacy_default is not None else 3e-6
-    sig_acc = float(os.environ.get('SKIP_BIAS_PRIOR_SIGMA_ACC', sig_acc_default))
-    sig_gyro = float(os.environ.get('SKIP_BIAS_PRIOR_SIGMA_GYRO', sig_gyro_default))
+    sig_acc, sig_gyro = 1e-4, 3e-6   # outage bias-anchor sigmas (measured)
     if sig_acc <= 0 and sig_gyro <= 0:
         return
     if sig_acc <= 0:

@@ -149,6 +149,9 @@ class TcConfig:
     gdop_max: float = 10.0
     nsat_min: int = 6
     min_dd_for_solve: int = 4
+    boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
+                                   # N epochs after the Phase-2 transition
+    boot_ddpr_sigma: float = 0.5   # [m] its translation sigma
     propagate_pose_sigma: float = 1.0   # m — IMU-pred pose prior σ (translation)
     propagate_vel_sigma:  float = 1.0   # m/s — IMU-pred velocity prior σ
     propagate_bias_sigma: float = 0.1   # IMU-pred bias prior σ

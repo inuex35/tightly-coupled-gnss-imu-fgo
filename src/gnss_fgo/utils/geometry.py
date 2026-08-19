@@ -80,9 +80,7 @@ def is_bds_geo(prn_sat: int) -> bool:
 def load_imu_csv(path: str) -> list:
     """Load raw IMU CSV measurements in the dataset's sensor FRD frame."""
     data = []
-    flip_x = os.environ.get('ACC_FLIP_X', '0') == '1'
-    flip_y = os.environ.get('ACC_FLIP_Y', '0') == '1'
-    flip_z = os.environ.get('ACC_FLIP_Z', '0') == '1'
+    flip_x = flip_y = flip_z = False
     with open(path) as f:
         reader = csv.reader(f)
         next(reader)  # header
