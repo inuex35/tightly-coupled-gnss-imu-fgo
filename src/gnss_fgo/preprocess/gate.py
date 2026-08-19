@@ -111,21 +111,8 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     }
     sq.update_cp_lock(visible_keys, slip_keys=slip_keys, forced_hold=forced_hold)
     if skip_cp_now:
-        tc._recov_cp_hold -= 1
-        thr = float(tc.cfg.recov_cp_release_thresh)
-        if thr > 0:
-            last_res = float(tc._last_main_ddpr_res)
-            if last_res > 0 and last_res <= thr:
-                tc._recov_cp_release_streak = (
-                    tc._recov_cp_release_streak + 1)
-            else:
-                tc._recov_cp_release_streak = 0
-            need = int(tc.cfg.recov_cp_release_count)
-            if (tc._recov_cp_hold <= 0
-                    and tc._recov_cp_release_streak < need):
-                tc._recov_cp_hold = 1
-                info['recov_cp_release_wait'] = last_res
-        info['recov_cp_hold'] = tc._recov_cp_hold + 1
+        tc._recovery.tick_cp_hold(
+            tc.cfg, float(tc._last_main_ddpr_res), info)
     return forced_hold, remove_indices, slip_keys, skip_cp_now
 
 
