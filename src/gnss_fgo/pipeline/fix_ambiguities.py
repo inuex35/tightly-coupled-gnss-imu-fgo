@@ -133,7 +133,8 @@ def _record_ar_diagnostics(tc, info):
         info['ar_subset_candidates'] = int(ar_subset_dbg.get('candidates', 0))
         if ar_subset_dbg.get('used'):
             info['ar_subset_used'] = True
-            info['ar_subset_drop_sat'] = int(ar_subset_dbg.get('drop_sat', 0))
+            drop_sats = ar_subset_dbg.get('drop_sats') or []
+            info['ar_subset_drop_sats'] = [int(s) for s in drop_sats]
             info['ar_subset_nb'] = int(ar_subset_dbg.get('nb', 0))
             info['ar_subset_ratio'] = float(ar_subset_dbg.get('ratio', 0.0))
 

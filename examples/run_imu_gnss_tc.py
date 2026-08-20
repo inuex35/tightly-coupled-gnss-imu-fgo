@@ -37,10 +37,14 @@ def parse_args():
             sys.argv[4], sys.argv[5])
 
 
-def _format_sat_freq(sat, freq):
+def _format_sat(sat):
     sys_i, prn = sat2prn(int(sat))
     sys_ch = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}.get(sys_i, '?')
-    return f"{sys_ch}{prn:02d}f{int(freq)}"
+    return f"{sys_ch}{prn:02d}"
+
+
+def _format_sat_freq(sat, freq):
+    return f"{_format_sat(sat)}f{int(freq)}"
 
 
 def _pose_rph_deg(tc):
@@ -334,11 +338,11 @@ def main():
             if 'lambda_correction' in info:
                 extra += f" λcorr={info['lambda_correction']:.3f}"
             if info.get('ar_subset_used'):
-                drop_sat = int(info.get('ar_subset_drop_sat', 0))
-                sys_i, prn = sat2prn(drop_sat)
-                sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
+                drop_txt = '+'.join(
+                    _format_sat(int(s))
+                    for s in (info.get('ar_subset_drop_sats') or [])) or '-'
                 extra += (
-                    f" SUBSET_AR({sys_ch}{prn:02d}"
+                    f" SUBSET_AR({drop_txt}"
                     f",nb={int(info.get('ar_subset_nb', 0))}"
                     f",r={float(info.get('ar_subset_ratio', 0.0)):.2f})"
                 )
