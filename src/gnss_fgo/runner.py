@@ -189,7 +189,6 @@ class ImuGnssTc:
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
         self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
-        self._amb_lam_view = SatFieldView(self._sat_states, 'amb_lam', absent=0.0)
         self._amb_init_epoch_view = SatFieldView(
             self._sat_states, 'amb_init_epoch')
         self._fix_streak_view = SatFieldView(
@@ -207,7 +206,6 @@ class ImuGnssTc:
         # initialized here for any access before the first epoch.
         self.ref_sats = {}
         self.amb_gen = {}
-        self.amb_lam = {}
         self.amb_init_epoch = {}
 
         self._init_epoch_state_defaults()
@@ -229,7 +227,6 @@ class ImuGnssTc:
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # write_marginals diagnostics (cp visibility hysteresis)
-        self._cp_visible_sf_last_ep = {}
         # FLS-update timing accumulators
         self._fls_update_calls = 0
         self._fls_update_time_total = 0.0
@@ -273,7 +270,6 @@ class ImuGnssTc:
         self.cn0_min = cfg.cn0_min
         self.ref_sats = {}
         self.amb_gen = {}
-        self.amb_lam = {}
         self.amb_init_epoch = {}
 
 
@@ -293,7 +289,6 @@ class ImuGnssTc:
     _VIEW_FORWARDS = {
         'amb_keys_tc': '_amb_key_view',
         'amb_gen': '_amb_gen_view',
-        'amb_lam': '_amb_lam_view',
         'amb_init_epoch': '_amb_init_epoch_view',
         '_fix_streak': '_fix_streak_view',
     }

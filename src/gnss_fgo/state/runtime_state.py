@@ -1,18 +1,5 @@
 """Structured runtime state for the TC pipeline."""
 
-from enum import Enum
-
-
-class TcState(Enum):
-    """Five-state FSM landing point. Not yet wired into the runner —
-    transitions still happen via the flag fields below."""
-    NORMAL    = 'normal'      # Fix flowing, residuals clean.
-    DEGRADED  = 'degraded'    # Some sat outliers / CP-hold engaged.
-    DR        = 'dr'          # Dead reckoning — GDOP skip, IMU-only update.
-    INS_ONLY  = 'ins_only'    # Long outage, FLS frozen.
-    RECOVERY  = 'recovery'    # Just warm-reset, gating new measurements.
-
-
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from typing import Optional
@@ -124,7 +111,6 @@ class SatState:
     # Ambiguity bookkeeping
     amb_key: Optional[int] = None            # GTSAM symbol for N
     amb_gen: int = 0                         # generation counter (++ on slip / reset)
-    amb_lam: float = 0.0                     # wavelength [m]
     amb_init_epoch: Optional[int] = None     # epoch when N was last initialised
     held_value: Optional[float] = None       # conditioned-out held integer [cyc]
     last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
@@ -249,15 +235,6 @@ class RecoveryState:
         """One CP-hold countdown step (call only while the hold is active)."""
         self.recov_cp_hold -= 1
         info['recov_cp_hold'] = self.recov_cp_hold + 1
-
-    def reset(self):
-        self.skip_count = 0
-        self.recov_cp_hold = 0
-        self.cp_hold_retrigger_streak = 0
-        self.pim_discontinuity = False
-        self.ddpr_bad_count = 0
-        self.zupt_anchor_pose = None
-        self.zupt_anchor_start_ep = None
 
 
 @dataclass

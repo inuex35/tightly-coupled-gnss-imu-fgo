@@ -29,7 +29,9 @@ class _SubConfigView:
 
 
 IMU_PRESETS = {
-    'tactical':   dict(accel_noise=2.84e-4, gyro_noise=4.01e-5,
+    # 'tactical' == the class defaults below (accel/gyro noise carry the
+    # measured x100/x1000 inflation); listed so the table tells the truth.
+    'tactical':   dict(accel_noise=2.84e-2, gyro_noise=4.01e-2,
                        accel_bias_sigma=3.14e-4, gyro_bias_sigma=9.70e-6),
     'consumer':   dict(accel_noise=2.0e-3,  gyro_noise=4.0e-4,
                        accel_bias_sigma=1.0e-3,  gyro_bias_sigma=5.0e-5),
@@ -39,7 +41,6 @@ IMU_PRESETS = {
                        accel_bias_sigma=2.0e-5,  gyro_bias_sigma=5.0e-7),
 }
 
-TC_PRESETS = {}
 
 
 @dataclass
@@ -272,7 +273,7 @@ class TcConfig:
             getattr(self, k) == cls_fields[k].default
             for k in ('accel_noise', 'gyro_noise',
                       'accel_bias_sigma', 'gyro_bias_sigma'))
-        if is_default and self.imu_grade != 'tactical':
+        if is_default:
             preset = IMU_PRESETS.get(self.imu_grade)
             if preset is None:
                 raise ValueError(f"Unknown imu_grade: {self.imu_grade}. "
@@ -302,13 +303,11 @@ class TcConfig:
     @classmethod
     def from_env(cls):
         kw = {}
-        preset_name = os.environ.get('TC_PRESET', '').strip()
-        preset = TC_PRESETS.get(preset_name, {})
         for name, f in cls.__dataclass_fields__.items():
             if name == 'imu_grade':
                 continue   # handled below
             envname = cls._env_name(name)
-            default = preset.get(name, f.default)
+            default = f.default
             if isinstance(f.default, str):
                 kw[name] = os.environ.get(envname, default)
             elif isinstance(f.default, int) and not isinstance(f.default, bool):

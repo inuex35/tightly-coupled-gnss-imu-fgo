@@ -95,8 +95,8 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
         except (RuntimeError, ValueError, IndexError):
             res_xa = None
         if res_pre is not None and res_xa is not None:
-            tc._last_fix_dres = float(res_xa) - float(res_pre)
-            if tc._last_fix_dres > dres_thr:
+            fix_dres = float(res_xa) - float(res_pre)
+            if fix_dres > dres_thr:
                 tc._last_ar_outcome = 'fix_dres'
                 return False
 

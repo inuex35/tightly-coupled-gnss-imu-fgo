@@ -302,6 +302,11 @@ class DdFactorBuilder:
 
         ref_state = tc._sat_states.get(ref_sat, f)
         j_state = tc._sat_states.get(j_sat, f)
+        # amb_gen is redundant for uniqueness (dd_epoch already isolates
+        # epochs and it resets to 0 every epoch) but it is part of the
+        # key VALUE: slip resets bump it before this build, and removing
+        # it would renumber those keys and change ISAM2's elimination
+        # order. Kept for key stability.
         key_n_ref = tc.N(ref_sat, f, dd_epoch * 100 + ref_state.amb_gen)
         key_n_j = tc.N(j_sat, f, dd_epoch * 100 + j_state.amb_gen)
         # N初期化: hybrid (continuing prior / release-seed / fresh)

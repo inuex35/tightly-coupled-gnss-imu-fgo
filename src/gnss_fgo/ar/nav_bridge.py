@@ -109,17 +109,8 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     tc.nav.vsat[:, :] = 0
     tc.nav.x[tc.nav.na:] = 0
     cp_visible_sf = set(tc._ar_cp_visible_sf)
-    hold_epochs = 0   # grace window experiment: measured no win
-    last_visible = tc._cp_visible_sf_last_ep
-    if last_visible is None:
-        last_visible = {}
-        tc._cp_visible_sf_last_ep = last_visible
-    for sf in cp_visible_sf:
-        last_visible[sf] = tc.epoch
-
     _publish_float_ambiguities(tc, estimate, amb_dict)
-    _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
-                              last_visible, amb_dict)
+    _publish_held_ambiguities(tc, cp_visible_sf, amb_dict)
     _publish_covariances(tc, factors, estimate, key_pose, amb_dict, R)
 
 
@@ -162,8 +153,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     tc._last_amb_vsat0_young = diag_vsat0_young
 
 
-def _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
-                              last_visible, amb_dict):
+def _publish_held_ambiguities(tc, cp_visible_sf, amb_dict):
     """Held integers enter nav.x at varholdamb variance; vsat only
     while the sat stays CP-visible. Also counts orphan CP signals
     (visible but neither held nor float)."""
@@ -172,9 +162,6 @@ def _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = float(held_value)
         tc.nav.P[tc.IB(s, f, tc.nav.na), tc.IB(s, f, tc.nav.na)] = held_var
         is_visible = (s, f) in cp_visible_sf
-        if not is_visible and hold_epochs > 0:
-            last_ep = last_visible.get((s, f), -10**9)
-            is_visible = (tc.epoch - last_ep) <= hold_epochs
         tc.nav.vsat[s - 1, f] = (1 if is_visible else 0)
 
     held_sf = {(int(s), int(f)) for (s, f), _ in tc._sat_states.held_items()}

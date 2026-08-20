@@ -149,29 +149,29 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
     return pr_entries, cp_entries
 
 
-def _fde_pick_rejects_iterative(tc, pr_entries, cp_entries, pr_median, cp_median):
+def _fde_pick_rejects_iterative(tc, pr_entries, cp_entries):
     """Iterative FDE: pick the SINGLE largest outlier across PR and CP."""
     best_d = 0.0
     best_fi = None
     for fi, res in pr_entries:
-        d = abs(res - pr_median)
+        d = abs(res)
         if d > tc.cfg.fde_pr and d > best_d:
             best_d, best_fi = d, fi
     for fi, res in cp_entries:
-        d = abs(res - cp_median)
+        d = abs(res)
         if d > tc.cfg.fde_cp and d > best_d:
             best_d, best_fi = d, fi
     return [best_fi] if best_fi is not None else []
 
 
-def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries, pr_median, cp_median):
+def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries):
     """Single-pass FDE: collect every PR + CP entry above its threshold."""
     reject_fi = []
     for fi, res in pr_entries:
-        if abs(res - pr_median) > tc.cfg.fde_pr:
+        if abs(res) > tc.cfg.fde_pr:
             reject_fi.append(fi)
     for fi, res in cp_entries:
-        if abs(res - cp_median) > tc.cfg.fde_cp:
+        if abs(res) > tc.cfg.fde_cp:
             reject_fi.append(fi)
     return reject_fi
 
@@ -209,7 +209,6 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
 
 def apply_fde(tc, graph, key_idx, nv, estimate, info):
     """GICI-style Fault Detection and Exclusion."""
-    use_median = False   # median-subtraction experiment: measured no win
     max_iter = max(1, tc.cfg.fde_max_iter)
     iterative = max_iter > 1
     total_rejected = 0
@@ -220,18 +219,12 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info):
         pr_entries, cp_entries = _fde_collect_residuals(
             tc, factors_all, fi_start, nf_total, estimate)
         # GICI-style median subtract removes pose-common-mode bias.
-        pr_median = (float(np.median([r for _, r in pr_entries]))
-                   if use_median and pr_entries else 0.0)
-        cp_median = (float(np.median([r for _, r in cp_entries]))
-                   if use_median and cp_entries else 0.0)
         if iterative:
-            reject_fi = _fde_pick_rejects_iterative(
-                tc, pr_entries, cp_entries, pr_median, cp_median)
+            reject_fi = _fde_pick_rejects_iterative(tc, pr_entries, cp_entries)
             if not reject_fi:
                 break
         else:
-            reject_fi = _fde_pick_rejects_single_pass(
-                tc, pr_entries, cp_entries, pr_median, cp_median)
+            reject_fi = _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries)
             if not reject_fi:
                 break
             if len(reject_fi) > tc.cfg.fde_max_frac * max(1, nv):
