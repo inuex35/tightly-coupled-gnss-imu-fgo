@@ -27,7 +27,7 @@ def _build_factor_block(tc, epoch, prev_smode):
     nv = _tc_factors.build_dd_factors(tc, 
         epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
         epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
-        epoch.pred_ecef, tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
+        tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
         tc.amb_keys_tc,
         dd_epoch=epoch.key_idx,
         prev_amb_values=epoch.prev_amb_values,

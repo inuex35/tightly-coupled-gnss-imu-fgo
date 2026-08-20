@@ -55,7 +55,7 @@ def _activate_phase2_hold_states(tc, hold_keys, xa):
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = held_value
 
 
-def apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
+def apply_fix_and_hold(tc, key_pose, amb_dict, xa):
     """Phase D — fix-and-hold (armode==3): mark held flags, then Phase 1 adds hold-prior factors while Phase 2 activates the hold on sat_states / nav.x (no graph factors). Always returns True; the bool return survives for the Phase-1 call shape."""
     tc.holdamb_flags()
     hold_keys = _collect_held_sat_freq_keys(tc, amb_dict)

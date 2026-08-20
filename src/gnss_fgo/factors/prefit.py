@@ -18,7 +18,7 @@ from ..utils import is_bds_geo as _utils_is_bds_geo
 _CLIGHT = 299792458.0
 
 
-def varerr_dd_sigma(tc, code, freq, el_rad, dt_s):
+def varerr_dd_sigma(tc, code, el_rad, dt_s):
     """RTKLIB-demo5 varerr formula port (rtkpos.c:402), returning the
     σ in metres to feed the DD factor's noise model.
 

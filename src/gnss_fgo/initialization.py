@@ -84,7 +84,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     lever = gtsam.Point3(0, 0, 0)
     _tc_factors.build_dd_factors(tc,
         g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        init_ecef, tc.Xp(ep), lever, tc.amb_keys,
+        tc.Xp(ep), lever, tc.amb_keys,
         dd_epoch=0)
 
     for k in list(v.keys()):
@@ -115,7 +115,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         v.insert(tc.Xp(ep), pose0)
         _tc_factors.build_dd_factors(tc,
             g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-            init_ecef, tc.Xp(ep), lever, tc.amb_keys,
+            tc.Xp(ep), lever, tc.amb_keys,
             dd_epoch=0)
         tc.phase1_t += tc._epoch_dt
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
@@ -369,7 +369,7 @@ def transition_to_tc(tc, collected_fixes):
             _tc_factors.build_dd_factors(tc, 
                 g, v, gd['obs'], gd['obsb'], gd['obs_sd'],
                 gd['rs'], gd['rsb'], gd['sat'], gd['el'],
-                gd['iu'], gd['ir_map'], fix['ecef'],
+                gd['iu'], gd['ir_map'],
                 tc.Xpose(i), tc.lever_arm_tc, tc.amb_keys_tc,
                 dd_epoch=0)  # shared key (dd_epoch=0, no prev)
 

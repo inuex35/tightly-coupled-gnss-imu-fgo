@@ -110,7 +110,7 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
                          estimate=estimate, key_pose=key_pose):
         return 0, None
     if tc.nav.armode == 3:
-        if not ar_hold.apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
+        if not ar_hold.apply_fix_and_hold(tc, key_pose, amb_dict, xa):
             return 0, None
     tc.nav.smode = 4
     return nb, xa
