@@ -6,6 +6,7 @@ from ..state.epoch_data import EpochData
 def prepare_process_epoch(tc, obs, sat, obs_sd):
     """Refresh per-epoch runner state and return common process inputs."""
     tc._update_epoch_dt(obs)
+    tc._reset_epoch_scratch()
     tc._last_obs_sd = obs_sd  # for wavelength lookup in holdamb
     return tc.R_enu2ecef, len(sat), tc.nav.x[0:3].copy()
 

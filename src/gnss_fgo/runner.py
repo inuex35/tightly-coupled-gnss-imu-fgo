@@ -247,7 +247,9 @@ class ImuGnssTc:
         self._last_s1 = 0.0
 
     def _update_epoch_dt(self, obs):
-        """Refresh self._epoch_dt with elapsed seconds since the previous"""
+        """Refresh self._epoch_dt with elapsed seconds since the previous
+        obs epoch. dt only — the per-epoch state wipes live in
+        _reset_epoch_scratch (review finding A-1)."""
         if self._last_obs_t is not None:
             try:
                 dt = float(timediff(obs.t, self._last_obs_t))
@@ -256,26 +258,33 @@ class ImuGnssTc:
             except (TypeError, ValueError):
                 pass
         self._last_obs_t = obs.t
-        self.thresslip = self.cfg.thres_slip
-        self.cmc_thresh = self.cfg.cmc_thresh
-        self.cn0_min = self.cfg.cn0_min
 
-        # Reference satellite tracking per system
-        self.ref_sats = {}
+    def _reset_epoch_scratch(self):
+        """Historical every-epoch wipes, now individually gated.
 
-        self.amb_gen = {}
-        # Wavelength cache: {(sat, f): wavelength}
-        self.amb_lam = {}
-
-        self.amb_init_epoch = {}
-        self._sat_quality = SatQualityState(self._sat_states)
-        self.ar_wait_new = self.cfg.ar_wait_new
-
-        # NOTE: total_factor_count (running count of factors added to
-        # ISAM2) is intentionally NOT reset here — this method runs
-        # every epoch, and zeroing the cumulative counter made every
-        # absolute factor-slot index derived from it point at the wrong
-        # slot (the held-CP FDE bookkeeping was silently inert).
+        For most of this project's life ALL of these were wiped every
+        epoch, silently disabling ref-sat continuity, ar_wait_new and
+        the sat-quality subsystem (review finding A-1). The persist_*
+        flags default to the historical wipe so the published numbers
+        stand; flip individually for a measured A/B.
+        total_factor_count is never reset here — zeroing the cumulative
+        counter once made the held-CP FDE bookkeeping silently inert.
+        """
+        cfg = self.cfg
+        self.thresslip = cfg.thres_slip
+        self.cmc_thresh = cfg.cmc_thresh
+        self.cn0_min = cfg.cn0_min
+        self.ar_wait_new = cfg.ar_wait_new
+        if not cfg.persist_ref_sats:
+            self.ref_sats = {}
+        if not cfg.persist_amb_gen:
+            self.amb_gen = {}
+        if not cfg.persist_amb_lam:
+            self.amb_lam = {}
+        if not cfg.persist_amb_init_epoch:
+            self.amb_init_epoch = {}
+        if not cfg.persist_sat_quality or self._sat_quality is None:
+            self._sat_quality = SatQualityState(self._sat_states)
 
 
     def _assign_view(self, view: SatFieldView, value):
