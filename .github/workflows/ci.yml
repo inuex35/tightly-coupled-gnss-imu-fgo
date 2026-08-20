@@ -18,7 +18,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D /tmp/wheels
-          pip install /tmp/wheels/*.whl
+          # The rolling release can carry a stale wheel from an earlier
+          # build; install only the newest (version-datestamped) one.
+          pip install "$(ls /tmp/wheels/*.whl | sort | tail -1)"
       - name: Install dependencies
         run: |
           pip install numpy pytest
