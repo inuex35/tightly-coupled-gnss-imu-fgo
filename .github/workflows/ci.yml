@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gtsam wheel (custom/develop with NHC + SD-Doppler factors)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D /tmp/wheels
+          pip install /tmp/wheels/*.whl
+      - name: Install dependencies
+        run: |
+          pip install numpy pytest
+          pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@gtsam-gnss-frontend"
+      - name: Unit tests
+        run: pytest tests/ -q
+      - name: Stage contract check (import-time gate)
+        run: |
+          cd src
+          ENABLE_STAGE_CONTRACT_CHECK=1 python -c "import gnss_fgo.state.stage_contract"
