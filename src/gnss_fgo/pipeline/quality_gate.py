@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from ..integrity import sat_quality as _satq
 from ..integrity import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
 from ..integrity import recovery as _tc_recovery
@@ -34,14 +33,11 @@ def run(tc, epoch):
         tc._tc_fresh_amb_epochs or 0) > 0
     if fresh_amb_bootstrap:
         info['fresh_amb_bootstrap'] = int(tc._tc_fresh_amb_epochs)
-    sq = _satq.get_sat_quality(tc)
-
-    (forced_hold, epoch.slip_keys,
-     epoch.skip_cp_now) = _collect_telemetry_and_tick_holds(tc, epoch, sq)
-    sq.forced_hold_per_sat = forced_hold
+    epoch.slip_keys, epoch.skip_cp_now = \
+        _collect_telemetry_and_tick_holds(tc, epoch)
 
     epoch.prev_amb_values = _carry_prev_amb_and_rotate_keys(
-        tc, epoch, fresh_amb_bootstrap, forced_hold)
+        tc, epoch, fresh_amb_bootstrap)
     epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
     return None
 
@@ -63,8 +59,8 @@ def _gdop_gate_and_skip(tc, epoch):
 
 
 
-def _collect_telemetry_and_tick_holds(tc, epoch, sq):
-    """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick, CP-lock update, and the global CP-hold countdown/release decision. Returns the ``forced_hold`` set."""
+def _collect_telemetry_and_tick_holds(tc, epoch):
+    """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), and the global CP-hold countdown/release decision."""
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
     n_reset, n_cmc, slip_keys = \
@@ -103,23 +99,16 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
                  for f in range(tc.nav.nf)]
         sat_cppr[s] = max(cpprs) if cpprs else 0
     info['sat_cppr_sat'] = sat_cppr
-    forced_hold = sq.tick(tc._sat_states.amb_keys_dict(), info)
-    visible_keys = {
-        (int(s), int(f))
-        for s in epoch.sat
-        for f in range(tc.nav.nf)
-    }
-    sq.update_cp_lock(visible_keys, slip_keys=slip_keys, forced_hold=forced_hold)
     if skip_cp_now:
         tc._recovery.tick_cp_hold(
             tc.cfg, float(tc._last_main_ddpr_res), info)
-    return forced_hold, slip_keys, skip_cp_now
+    return slip_keys, skip_cp_now
 
 
 
 
-def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap, forced_hold):
-    """Step 6 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skips forced-hold sats and whole-epoch CP-hold."""
+def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
+    """Step 6 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     prev_amb_values = {}
     if fresh_amb_bootstrap:
@@ -129,9 +118,6 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap, forced_hold)
             tc._sat_states.get(s, f).amb_gen += 1
     else:
         for (s, f), k in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-            if (s, f) in forced_hold:
-                tc._sat_states.get(s, f).amb_gen += 1
-                continue
             if epoch.estimate.exists(k):
                 prev_amb_values[(s, f)] = (k, epoch.estimate.atDouble(k))
     for st in tc._sat_states.values():

@@ -149,11 +149,6 @@ class TcConfig:
     gdop_max: float = 10.0
     nsat_min: int = 6
     min_dd_for_solve: int = 4
-    # A-1 (review): _update_epoch_dt historically wiped these EVERY epoch,
-    # silently disabling ref-sat continuity, ar_wait_new, and the whole
-    # sat-quality subsystem. Flags default to the historical wipe so the
-    # published numbers stand; flip individually to persist (measured
-    # A/B before changing defaults).
     boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
                                    # N epochs after the Phase-2 transition
     boot_ddpr_sigma: float = 0.5   # [m] its translation sigma
@@ -166,31 +161,21 @@ class TcConfig:
     recov_cp_hold: int = 5         # hold DDCP for N epochs after any trigger
     recov_cp_release_thresh: float = 0.0
     recov_cp_release_count: int = 3
-    cp_hold_sigma_penalty: float = 0.0
     ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
     imu_integ_cov_max: float = 0.5
-    obsq_ewma_alpha: float = 0.2         # per-sat residual EWMA smoothing
-    obsq_bad_streak_thresh: float = 2.0  # [m] residual above -> bad streak
-    obsq_recent_worst_decay: float = 0.8 # worst-sat score decay per epoch
-    obsq_recent_cppr_decay: float = 0.8  # cp-pr reject score decay
 
     main_ddpr_res_thresh: float = 3.0
     main_ddpr_per_sat_thresh: float = 0.0
     post_ar_cost_thresh: float = 9999.0
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
-    anchor_imu_max_gap: float = 20.0
-    anchor_imu_hard_max: float = 200.0
-    anchor_imu_clean_res: float = 1.0          # m, DDPR-LS self-residual
-    anchor_imu_clean_main_res: float = 15.0    # m, post-fit DDPR RMS
-    main_ddpr_res_catastrophic: float = 15.0
+    diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics
+    main_ddpr_res_catastrophic: float = 15.0   # fast-path sanity trigger
     ar_ddpr_xvalidate_thresh: float = 10.0
     ar_ddpr_xvalidate_delta_thresh: float = 0.0
     ddpr_fast_worst_sat_min: float = 30.0
-    ddpr_bad_persist_override: int = 6
-    ddpr_clean_res: float = 1.0
     per_sat_res_thresh: float = 3.0
 
     # IMU noise (select via imu_grade or override individual σ)
@@ -293,10 +278,6 @@ class TcConfig:
     # of wall time on the tokyo run; turn on only for offline diagnostics.
     diag_factor_residuals: int = 0
     fls_update_timing: int = 0
-    ar_persist_bad_enable: int = 1
-    ar_persist_bad_res_thresh: float = 2.0
-    ar_persist_bad_streak: int = 4
-    ar_persist_bad_hold: int = 10
 
     # Phase transition
     vel_thresh: float = 1.0        # motion detection for Phase 1→2 [m/s]

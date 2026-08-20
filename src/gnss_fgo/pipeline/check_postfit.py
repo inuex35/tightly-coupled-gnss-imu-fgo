@@ -9,15 +9,13 @@ output stage reports.
 import numpy as np
 import gtsam
 
-from ..integrity import sat_quality as _satq
 from ..utils import heading_from_pose
 from ..pipeline import residuals as _tc_residuals
 
 
 def _compute_postfit_diagnostics(tc, epoch):
-    """Stage C4 — main DDPR + factor-residual diagnostics, persist-bad / observation-quality bookkeeping, post-fit FDE re-solve, and pose snapshot."""
+    """Stage C4 — main DDPR + factor-residual diagnostics, post-fit FDE re-solve, and pose snapshot."""
     info = epoch.info
-    sq = _satq.get_sat_quality(tc)
     if tc.cfg.diag_main_ddpr_res:
         main_res_pre_fde, per_sat_res, pair_rows = _tc_residuals.main_ddpr_residuals(tc, 
             epoch.graph, epoch.estimate, with_pairs=True)
@@ -45,42 +43,6 @@ def _compute_postfit_diagnostics(tc, epoch):
         worst_sat = max(per_sat_res, key=per_sat_res.get)
         info['main_ddpr_sat_worst'] = (worst_sat,
                                          per_sat_res[worst_sat])
-    if tc.cfg.ar_persist_bad_enable and getattr(tc, 'phase', 1) >= 2:
-        sq = _satq.get_sat_quality(tc)
-        thr = float(tc.cfg.ar_persist_bad_res_thresh)
-        streak_need = max(1, int(tc.cfg.ar_persist_bad_streak))
-        hold_len = max(1, int(tc.cfg.ar_persist_bad_hold))
-        seen = set()
-        for s, rmax in (per_sat_res or {}).items():
-            s = int(s)
-            seen.add(s)
-            if rmax > thr:
-                st = sq.persist_bad_streak.get(s, 0) + 1
-                sq.persist_bad_streak[s] = st
-                if st >= streak_need:
-                    sq.persist_bad_hold[s] = max(
-                        int(sq.persist_bad_hold.get(s, 0)), hold_len)
-                    for f in range(tc.nav.nf):
-                        key = (s, f)
-                        sat_st = tc._sat_states.get(*key)
-                        sat_st.amb_gen += 1
-                        sat_st.rejc_cp_pr = 0
-                        sat_st.fix_streak = 0
-            else:
-                sq.persist_bad_streak[s] = 0
-        for s in list(sq.persist_bad_streak.keys()):
-            if s not in seen:
-                sq.persist_bad_streak[s] = 0
-
-    if getattr(tc, 'phase', 1) >= 2:
-        worst_sat_id = int(worst_sat) if per_sat_res else None
-        cppr_sat = info.get('sat_cppr_sat', {}) or {}
-        sq = _satq.get_sat_quality(tc)
-        sq.update_observation_quality(
-            tc.cfg, per_sat_res, worst_sat=worst_sat_id, cppr_sat=cppr_sat,
-            sat_el_deg=info.get('sat_el_deg'),
-            sat_snr_dbhz=info.get('sat_snr_dbhz'))
-
     if tc.cfg.fde_enable:
         epoch.estimate = _tc_residuals.apply_fde(tc, 
             epoch.graph, epoch.key_idx, epoch.nv, epoch.estimate, info)

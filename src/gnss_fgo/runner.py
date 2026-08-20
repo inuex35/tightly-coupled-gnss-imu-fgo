@@ -24,7 +24,6 @@ from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
     MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
-from .integrity.sat_quality import SatQualityState
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
 from .utils import sorted_sys_ids
@@ -206,14 +205,12 @@ class ImuGnssTc:
 
         self._last_obs_t = None  # for real-seconds dt tracking
         self._epoch_dt = 0.2     # actual seconds since last process() call
-        # Per-epoch scratch (see _reset_epoch_scratch): the historical
-        # every-epoch wipe doubled as the initializer, so with a
-        # persist_* flag on these must exist before the first epoch.
+        # Per-epoch scratch — reset every epoch by _reset_epoch_scratch;
+        # initialized here for any access before the first epoch.
         self.ref_sats = {}
         self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
-        self._sat_quality = None
 
         self._init_epoch_state_defaults()
 
@@ -285,7 +282,6 @@ class ImuGnssTc:
         self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
-        self._sat_quality = SatQualityState(self._sat_states)
 
 
     def _assign_view(self, view: SatFieldView, value):

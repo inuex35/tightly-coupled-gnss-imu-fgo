@@ -8,7 +8,6 @@ from cssrlib.gnss import time2gpst
 from ..factors.epoch_context import make_epoch_diagnostics
 from ..factors.nhc import add_nhc_factor as _add_nhc_factor
 from ..factors.zupt import add_zupt_factors as _add_zupt_factor_inplace
-from . import sat_quality as _satq
 from ..factors import imu_preintegration as _tc_pim
 from ..factors import doppler_sd as _tc_doppler_sd
 from ..pipeline import update_smoother as _tc_isam
@@ -76,7 +75,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
 
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc._recov_cp_release_streak = 0
-    _satq.get_sat_quality(tc).clear()
     tc.nav.x[0:3] = ecef_seed.copy()
     tc.skip_count = 0
     # Conditionally break IMU preintegration chain. See docstring.
@@ -112,7 +110,6 @@ def reset_ambiguities_with_cp_hold(tc):
         st.amb_key = None
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc._recov_cp_release_streak = 0
-    _satq.get_sat_quality(tc).clear()
     if remove_safe:
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
         try:
@@ -373,10 +370,6 @@ def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
     fired = tc._recovery.start_cp_hold(
         effective_cp_hold_epochs(tc), reason, info, value=value,
         skip_if_active=skip_if_active)
-    if fired:
-        sq = getattr(tc, '_sat_quality', None)
-        if sq is not None:
-            sq.clear()
     return fired
 
 

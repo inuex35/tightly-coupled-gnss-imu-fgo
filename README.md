@@ -65,11 +65,11 @@ pip install numpy matplotlib
 
 # GTSAM wheel with the custom factors (DD, Doppler, SD Doppler, NHC),
 # rebuilt weekly against upstream develop:
-gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*'
-pip install gtsam_develop-*.whl
+gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
+pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
 # cssrlib DD-only RTK core (pinned):
-pip install -e "git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib"
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@55e0c29cfcf91c100186e46939a8e3f113a63890"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
@@ -93,8 +93,8 @@ Packages are the roles:
 | `integrity/` | slip detection, per-sat quality, sanity ladder, outage recovery |
 | `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
 
-Phase 1 bootstrap (stationary GNSS-only) is `phase1_rtk.py` +
-`initialization.py`; `runner.py` owns state and the cssrlib boundary.
+Phase 1 bootstrap (stationary GNSS-only) is `initialization.py`;
+`runner.py` owns state and the cssrlib boundary.
 
 ## Configuration
 

@@ -6,9 +6,8 @@ from cssrlib.gnss import uGNSS, geodist, SAT_SYS_ARR, rCST
 from ..utils.geometry import is_bds_geo as _is_bds_geo
 from ..utils.robust import maybe_robust as _maybe_robust
 
-from ..integrity import sat_quality as _satq
 from . import prefit as _tc_prefit
-from .factors_support import compute_cp_build_policy, get_wavelengths
+from .factors_support import get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 from ..utils import sorted_amb_keys, sorted_sys_ids
 
@@ -32,11 +31,6 @@ def _add_ddpr_factor(tc, graph, key_pose, lever,
         ref_pt, j_pt, ref_base_pt, j_base_pt,
         tc.base_pt, lever, tc.ecef_T_nav, pr_noise))
 
-
-
-def _compute_cp_sigma(pair_sigma_base, cp_sigma_mult):
-    """Compute σ for one DDCP pair."""
-    return pair_sigma_base * cp_sigma_mult
 
 
 def _make_ddcp_factor_with_held_n(key_pose, key_float, noise,
@@ -223,7 +217,6 @@ class DdFactorBuilder:
         self.dt_s = float(tc._epoch_dt)
         self.use_varerr = bool(tc.cfg.varerr_enable)
 
-        self.sq = _satq.get_sat_quality(tc)
 
         # Mutable accumulators
         self.nv = 0
@@ -335,16 +328,11 @@ class DdFactorBuilder:
         ref_held_value = ref_state.held_value
         j_held_value = j_state.held_value
 
-        sq_state = _satq.get_sat_quality(tc)
-        cp_allowed, cp_sigma_mult = compute_cp_build_policy(
-            tc, sq_state, ref_sat, j_sat, f, self.skip_cp)
-        if not cp_allowed:
+        if self.skip_cp:
             return 0
         # Track CP factor index for both ref and target satellites
         fi_cp = tc.total_factor_count + self.graph.size()
-        cp_sigma = _compute_cp_sigma(
-            self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx]),
-            cp_sigma_mult)
+        cp_sigma = self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx])
         cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
         return _add_ddcp_factor(

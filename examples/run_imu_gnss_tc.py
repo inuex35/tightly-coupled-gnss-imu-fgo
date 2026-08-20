@@ -166,6 +166,7 @@ def main():
     print()
 
     results = []
+    ref_match_dt_max = 0.0
     maxage = float(os.environ.get('BASE_MAXAGE', '30.0'))
     sync_gen = rn.sync_obs_hold(dec, decb, maxage=maxage)
     for ne in range(nep):
@@ -243,6 +244,8 @@ def main():
 
         _, tow_obs = gn.time2gpst(obs.t)
         ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
+        ref_match_dt_max = max(ref_match_dt_max,
+                               abs(float(ref_tows[ri_ref]) - float(tow_obs)))
         ref_vel = ref[ri_ref]['vel']
         ref_ecef = ref[ri_ref]['ecef']
 
@@ -389,6 +392,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"IMU/GNSS TC Results: {len(results)} epochs")
     print(f"{'='*60}")
+    print(f"  ref match max|dt|: {ref_match_dt_max:.3f}s")
 
     if not results:
         return
@@ -479,7 +483,6 @@ def main():
         per_sat_truth_dump = []
         sat_el_dump = []
         sat_snr_dump = []
-        sat_lock_age_dump = []
         sat_cppr_dump = []
         pair_main_dump = []
         pair_truth_dump = []
@@ -493,8 +496,6 @@ def main():
             sat_el_dump.append(dict(se) if se else None)
             ss = r.get('sat_snr_dbhz', None)
             sat_snr_dump.append(dict(ss) if ss else None)
-            sl = r.get('sat_lock_age', None)
-            sat_lock_age_dump.append(dict(sl) if sl else None)
             sc = r.get('sat_cppr_sat', None)
             sat_cppr_dump.append(dict(sc) if sc else None)
             pm = r.get('main_ddpr_pairs', None)
@@ -508,7 +509,6 @@ def main():
                          'per_sat_truth': per_sat_truth_dump,
                          'sat_el_deg': sat_el_dump,
                          'sat_snr_dbhz': sat_snr_dump,
-                         'sat_lock_age': sat_lock_age_dump,
                          'sat_cppr_sat': sat_cppr_dump,
                          'pair_main': pair_main_dump,
                          'pair_truth': pair_truth_dump,
