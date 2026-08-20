@@ -183,5 +183,7 @@ def _horizontal_speed(tc, epoch):
         return float(np.linalg.norm(
             np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
     except RuntimeError:
+        # Never observed on tokyo run1 (incl. warm resets / tunnel);
+        # kept as a guard for datasets where Vel(k-1) can be missing.
         return float(np.linalg.norm(
             np.array(epoch.pred_nav.velocity())[:2]))
