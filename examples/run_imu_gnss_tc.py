@@ -344,11 +344,11 @@ def main():
                 )
             if 'lambda_corr_hard_reject' in info:
                 extra += f" LCHR({info['lambda_corr_hard_reject']:.2f})"
-            if info.get('weak_fix_reject'):
+            if info.get('low_nb_fix_reject'):
                 extra += (
-                    f" WEAK_FIX_REJ(nb={int(info.get('weak_fix_reject_nb', 0))}"
-                    f",lc={float(info.get('weak_fix_reject_lc', 0.0)):.2f}"
-                    f",mres={float(info.get('weak_fix_reject_main_ddpr_res', 0.0)):.2f})"
+                    f" LOW_NB_REJ(nb={int(info.get('low_nb_fix_reject_nb', 0))}"
+                    f",lc={float(info.get('low_nb_fix_reject_lc', 0.0)):.2f}"
+                    f",mres={float(info.get('low_nb_fix_reject_main_ddpr_res', 0.0)):.2f})"
                 )
             if 'prev_pose_drift' in info:
                 extra += f" prev_drift={info['prev_pose_drift']:.3f}"
