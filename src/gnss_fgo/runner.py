@@ -22,7 +22,7 @@ from . import initialization as _initialization
 from . import tightly_coupled as _tightly_coupled
 from . import recovery as _tc_recovery
 from .runtime_state import (
-    AmbiguityState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
+    MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
 from .sat_quality import SatQualityState
 from .optimize import isam as _tc_isam
@@ -129,8 +129,8 @@ class ImuGnssTc:
         self.gyro_noise = self.cfg.gyro_noise
         self.accel_bias_sigma = self.cfg.accel_bias_sigma
         self.gyro_bias_sigma = self.cfg.gyro_bias_sigma
-        self._ambiguity = AmbiguityState()
         self._recovery = RecoveryState()
+        self.total_factor_count = 0
         self._mres_signals = MresSignalsState()
 
         self._init_runtime_state()
@@ -270,7 +270,7 @@ class ImuGnssTc:
         self.amb_lam = {}
 
         self.amb_init_epoch = {}
-        self._sat_quality = SatQualityState()
+        self._sat_quality = SatQualityState(self._sat_states)
         self.ar_wait_new = self.cfg.ar_wait_new
 
         self.amb_factor_indices = {}
@@ -305,7 +305,6 @@ class ImuGnssTc:
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
-        'total_factor_count': ('_ambiguity', 'total_factor_count'),
         'skip_count': ('_recovery', 'skip_count'),
         '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
         '_recov_cp_release_streak': ('_recovery', 'recov_cp_release_streak'),
