@@ -118,6 +118,15 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     for sf in cp_visible_sf:
         last_visible[sf] = tc.epoch
 
+    _publish_float_ambiguities(tc, estimate, amb_dict)
+    _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
+                              last_visible, amb_dict)
+    _publish_covariances(tc, factors, estimate, key_pose, amb_dict, R)
+
+
+def _publish_float_ambiguities(tc, estimate, amb_dict):
+    """nav.x gets the float N values; vsat marks AR eligibility
+    (converged age, not persist-bad). Diagnostics land on tc._last_*."""
     diag_estimate_missing = 0
     diag_vsat1 = 0
     diag_vsat0_young = 0
@@ -159,6 +168,12 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     tc._last_amb_age_median = int(np.median(diag_ages)) if diag_ages else -1
     tc._last_amb_age_min = int(min(diag_ages)) if diag_ages else -1
 
+
+def _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
+                              last_visible, amb_dict):
+    """Held integers enter nav.x at varholdamb variance; vsat only
+    while the sat stays CP-visible and not persist-bad. Also counts
+    orphan CP signals (visible but neither held nor float)."""
     held_var = max(float(tc.cfg.varholdamb), 1e-6)
     for (s, f), held_value in tc._sat_states.held_items():
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = float(held_value)
@@ -179,6 +194,10 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     tc._last_held_size = len(held_sf)
     tc._last_cp_visible_size = len(cp_visible_sf)
 
+
+def _publish_covariances(tc, factors, estimate, key_pose, amb_dict, R):
+    """nav.P from the smoother's cached Bayes tree (pose block, N
+    diagonals, pose-N and N-N cross terms), rotated ENU->ECEF."""
     # Pull marginals straight from the smoother's Bayes tree; constructing
     # a fresh gtsam.Marginals(factors, estimate) re-linearizes the entire
     # graph (including every Python CustomFactor) and dominates the AR
@@ -230,5 +249,3 @@ def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
         diag_idx = np.where(np.diag(bad))[0]
         if len(diag_idx):
             tc.nav.P[diag_idx, diag_idx] = 1e10
-
-

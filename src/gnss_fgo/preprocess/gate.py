@@ -68,7 +68,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
     n_reset, remove_indices, n_cmc, slip_keys = \
-        _tc_slip_detect.detect_slips_and_manage_amb(tc,
+        _tc_slip_detect.detect_slips_and_reset_ambiguities(tc,
             epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu,
             obsb=epoch.obsb, ir_map=epoch.ir_map)
     info['n_slip'] = n_reset

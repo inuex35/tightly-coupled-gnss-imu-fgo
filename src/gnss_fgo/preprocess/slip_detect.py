@@ -6,9 +6,11 @@ from cssrlib.gnss import time2gpst
 from ..buildfactor.factors_support import get_wavelengths as _get_wavelengths
 
 
-def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
+def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
                                 obsb=None, ir_map=None):
-    """Detect cycle slips and remove affected ambiguities."""
+    """Run the five slip/multipath detectors (LLI, CMC, GF, Doppler,
+    MW) plus the outage expiry, then reset every flagged ambiguity.
+    Returns (n_reset, remove_indices, n_cmc_jumps, slip_keys)."""
     nf = tc.nav.nf
     ns = len(sat)
     reset_keys = set()
@@ -32,67 +34,11 @@ def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
             if (obsb is not None and ir_map is not None and
                     s in ir_map and f < len(lams) and lams[f] > 0 and
                     tc.cmc_thresh > 0):
-                pr_rov = obs.P[iu[i], f]
-                cp_rov = obs.L[iu[i], f]
-                pr_bas = obsb.P[ir_map[s], f]
-                cp_bas = obsb.L[ir_map[s], f]
-                if pr_rov != 0 and cp_rov != 0 and pr_bas != 0 and cp_bas != 0:
-                    cmc = (pr_rov - pr_bas) - (cp_rov - cp_bas) * lams[f]
-                    # Jump check (legacy)
-                    prev = sat_state.cmc
-                    if prev is not None and abs(cmc - prev) > tc.cmc_thresh:
-                        cmc_exclude.add((s, f))
-                    sat_state.cmc = cmc
-                    # Level check (sustained multipath)
-                    level_thr = tc.cfg.cmc_level_thresh
-                    if level_thr > 0:
-                        warmup = tc.cfg.cmc_warmup_epochs
-                        baseline = sat_state.cmc_baseline
-                        count = sat_state.cmc_count
-                        if baseline is None:
-                            sat_state.cmc_baseline = cmc
-                            sat_state.cmc_count = 1
-                        elif count < warmup:
-                            # Average over warmup window
-                            sat_state.cmc_baseline = (
-                                (baseline * count + cmc) / (count + 1))
-                            sat_state.cmc_count = count + 1
-                        else:
-                            # Steady-state: detect deviation, slow-update mean
-                            if abs(cmc - baseline) > level_thr:
-                                cmc_level_exclude.add((s, f))
-                            else:
-                                a = tc.cfg.cmc_alpha
-                                sat_state.cmc_baseline = (
-                                    (1 - a) * baseline + a * cmc)
+                _detslp_cmc(tc, sat_state, obs, obsb, iu[i], ir_map[s],
+                            s, f, lams[f], cmc_exclude, cmc_level_exclude)
 
         if nf >= 2 and len(lams) >= 2:
-            L1 = obs.L[iu[i], 0]
-            L2 = obs.L[iu[i], 1]
-            if L1 != 0 and L2 != 0 and lams[0] > 0 and lams[1] > 0:
-                gf = L1 * lams[0] - L2 * lams[1]
-                use_avg = bool(tc.cfg.gf_avg_enable)
-                if use_avg:
-                    state = tc._gf_state.get(s)
-                    if state is None:
-                        tc._gf_state[s] = [float(gf), 1, float(gf)]
-                    else:
-                        mean = state[2]
-                        if abs(gf - mean) > tc.thresslip:
-                            for f in range(nf):
-                                reset_keys.add((s, f))
-                            tc._gf_state[s] = [float(gf), 1, float(gf)]
-                        else:
-                            state[0] += float(gf)
-                            state[1] += 1
-                            state[2] = state[0] / state[1]
-                else:
-                    prev_gf = tc._sat_states.gf
-                    if s in prev_gf and prev_gf[s] != 0:
-                        if abs(gf - prev_gf[s]) > tc.thresslip:
-                            for f in range(nf):
-                                reset_keys.add((s, f))
-                    prev_gf[s] = gf
+            _detslp_gf(tc, obs, iu[i], s, lams, nf, reset_keys)
 
     if bool(tc.cfg.gf_avg_enable):
         gf_state = tc._gf_state
@@ -121,7 +67,14 @@ def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
             if st.outc > maxout:
                 reset_keys.add(key)
 
-    # Collect factor indices to remove, increment generation, clear amb keys
+    n_reset, remove_indices = reset_slipped_ambiguities(tc, reset_keys)
+    return n_reset, remove_indices, len(cmc_exclude), reset_keys
+
+
+def reset_slipped_ambiguities(tc, reset_keys):
+    """Kill the ambiguity of every slipped (sat, f): drop the key, clear
+    holds, bump the generation (next build creates a fresh N variable)
+    and collect the FLS factor indices to remove."""
     remove_indices = []
     n_reset = 0
     for key in reset_keys:
@@ -133,10 +86,8 @@ def detect_slips_and_manage_amb(tc, obs, obs_sd, sat, iu,
         if sat_st.amb_factor_indices:
             remove_indices.extend(sat_st.amb_factor_indices)
             sat_st.amb_factor_indices = []
-        # Increment generation → next _build_dd will create new GTSAM variable
         sat_st.amb_gen += 1
-
-    return n_reset, remove_indices, len(cmc_exclude), reset_keys
+    return n_reset, remove_indices
 
 
 def _detslp_dop(tc, obs, sat, iu, reset_keys):
@@ -280,3 +231,67 @@ def _detslp_mw(tc, obs, sat, iu, reset_keys):
                 _check_slip_mw_legacy(tc, s, f, n_wl, thr, reset_keys, new_mw)
 
     _purge_unseen_mw_state(tc, seen_keys, use_avg, new_mw)
+
+def _detslp_cmc(tc, sat_state, obs, obsb, row, brow, s, f, lam,
+                cmc_exclude, cmc_level_exclude):
+    """Code-minus-carrier: jump -> slip flag; sustained level -> DD skip."""
+    pr_rov = obs.P[row, f]
+    cp_rov = obs.L[row, f]
+    pr_bas = obsb.P[brow, f]
+    cp_bas = obsb.L[brow, f]
+    if pr_rov == 0 or cp_rov == 0 or pr_bas == 0 or cp_bas == 0:
+        return
+    cmc = (pr_rov - pr_bas) - (cp_rov - cp_bas) * lam
+    prev = sat_state.cmc
+    if prev is not None and abs(cmc - prev) > tc.cmc_thresh:
+        cmc_exclude.add((s, f))
+    sat_state.cmc = cmc
+    level_thr = tc.cfg.cmc_level_thresh
+    if level_thr > 0:
+        warmup = tc.cfg.cmc_warmup_epochs
+        baseline = sat_state.cmc_baseline
+        count = sat_state.cmc_count
+        if baseline is None:
+            sat_state.cmc_baseline = cmc
+            sat_state.cmc_count = 1
+        elif count < warmup:
+            sat_state.cmc_baseline = (
+                (baseline * count + cmc) / (count + 1))
+            sat_state.cmc_count = count + 1
+        else:
+            if abs(cmc - baseline) > level_thr:
+                cmc_level_exclude.add((s, f))
+            else:
+                a = tc.cfg.cmc_alpha
+                sat_state.cmc_baseline = (
+                    (1 - a) * baseline + a * cmc)
+
+
+def _detslp_gf(tc, obs, row, s, lams, nf, reset_keys):
+    """Geometry-free L1-L2 combination: a jump means a slip on some band."""
+    L1 = obs.L[row, 0]
+    L2 = obs.L[row, 1]
+    if L1 == 0 or L2 == 0 or lams[0] <= 0 or lams[1] <= 0:
+        return
+    gf = L1 * lams[0] - L2 * lams[1]
+    if bool(tc.cfg.gf_avg_enable):
+        state = tc._gf_state.get(s)
+        if state is None:
+            tc._gf_state[s] = [float(gf), 1, float(gf)]
+        else:
+            mean = state[2]
+            if abs(gf - mean) > tc.thresslip:
+                for f in range(nf):
+                    reset_keys.add((s, f))
+                tc._gf_state[s] = [float(gf), 1, float(gf)]
+            else:
+                state[0] += float(gf)
+                state[1] += 1
+                state[2] = state[0] / state[1]
+    else:
+        prev_gf = tc._sat_states.gf
+        if s in prev_gf and prev_gf[s] != 0:
+            if abs(gf - prev_gf[s]) > tc.thresslip:
+                for f in range(nf):
+                    reset_keys.add((s, f))
+        prev_gf[s] = gf

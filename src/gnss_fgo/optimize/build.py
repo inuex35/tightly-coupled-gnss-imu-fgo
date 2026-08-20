@@ -35,41 +35,8 @@ def _build_factor_block(tc, epoch, prev_smode):
         prev_amb_values=epoch.prev_amb_values,
         skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
     epoch.nv = nv
-    sq = _satq.get_sat_quality(tc)
-    sat_lock_age = {}
-    for s in epoch.sat:
-        s = int(s)
-        ages = [
-            int(sq.cp_lock_streak.get((s, f), 0))
-            for f in range(tc.nav.nf)
-            if (s, f) in sq.cp_lock_streak
-        ]
-        sat_lock_age[s] = (int(max(ages)) if ages else np.nan)
-    info['sat_lock_age'] = sat_lock_age
-
-    last_flt = (prev_smode == 5)
-    info['prev_smode'] = prev_smode
-    sig_between_flt = tc.cfg.sigma_n_between_flt
-    sig_between_fix = tc.cfg.sigma_n_between
-    warmup = max(0, int(tc.cfg.sigma_n_between_warmup))
-    streak_map = tc._fix_streak
-    n_between = 0
-    if not epoch.skip_cp_now and tc.cfg.betweenn_enable:
-        for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-            if (s, f) in epoch.prev_amb_values:
-                k_old, _ = epoch.prev_amb_values[(s, f)]
-                if last_flt:
-                    sig_between = sig_between_flt
-                elif warmup > 0 and streak_map is not None:
-                    streak = streak_map.get((s, f), 0)
-                    sig_between = (sig_between_fix if streak >= warmup
-                                   else sig_between_flt)
-                else:
-                    sig_between = sig_between_fix
-                epoch.graph.add(gtsam.BetweenFactorDouble(
-                    k_old, k_new, 0.0,
-                    tc._noise1(sig_between)))
-                n_between += 1
+    _record_lock_age(tc, epoch)
+    n_between = _add_between_n_chain(tc, epoch, prev_smode)
     info['n_dd'] = epoch.nv
     if tc._last_hold_gauge_rel:
         info['hold_gauge_rel'] = list(tc._last_hold_gauge_rel)
@@ -84,29 +51,7 @@ def _build_factor_block(tc, epoch, prev_smode):
     tc._last_rejc_wipe = 0
 
     if epoch.nv < tc.cfg.min_dd_for_solve:
-        info['propagate_prior'] = epoch.nv
-        epoch.graph.addPriorPose3(
-            tc.Xpose(epoch.key_idx), epoch.pred_nav.pose(),
-            gtsam.noiseModel.Isotropic.Sigma(
-                6, tc.cfg.propagate_pose_sigma))
-        epoch.graph.addPriorVector(
-            tc.Vel(epoch.key_idx), epoch.pred_nav.velocity(),
-            gtsam.noiseModel.Isotropic.Sigma(
-                3, tc.cfg.propagate_vel_sigma))
-        epoch.graph.addPriorConstantBias(
-            tc.Bias(epoch.key_idx), epoch.bias_prev,
-            gtsam.noiseModel.Isotropic.Sigma(
-                6, tc.cfg.propagate_bias_sigma))
-        if not epoch.skip_cp_now:
-            n_anchored = 0
-            amb_noise = tc._noise1(tc.cfg.propagate_amb_sigma)
-            for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-                if (s, f) in epoch.prev_amb_values:
-                    _, n_prev = epoch.prev_amb_values[(s, f)]
-                    epoch.graph.add(gtsam.PriorFactorDouble(
-                        k_new, n_prev, amb_noise))
-                    n_anchored += 1
-            info['n_anchored'] = n_anchored
+        _add_thin_epoch_priors(tc, epoch)
     info['n_between'] = n_between
 
     # Raw per-satellite Doppler factors (opt-in via cfg.doppler_sigma)
@@ -121,14 +66,9 @@ def _build_factor_block(tc, epoch, prev_smode):
     # TDCP relative-displacement constraints (rover-only carrier deltas)
     _tc_tdcp.add_tdcp_factors(tc, epoch)
 
-    try:
-        speed_for_nhc = float(np.linalg.norm(
-            np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
-    except RuntimeError:
-        speed_for_nhc = float(np.linalg.norm(
-            np.array(epoch.pred_nav.velocity())[:2]))
-    if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx, speed_for_nhc,
-                            gyro_mean_rh=epoch.gyro_mean):
+    if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
+                              _horizontal_speed(tc, epoch),
+                              gyro_mean_rh=epoch.gyro_mean):
         info['nhc'] = True
 
     _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
@@ -160,4 +100,90 @@ def _build_factor_block(tc, epoch, prev_smode):
 
     # ────────────────────────────────────────────────────────────────
 
+def _record_lock_age(tc, epoch):
+    """Diagnostics: per-sat max CP-lock streak across bands."""
+    sq = _satq.get_sat_quality(tc)
+    sat_lock_age = {}
+    for s in epoch.sat:
+        s = int(s)
+        ages = [
+            int(sq.cp_lock_streak.get((s, f), 0))
+            for f in range(tc.nav.nf)
+            if (s, f) in sq.cp_lock_streak
+        ]
+        sat_lock_age[s] = (int(max(ages)) if ages else np.nan)
+    epoch.info['sat_lock_age'] = sat_lock_age
 
+
+def _add_between_n_chain(tc, epoch, prev_smode):
+    """BetweenFactor(N_prev, N_new, 0) on continuing ambiguities.
+
+    The sigma is the CP-continuity leash: tight after a FIX streak
+    (sigma_n_between), loose right after FLT or during warmup
+    (sigma_n_between_flt) so a wrong integer cannot be dragged along.
+    """
+    info = epoch.info
+    last_flt = (prev_smode == 5)
+    info['prev_smode'] = prev_smode
+    sig_between_flt = tc.cfg.sigma_n_between_flt
+    sig_between_fix = tc.cfg.sigma_n_between
+    warmup = max(0, int(tc.cfg.sigma_n_between_warmup))
+    streak_map = tc._fix_streak
+    n_between = 0
+    if not epoch.skip_cp_now and tc.cfg.betweenn_enable:
+        for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
+            if (s, f) in epoch.prev_amb_values:
+                k_old, _ = epoch.prev_amb_values[(s, f)]
+                if last_flt:
+                    sig_between = sig_between_flt
+                elif warmup > 0 and streak_map is not None:
+                    streak = streak_map.get((s, f), 0)
+                    sig_between = (sig_between_fix if streak >= warmup
+                                   else sig_between_flt)
+                else:
+                    sig_between = sig_between_fix
+                epoch.graph.add(gtsam.BetweenFactorDouble(
+                    k_old, k_new, 0.0,
+                    tc._noise1(sig_between)))
+                n_between += 1
+    return n_between
+
+def _add_thin_epoch_priors(tc, epoch):
+    """Too few DD pairs to solve: leash pose/vel/bias to the IMU
+    prediction (propagate_* sigmas) and anchor continuing ambiguities
+    so the graph stays determined until geometry returns."""
+    epoch.info['propagate_prior'] = epoch.nv
+    epoch.graph.addPriorPose3(
+        tc.Xpose(epoch.key_idx), epoch.pred_nav.pose(),
+        gtsam.noiseModel.Isotropic.Sigma(
+            6, tc.cfg.propagate_pose_sigma))
+    epoch.graph.addPriorVector(
+        tc.Vel(epoch.key_idx), epoch.pred_nav.velocity(),
+        gtsam.noiseModel.Isotropic.Sigma(
+            3, tc.cfg.propagate_vel_sigma))
+    epoch.graph.addPriorConstantBias(
+        tc.Bias(epoch.key_idx), epoch.bias_prev,
+        gtsam.noiseModel.Isotropic.Sigma(
+            6, tc.cfg.propagate_bias_sigma))
+    if not epoch.skip_cp_now:
+        n_anchored = 0
+        amb_noise = tc._noise1(tc.cfg.propagate_amb_sigma)
+        for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
+            if (s, f) in epoch.prev_amb_values:
+                _, n_prev = epoch.prev_amb_values[(s, f)]
+                epoch.graph.add(gtsam.PriorFactorDouble(
+                    k_new, n_prev, amb_noise))
+                n_anchored += 1
+        epoch.info['n_anchored'] = n_anchored
+
+
+def _horizontal_speed(tc, epoch):
+    """Speed for the NHC gate: last solved velocity, else the prediction."""
+    try:
+        return float(np.linalg.norm(
+            np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
+    except RuntimeError:
+        # Never observed on tokyo run1 (incl. warm resets / tunnel);
+        # kept as a guard for datasets where Vel(k-1) can be missing.
+        return float(np.linalg.norm(
+            np.array(epoch.pred_nav.velocity())[:2]))
