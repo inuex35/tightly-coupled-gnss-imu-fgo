@@ -166,6 +166,7 @@ def main():
     print()
 
     results = []
+    ref_match_dt_max = 0.0
     maxage = float(os.environ.get('BASE_MAXAGE', '30.0'))
     sync_gen = rn.sync_obs_hold(dec, decb, maxage=maxage)
     for ne in range(nep):
@@ -243,6 +244,8 @@ def main():
 
         _, tow_obs = gn.time2gpst(obs.t)
         ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
+        ref_match_dt_max = max(ref_match_dt_max,
+                               abs(float(ref_tows[ri_ref]) - float(tow_obs)))
         ref_vel = ref[ri_ref]['vel']
         ref_ecef = ref[ri_ref]['ecef']
 
@@ -389,6 +392,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"IMU/GNSS TC Results: {len(results)} epochs")
     print(f"{'='*60}")
+    print(f"  ref match max|dt|: {ref_match_dt_max:.3f}s")
 
     if not results:
         return

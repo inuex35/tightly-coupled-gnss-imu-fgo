@@ -149,11 +149,6 @@ class TcConfig:
     gdop_max: float = 10.0
     nsat_min: int = 6
     min_dd_for_solve: int = 4
-    # A-1 (review): _update_epoch_dt historically wiped these EVERY epoch,
-    # silently disabling ref-sat continuity, ar_wait_new, and the whole
-    # sat-quality subsystem. Flags default to the historical wipe so the
-    # published numbers stand; flip individually to persist (measured
-    # A/B before changing defaults).
     boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
                                    # N epochs after the Phase-2 transition
     boot_ddpr_sigma: float = 0.5   # [m] its translation sigma

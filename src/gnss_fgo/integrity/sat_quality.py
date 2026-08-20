@@ -80,12 +80,12 @@ class SatQualityState:
             self, cfg, per_sat_res, worst_sat=None, cppr_sat=None,
             sat_el_deg=None, sat_snr_dbhz=None):
         """Update per-sat residual memory and short-term quality proxies."""
-        alpha = float(getattr(cfg, 'obsq_ewma_alpha', 0.2))
+        alpha = float(cfg.obsq_ewma_alpha)
         alpha = min(max(alpha, 0.0), 1.0)
-        thr_obsq = float(getattr(cfg, 'obsq_bad_streak_thresh', 2.0))
-        worst_decay = float(getattr(cfg, 'obsq_recent_worst_decay', 0.8))
+        thr_obsq = float(cfg.obsq_bad_streak_thresh)
+        worst_decay = float(cfg.obsq_recent_worst_decay)
         worst_decay = min(max(worst_decay, 0.0), 1.0)
-        cppr_decay = float(getattr(cfg, 'obsq_recent_cppr_decay', 0.8))
+        cppr_decay = float(cfg.obsq_recent_cppr_decay)
         cppr_decay = min(max(cppr_decay, 0.0), 1.0)
         seen = set()
         for s, rmax in (per_sat_res or {}).items():

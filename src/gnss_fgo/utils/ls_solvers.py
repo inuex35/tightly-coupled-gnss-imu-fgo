@@ -140,9 +140,10 @@ def ddpr_only_position(obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
     est, active, per_sat_max, res_kept = _ddpr_solve_with_fde(
         specs, spec_sats, key, pose_init, ctx)
 
+    active_set = set(active)
     rejected_sats = {spec_sats[idx][0]
                      for idx in range(len(specs))
-                     if idx not in set(active)}
+                     if idx not in active_set}
 
     if est is None or len(active) < 4:
         return None, len(active), float('inf'), per_sat_max, rejected_sats

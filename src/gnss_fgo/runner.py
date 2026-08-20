@@ -206,9 +206,8 @@ class ImuGnssTc:
 
         self._last_obs_t = None  # for real-seconds dt tracking
         self._epoch_dt = 0.2     # actual seconds since last process() call
-        # Per-epoch scratch (see _reset_epoch_scratch): the historical
-        # every-epoch wipe doubled as the initializer, so with a
-        # persist_* flag on these must exist before the first epoch.
+        # Per-epoch scratch — reset every epoch by _reset_epoch_scratch;
+        # initialized here for any access before the first epoch.
         self.ref_sats = {}
         self.amb_gen = {}
         self.amb_lam = {}
