@@ -8,7 +8,7 @@ from ..utils.geometry import is_bds_geo as _is_bds_geo
 from . import prefit as _tc_prefit
 from .factors_support import get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
-from ..utils import sorted_amb_keys, sorted_sys_ids
+from ..utils import sorted_sys_ids
 
 
 def _add_ddpr_factor(tc, graph, key_pose, lever,
@@ -230,17 +230,12 @@ class DdFactorBuilder:
 
     def _select_ref_for_system(self, sys_id, idx_sys, sat, el,
                                 amb_dict, slip_keys):
-        """Pick reference sat for system; reset SD ambiguities only when the previous ref actually slipped (not on geometry-driven re-pick)."""
+        """Pick the reference sat for one system and record it in
+        tc.ref_sats for the later same-epoch DD solves (see
+        prefit.pick_ref_sat_idx)."""
         tc = self.tc
-        prev_ref = tc.ref_sats.get(sys_id, None)
         ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
             tc, sys_id, idx_sys, sat, el)
-        if prev_ref is not None and prev_ref != ref_sat:
-            if slip_keys is None:
-                reset_sys = [(s, f) for (s, f) in sorted_amb_keys(amb_dict)
-                             if SAT_SYS_ARR[s] == sys_id]
-                for key in reset_sys:
-                    del amb_dict[key]
         tc.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
 
