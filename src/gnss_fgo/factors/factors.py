@@ -4,7 +4,6 @@ import numpy as np
 import gtsam
 from cssrlib.gnss import uGNSS, geodist, SAT_SYS_ARR, rCST
 from ..utils.geometry import is_bds_geo as _is_bds_geo
-from ..utils.robust import maybe_robust as _maybe_robust
 
 from . import prefit as _tc_prefit
 from .factors_support import get_wavelengths
@@ -19,11 +18,7 @@ def _add_ddpr_factor(tc, graph, key_pose, lever,
     pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
     ref_sat, j_sat, freq = pair_id
-    pr_base = tc._noise1(pair_sigma_base)
-    pr_noise = (pr_base if tc.cfg.huber_pr <= 0
-                else _maybe_robust(
-                    pr_base, tc.cfg.huber_pr,
-                    kind=tc.cfg.pr_robust_kind))
+    pr_noise = tc._noise1(pair_sigma_base)
     tc._last_ddpr_sat_tags.append(
         (graph.size(), ref_sat, j_sat, freq))
     graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
@@ -415,11 +410,8 @@ class DdFactorBuilder:
          j_base_xyz) = self._compute_pair_geometry(j_idx, j_sat)
         sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
         sat_xyz = (ref_xyz, j_xyz, ref_base_xyz, j_base_xyz)
-        cmc_skip = self.tc._sat_states.cmc_skip_dd
         nv = 0
         for f in range(self.nf):
-            if (j_sat, f) in cmc_skip:
-                continue
             fresh_pair = self.is_fresh_pair(ref_sat, j_sat, f)
             # PR factor: added even without CP (no L signal present)
             pr_obs = self._build_pr_for_pair(

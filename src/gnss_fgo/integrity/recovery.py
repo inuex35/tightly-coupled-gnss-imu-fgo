@@ -74,7 +74,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
     tc.total_factor_count += g.size()
 
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
-    tc._recov_cp_release_streak = 0
     tc.nav.x[0:3] = ecef_seed.copy()
     tc.skip_count = 0
     # Conditionally break IMU preintegration chain. See docstring.
@@ -109,7 +108,6 @@ def reset_ambiguities_with_cp_hold(tc):
         st.clear_hold()
         st.amb_key = None
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
-    tc._recov_cp_release_streak = 0
     if remove_safe:
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
         try:

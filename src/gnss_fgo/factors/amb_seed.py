@@ -24,20 +24,12 @@ the level gauge of a fix-and-hold era diverges km-scale from a later
 re-seed cohort — every held×free DD-CP pair then injects the gap into
 the pose (run1 ep1619: 6.1 km gap, single-epoch 2.4 km jump).
 
-Held satellites are skipped (their integer is pinned outside the graph),
-except for the optional gauge gate: when ``cfg.hold_gauge_gate_m > 0``
-and the fresh seed disagrees with the held value by more than the gate,
-the hold is treated as a stale-gauge relic, cleared, and the satellite
-falls through to fresh seeding. Off by default — with the clock-free
-seed the gate is a diagnostic, not a load-bearing defense.
+Held satellites are skipped (their integer is pinned outside the graph).
 
-Reads:  tc.cfg (sigma_cont / sigma_amb0 / hold_gauge_gate_m), tc.phase,
+Reads:  tc.cfg (sigma_cont / sigma_amb0), tc.phase,
         tc.epoch, per-sat ``SatState`` hold fields.
 Writes: ``values`` / ``graph`` (N inserts + priors), ``new_amb``,
-        ``SatState.amb_lam / amb_init_epoch / release_seed_pending``,
-        hold state on a gauge-gate trip, and
-        ``tc._last_hold_gauge_rel`` (drained into the epoch info as
-        ``hold_gauge_rel`` → HGAUGE log line).
+        ``SatState.amb_lam / amb_init_epoch / release_seed_pending``.
 """
 
 
@@ -73,14 +65,7 @@ def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
         # Clock-free level: SD phase minus SD code (NOT geometry).
         n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
         if sat_st.held_value is not None:
-            gate = float(tc.cfg.hold_gauge_gate_m)
-            gap_m = abs(n0_seed - sat_st.held_value) * lam
-            if gate > 0 and gap_m > gate:
-                sat_st.clear_hold()
-                tc._last_hold_gauge_rel.append((int(sat_id), int(freq),
-                                                float(gap_m)))
-            else:
-                continue
+            continue
         if key_id in amb_dict or key_id in new_amb:
             continue
         if values.exists(key_n):
