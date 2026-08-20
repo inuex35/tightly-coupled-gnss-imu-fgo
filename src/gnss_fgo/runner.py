@@ -411,7 +411,7 @@ class ImuGnssTc:
             R_enu2ecef, self.base_ecef)
 
     def process(self, obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd,
-                ir_map, ref_vel=None, ref_ecef=None):
+                ir_map, ref_ecef=None):
         """Process one epoch. Returns (sol_ecef, tag, nb, info_dict)."""
         R, ns, init_ecef = prepare_process_epoch(self, obs, sat, obs_sd)
         info = make_epoch_diagnostics(self)
@@ -426,7 +426,7 @@ class ImuGnssTc:
                 info, init_ecef, R)
         return self._run_tc_epoch(
             obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-            ref_vel, ref_ecef, info, ns, init_ecef, R)
+            ref_ecef, info, ns, init_ecef, R)
 
 
     _make_isam2 = staticmethod(_tc_isam.make_isam2)

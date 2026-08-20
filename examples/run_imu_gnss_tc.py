@@ -248,7 +248,7 @@ def main():
 
         sol, tag, nb, info = tc.process(
             obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-            ref_vel=ref_vel, ref_ecef=ref_ecef)
+            ref_ecef=ref_ecef)
         roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
         axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
 
@@ -377,7 +377,7 @@ def main():
                     f":{worst[2]:.0f}m)"
                 )
 
-        if True:
+        if True:  # (kept indent; printing is unconditional)
             print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
                   f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
                   f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
@@ -464,7 +464,7 @@ def main():
                 for i, r in enumerate(results):
                     if k in r and r[k] is not None:
                         try: arr[i] = np.asarray(r[k], float)
-                        except: pass
+                        except Exception: pass
             else:
                 continue  # skip non-trivial types
             out[k] = arr

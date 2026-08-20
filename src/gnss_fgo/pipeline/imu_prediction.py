@@ -51,6 +51,11 @@ def run(tc, epoch):
     epoch.pim, epoch.n_imu, epoch.gyro_mean = _tc_pim.build_pim(tc, 
         tc.tc_bias, target_tow=tow_obs)
     info['n_imu'] = epoch.n_imu
+    # Fixed-dt integration audit: build_pim integrates every sample at a
+    # nominal 0.01 s; if the CSV is gappy or phase-shifted this drifts
+    # from the true obs interval (review finding #1 — measure first).
+    info['pim_dt_mismatch'] = round(
+        epoch.n_imu * 0.01 - float(tc._epoch_dt), 6)
     if epoch.n_imu == 0:
         return _tc_recovery.advance_epoch_and_pack(tc, 
             tc.nav.x[0:3], 'FLT', 0, info, epoch.obs)

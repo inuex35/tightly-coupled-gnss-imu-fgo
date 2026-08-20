@@ -24,11 +24,11 @@ def make_epoch_diagnostics(tc, **extra):
 
 def make_epoch_data(
         obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-        ref_vel, ref_ecef, info, ns, init_ecef, R_enu2ecef):
+        ref_ecef, info, ns, init_ecef, R_enu2ecef):
     """Construct the per-epoch mutable context consumed by Phase 2 stages."""
     return EpochData(
         obs=obs, obsb=obsb, rs=rs, vs=vs, dts=dts, rsb=rsb,
         sat=sat, el=el, iu=iu, obs_sd=obs_sd, ir_map=ir_map,
-        ref_vel=ref_vel, ref_ecef=ref_ecef,
+        ref_ecef=ref_ecef,
         info=info, ns=ns, init_ecef=init_ecef,
         R_enu2ecef=R_enu2ecef)

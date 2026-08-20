@@ -226,6 +226,7 @@ class RecoveryState:
     skip_count: int = 0
     recov_cp_hold: int = 0
     recov_cp_release_streak: int = 0
+    cp_hold_retrigger_streak: int = 0   # consecutive re-arms while active (loop audit)
     pim_discontinuity: bool = False
     ddpr_bad_count: int = 0
     zupt_anchor_pose: object = None
@@ -272,6 +273,7 @@ class RecoveryState:
         self.skip_count = 0
         self.recov_cp_hold = 0
         self.recov_cp_release_streak = 0
+        self.cp_hold_retrigger_streak = 0
         self.pim_discontinuity = False
         self.ddpr_bad_count = 0
         self.zupt_anchor_pose = None
