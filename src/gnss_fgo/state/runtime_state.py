@@ -119,8 +119,6 @@ class SatState:
 
     # Slip-detector memory
     cmc: Optional[float] = None              # CMC observation [m]
-    cmc_baseline: Optional[float] = None     # smoothed CMC mean
-    cmc_count: int = 0                       # warmup epoch count
     prev_phase: Optional[tuple] = None       # (cycles, tow_s) for Doppler-phase slip
     outc: int = 0                            # epochs since last seen
     # Ambiguity bookkeeping
@@ -165,8 +163,6 @@ class SatStateMap:
 
     track: dict = field(default_factory=dict)            # {(sat,f): SatState}
     gf: dict = field(default_factory=dict)               # {sat: gf [m]}
-    mw: dict = field(default_factory=dict)               # {(sat,f): N_WL [cyc]} for f in 1..nf-1
-    cmc_skip_dd: set = field(default_factory=set)        # transient: (sat,f) flagged this epoch
     maxout: int = 5
 
     def get(self, sat: int, freq: int) -> SatState:
@@ -225,7 +221,6 @@ class RecoveryState:
 
     skip_count: int = 0
     recov_cp_hold: int = 0
-    recov_cp_release_streak: int = 0
     cp_hold_retrigger_streak: int = 0   # consecutive re-arms while active (loop audit)
     pim_discontinuity: bool = False
     ddpr_bad_count: int = 0
@@ -248,36 +243,17 @@ class RecoveryState:
         if skip_if_active and self.recov_cp_hold > 0:
             return False
         self.recov_cp_hold = max(self.recov_cp_hold, hold_n)
-        self.recov_cp_release_streak = 0
         info[f'cp_hold_{reason}'] = value if value is not None else True
         return True
 
-    def tick_cp_hold(self, cfg, last_res, info):
-        """One CP-hold countdown step (call only while the hold is active).
-
-        Decrements the hold; with a release threshold configured, the
-        hold only expires after ``recov_cp_release_count`` consecutive
-        quiet epochs (main DDPR res <= recov_cp_release_thresh) —
-        otherwise it re-arms for one more epoch.
-        """
+    def tick_cp_hold(self, info):
+        """One CP-hold countdown step (call only while the hold is active)."""
         self.recov_cp_hold -= 1
-        thr = float(cfg.recov_cp_release_thresh)
-        if thr > 0:
-            if last_res > 0 and last_res <= thr:
-                self.recov_cp_release_streak += 1
-            else:
-                self.recov_cp_release_streak = 0
-            if (self.recov_cp_hold <= 0
-                    and self.recov_cp_release_streak
-                    < int(cfg.recov_cp_release_count)):
-                self.recov_cp_hold = 1
-                info['recov_cp_release_wait'] = last_res
         info['recov_cp_hold'] = self.recov_cp_hold + 1
 
     def reset(self):
         self.skip_count = 0
         self.recov_cp_hold = 0
-        self.recov_cp_release_streak = 0
         self.cp_hold_retrigger_streak = 0
         self.pim_discontinuity = False
         self.ddpr_bad_count = 0

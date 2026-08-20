@@ -34,29 +34,6 @@ def _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa):
             amb_dict[(s, f)], xa[tc.IB(s, f, tc.nav.na)], hold_noise)
 
 
-def _add_fix_pose_anchor_factor(tc, hg, estimate, key_pose, xa):
-    """Add a PriorPose3 at the LAMBDA-fixed antenna position; skipped (returns False) on any failure."""
-    anchor_sigma = float(tc.cfg.fix_pose_anchor_sigma)
-    try:
-        cur_pose = estimate.atPose3(key_pose)
-        R_body_to_ecef = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
-        lever_arr = (np.array(tc.lever_arm_tc)
-                     if getattr(tc, 'lever_arm_tc', None) is not None
-                     else np.zeros(3))
-        body_ecef_target = xa[0:3] - R_body_to_ecef @ lever_arr
-        body_nav_target = tc.ecef_T_nav.transformTo(
-            gtsam.Point3(*body_ecef_target))
-        target_pose = gtsam.Pose3(cur_pose.rotation(), body_nav_target)
-        # 1e6 rad on rotation = unconstrained; translation σ = anchor_sigma m.
-        sigmas = np.array([1e6, 1e6, 1e6,
-                           anchor_sigma, anchor_sigma, anchor_sigma])
-        anchor_noise = gtsam.noiseModel.Diagonal.Sigmas(sigmas)
-        hg.addPriorPose3(key_pose, target_pose, anchor_noise)
-        return True
-    except RuntimeError:
-        return False
-
-
 def _apply_holds_phase2_with_gate(tc, hg, key_pose, anchor_added):
     """Phase 2: ISAM2.update with the GICI-style post-AR cost gate."""
     isam = tc.isam2
@@ -120,16 +97,13 @@ def _activate_phase2_hold_states(tc, hold_keys, xa):
 
 
 def apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
-    """Phase D — fix-and-hold (armode==3): mark held flags, build hold-prior factors, optional fix_pose_anchor, run ISAM2.update with post-AR cost gate, then activate hold on sat_states. Returns True on accept, False when the post-AR cost gate rejects the fix."""
+    """Phase D — fix-and-hold (armode==3): mark held flags, build hold-prior factors, run ISAM2.update with post-AR cost gate, then activate hold on sat_states. Returns True on accept, False when the post-AR cost gate rejects the fix."""
     tc.holdamb_flags()
     hold_keys = _collect_held_sat_freq_keys(tc, amb_dict)
     hg = gtsam.NonlinearFactorGraph()
     if tc.phase != 2:
         _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa)
     anchor_added = False
-    if tc.phase == 2 and float(tc.cfg.fix_pose_anchor_sigma) > 0:
-        anchor_added = _add_fix_pose_anchor_factor(
-            tc, hg, estimate, key_pose, xa)
     if hg.size() > 0:
         if tc.phase == 2:
             if not _apply_holds_phase2_with_gate(

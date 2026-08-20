@@ -82,11 +82,4 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(),
             tc._fls_update_time_total + _dt)
         tc._fls_update_calls = tc._fls_update_calls + 1
         tc._fls_update_last_ms = _dt * 1000.0
-    extra = int(tc.cfg.cp_hold_isam_iters)
-    if extra > 0 and tc._recov_cp_hold > 0:
-        empty_g = gtsam.NonlinearFactorGraph()
-        empty_v = gtsam.Values()
-        empty_ts = gtsam.FixedLagSmootherKeyTimestampMap()
-        for _ in range(extra):
-            tc.isam2.update(empty_g, empty_v, empty_ts)
     tc.total_factor_count += graph.size()

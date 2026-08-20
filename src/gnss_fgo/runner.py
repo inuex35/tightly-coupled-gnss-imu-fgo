@@ -225,7 +225,6 @@ class ImuGnssTc:
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
         self._last_cp_pr_reject = 0
-        self._last_hold_gauge_rel = []
         self._last_rejc_wipe = 0
         self._last_ddpr_sat_tags = []
         self._last_main_ddpr_res = 0.0
@@ -247,7 +246,6 @@ class ImuGnssTc:
         # Reset-flag for per-Phase-2 amb cleanup (build_dd_factors first call)
         self._rejc_reset_at_p2 = False
         # GF cycle-slip detector running state {sat: [last_gf, n, mean_gf]}
-        self._gf_state = {}
         self._last_s0 = 0.0
         self._last_s1 = 0.0
 
@@ -308,7 +306,6 @@ class ImuGnssTc:
     _FIELD_FORWARDS = {
         'skip_count': ('_recovery', 'skip_count'),
         '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
-        '_recov_cp_release_streak': ('_recovery', 'recov_cp_release_streak'),
         '_pim_discontinuity': ('_recovery', 'pim_discontinuity'),
         '_ddpr_bad_count': ('_recovery', 'ddpr_bad_count'),
         '_last_main_ddpr_res': ('_mres_signals', 'last_res'),
@@ -400,8 +397,6 @@ class ImuGnssTc:
             lever=lever,
             nav_nf=self.nav.nf,
             sigma_pr=self.cfg.sigma_pr,
-            huber_pr=self.cfg.huber_pr,
-            pr_robust_kind=self.cfg.pr_robust_kind,
             fde_pr=self.cfg.fde_pr,
             pick_ref_sat_idx=lambda *a, **k: _tc_prefit.pick_ref_sat_idx(self, *a, **k),
         )

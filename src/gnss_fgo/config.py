@@ -52,9 +52,7 @@ class TcConfig:
     sigma_cont: float = 1.0        # continuing N prior σ [cyc]
     sigma_n_between: float = 0.01      # BetweenFactor N σ [cyc] — FIX
     sigma_n_between_flt: float = 0.1   # BetweenFactor N σ [cyc] — FLT
-    sigma_n_between_warmup: int = 0
     betweenn_enable: int = 1
-    fix_pose_anchor_sigma: float = 0.0
     el_mask_deg: float = 10.0
     elmin_deg: float = 15.0
     cnr_min_dbhz: float = 25.0
@@ -66,26 +64,16 @@ class TcConfig:
     err_eratio_pr: float = 100.0   # PR/CP σ ratio                 RTKLIB eratio[0]=300
     err_sclkstab: float = 5e-12    # rcv clock stability [s/s]     RTKLIB sclkstab
 
-    # Robust / FDE
-    huber_pr: float = 0.0          # Huber threshold for DDPR (0=off).
-    pr_robust_kind: str = 'huber'  # 'huber' | 'cauchy' | 'dcs' | 'tukey'
-                                   # GREAT-FGO-style: cauchy with k ~2
+    # FDE
     fde_pr: float = 4.0            # FDE DDPR residual threshold [m]
     fde_cp: float = 0.5            # FDE DDCP residual threshold [m]
     fde_max_frac: float = 0.5      # skip FDE if >this fraction rejected
     fde_enable: int = 1           # 0=off, 1=on (FDE_ENABLE)
     fde_max_iter: int = 1
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
-    sanity_max_gdop: float = 0.0
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0
     varholdamb: float = 0.001
-    cp_hold_isam_iters: int = 0
-    # Held-N gauge gate [m]: drop a held N when the fresh seed disagrees
-    # by more than this. Diagnostic only (0 = off) — the clock-free
-    # cp-pr seed removed the gauge drift this defended against, and a
-    # tight gate expires healthy holds. See buildfactor/amb_seed.py.
-    hold_gauge_gate_m: float = 0.0
     pim_break_trans_sigma: float = 1.0
     # cssrlib valpos chi-square threshold in σ units.
     valpos_thres: float = 4.0
@@ -93,9 +81,6 @@ class TcConfig:
     # Cycle slip / multipath
     thres_slip: float = 0.15       # GF slip threshold [m]
     cmc_thresh: float = 3.0        # Code-minus-carrier jump threshold [m]
-    cmc_level_thresh: float = 0.0
-    cmc_warmup_epochs: int = 5     # avg before steady-state monitoring
-    cmc_alpha: float = 0.05        # smoothing factor for steady-state baseline
     cn0_min: float = 0.0           # C/N0 floor [dB-Hz], 0=off
 
     thresdop: float = 0.0          # try 5–10 cyc/s on a clean run
@@ -131,19 +116,6 @@ class TcConfig:
     doppler_clk_anchor_sigma: float = 3.3e-9  # [s] prior pinning the head of
                                    # a clock chain (the level is unobservable
                                    # from range rates, so any value does)
-    tdcp_sigma: float = 0.0        # [m] TDCP σ between consecutive poses;
-                                   # 0 disables (default). Experimental:
-                                   # cancels ambiguity/slow biases and
-                                   # bounds float drift in NLOS storms.
-                                   # tokyo run2 measurements: huber kernel
-                                   # -> best FixRMS (0.238) but a 4 km
-                                   # mass-slip excursion; tukey -> best
-                                   # AllRMS (11.8) but AR dies. Needs a
-                                   # kernel/sigma sweep before default-on.
-
-    mw_thresh: float = 0.0
-    mw_avg_enable: int = 1
-    gf_avg_enable: int = 0
 
     # GNSS quality gate
     gdop_max: float = 10.0
@@ -159,22 +131,18 @@ class TcConfig:
 
     # CP-hold triggers
     recov_cp_hold: int = 5         # hold DDCP for N epochs after any trigger
-    recov_cp_release_thresh: float = 0.0
-    recov_cp_release_count: int = 3
     ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
     imu_integ_cov_max: float = 0.5
 
     main_ddpr_res_thresh: float = 3.0
-    main_ddpr_per_sat_thresh: float = 0.0
     post_ar_cost_thresh: float = 9999.0
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
     diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics
     main_ddpr_res_catastrophic: float = 15.0   # fast-path sanity trigger
     ar_ddpr_xvalidate_thresh: float = 10.0
-    ar_ddpr_xvalidate_delta_thresh: float = 0.0
     ddpr_fast_worst_sat_min: float = 30.0
     per_sat_res_thresh: float = 3.0
 
@@ -247,7 +215,6 @@ class TcConfig:
     subset_ar_max_candidates: int = 5
     subset_ar_min_nb: int = 4
     subset_ar_max_drop: int = 2
-    subset_ar_max_mres_m: float = 0.0
     subset_ar_max_dirty_sats: int = 2
     subset_ar_dirty_sat_res_m: float = 1.0
     exclude_bds_geo: int = 1  # BeiDou-2 GEO broadcast orbits are hundreds-
@@ -259,9 +226,6 @@ class TcConfig:
     ar_context_nb_max: int = 6
     ar_context_reject_during_cp_hold: int = 1
     ar_context_reject_during_ddpr_bad: int = 1
-    ar_precheck_skip: int = 0
-    ar_min_nb: int = 0
-    lambda_corr_max: float = 0.0
     weak_fix_nb_max: int = 2
     weak_fix_lambda_corr_max: float = 0.08
     weak_fix_main_ddpr_res_max: float = 0.8
@@ -330,7 +294,6 @@ class TcConfig:
         'sigma_cont':              'SIG_CONT',
         'sigma_n_between':         'SIG_N_BETWEEN',
         'sigma_n_between_flt':     'SIG_N_BETWEEN_FLT',
-        'sigma_n_between_warmup':  'SIG_N_BETWEEN_WARMUP',
         'thres_slip':              'THRESSLIP',
         'zupt_g_dev_thr':          'ZUPT_G_DEV',
     }

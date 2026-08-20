@@ -23,13 +23,12 @@ and tunnels.
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected even on GDOP-skipped epochs
-- **Integrity & recovery** — five slip/multipath detectors, per-sat
-  quality policies, post-fit FDE, and an escalation ladder from CP-hold
-  to warm reset
+- **Integrity & recovery** — four slip/multipath detectors, post-fit
+  FDE, and an escalation ladder from CP-hold to warm reset
 - **Default-on vs. opt-in** — the results below use the defaults
   (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA via the cssrlib
-  resolver). Raw per-satellite Doppler with clock states, TDCP, and
-  the native Python resolver are implemented but ship disabled.
+  resolver). Raw per-satellite Doppler with clock states and the
+  native Python resolver are implemented but ship disabled.
 - **Contributed upstream** — the DD, Doppler and undifferenced GNSS
   factors are merged into
   [GTSAM](https://github.com/borglab/gtsam) itself; see the

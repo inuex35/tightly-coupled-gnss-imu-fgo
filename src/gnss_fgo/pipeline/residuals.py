@@ -74,15 +74,9 @@ def _choose_ddpr_iter_indices(tag_map, graph):
     return sorted(tag_map.keys()), True
 
 
-def _ddpr_factor_error(fac, estimate, tc, pr_base, rebuild_for_robust):
+def _ddpr_factor_error(fac, estimate):
     """Return the DDPR factor's chi-squared error at ``estimate``."""
-    del pr_base
     try:
-        if rebuild_for_robust:
-            pose = estimate.atPose3(fac.keys()[0])
-            r = float(fac.evaluateError(pose)[0])
-            sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
-            return 0.5 * (r / sigma_pr_m) ** 2
         return fac.error(estimate)
     except RuntimeError:
         return None
@@ -97,9 +91,6 @@ def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
     # Build a fast lookup from factor-index to (ref_sat, j_sat, f).
     tag_map = {idx: (ref, j, f)
                for (idx, ref, j, f) in tc._last_ddpr_sat_tags}
-    rebuild_for_robust = tc.cfg.huber_pr > 0
-    pr_base = (gtsam.noiseModel.Isotropic.Sigma(1, sigma_pr_m)
-               if rebuild_for_robust else None)
     iter_indices, skip_type_check = _choose_ddpr_iter_indices(tag_map, graph)
     for i in iter_indices:
         fac = graph.at(i)
@@ -107,7 +98,7 @@ def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
             continue
         if not skip_type_check and 'Pseudorange' not in type(fac).__name__:
             continue
-        err = _ddpr_factor_error(fac, estimate, tc, pr_base, rebuild_for_robust)
+        err = _ddpr_factor_error(fac, estimate)
         if err is None:
             continue
         res_m = float(np.sqrt(2.0 * max(err, 0.0)) * sigma_pr_m)

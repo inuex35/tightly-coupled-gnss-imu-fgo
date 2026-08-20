@@ -371,14 +371,6 @@ def main():
                     f" HREL({_format_sat_freq(s_rel, f_rel)}"
                     f",score={score_rel:.1f},res={res_rel:.1f},cppr={cppr_rel})"
                 )
-            gauge_rel = info.get('hold_gauge_rel')
-            if gauge_rel:
-                worst = max(gauge_rel, key=lambda t: t[2])
-                extra += (
-                    f" HGAUGE(n={len(gauge_rel)},"
-                    f"worst={_format_sat_freq(worst[0], worst[1])}"
-                    f":{worst[2]:.0f}m)"
-                )
 
         if True:  # (kept indent; printing is unconditional)
             print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "

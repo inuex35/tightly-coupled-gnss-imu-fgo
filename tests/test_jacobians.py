@@ -48,18 +48,3 @@ def test_held_ddcp_factor():
                             gtsam.Point3(310.0, -220.0, 4.0)))
     v.insert(2, -180705.3)
     check_factor_jacobians(f, v, atol=2e-4)
-
-
-def test_tdcp_factor():
-    from gnss_fgo.factors.tdcp import _make_tdcp_factor
-    sat_p = np.array([-15200000.0, 12000000.0, 18300000.0])
-    noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
-    f = _make_tdcp_factor(1, 2, 3, sat_p, sat_p + 600.0, 4.2,
-                          np.array([0.31, 0.0, 0.55]), enu_frame(BASE), noise)
-    v = gtsam.Values()
-    v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.02, -0.05, 1.4),
-                            gtsam.Point3(310.0, -220.0, 4.0)))
-    v.insert(2, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.03, -0.04, 1.5),
-                            gtsam.Point3(311.5, -218.4, 4.1)))
-    v.insert(3, 0.7)
-    check_factor_jacobians(f, v, atol=2e-4)

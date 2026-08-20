@@ -8,7 +8,6 @@ from gnss_fgo.factors import amb_seed
 class _Cfg:
     sigma_cont = 1.0
     sigma_amb0 = 30.0
-    hold_gauge_gate_m = 0.0
 
 
 class _SatState:
@@ -37,7 +36,6 @@ class _Tc:
     def __init__(self):
         self.cfg = _Cfg()
         self._sat_states = _SatMap()
-        self._last_hold_gauge_rel = []
 
     @staticmethod
     def _noise1(sigma):
@@ -76,17 +74,6 @@ def test_held_sat_is_skipped():
         ((7, gtsam.symbol('n', 7), 1000.0, 400.0, 990.0, 395.0),))
     assert not values.exists(gtsam.symbol('n', 7))
     assert st.held_value == -1234.0
-
-
-def test_gauge_gate_releases_distant_hold():
-    tc = _Tc()
-    tc.cfg.hold_gauge_gate_m = 300.0
-    st = tc._sat_states.get(7, 0)
-    st.held_value = 1e6          # absurdly far from the fresh seed
-    n0 = _seed(tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0)
-    assert st.held_value is None
-    assert n0 == pytest.approx(((1000.0 - 400.0) - (990.0 - 395.0)) / LAM)
-    assert tc._last_hold_gauge_rel and tc._last_hold_gauge_rel[0][0] == 7
 
 
 def test_release_reseeds_at_held_integer():

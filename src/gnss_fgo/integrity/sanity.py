@@ -50,23 +50,10 @@ def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_
         return fast
     if not _ddpr_sanity_persist(tc, main_res, info):
         return None
-    if not _ddpr_sanity_gdop_ok(tc, info):
-        return None
     _ddpr_sanity_anchor_diagnostics(
         tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
         pose_tc, ecef_tc, pred, info)
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
-
-
-def _ddpr_sanity_gdop_ok(tc, info):
-    """Escalation step 4: abort sanity when geometry is too weak to trust the"""
-    if tc.cfg.sanity_max_gdop <= 0:
-        return True
-    cur_gdop = info.get('gdop', 0.0)
-    if cur_gdop > tc.cfg.sanity_max_gdop:
-        info['sanity_skipped_gdop'] = cur_gdop
-        return False
-    return True
 
 
 def _compute_res_at_pred(tc, graph, pred, key_idx, info):
@@ -148,16 +135,7 @@ def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=
 def _ddpr_sanity_trigger(tc, main_res, info):
     """Escalation step 1: clean residual signal → reset bad-count, return False."""
     rms_bad = main_res > tc.cfg.main_ddpr_res_thresh
-    per_sat_bad = False
-    psat_thr = float(tc.cfg.main_ddpr_per_sat_thresh)
-    if psat_thr > 0:
-        per_sat = info.get('main_ddpr_per_sat') or {}
-        if per_sat:
-            per_sat_max = max(per_sat.values())
-            per_sat_bad = per_sat_max > psat_thr
-            if per_sat_bad:
-                info['sanity_trig_per_sat'] = per_sat_max
-    if not (rms_bad or per_sat_bad):
+    if not rms_bad:
         tc._ddpr_bad_count = 0
         return False
     return True

@@ -54,15 +54,6 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
 
 def try_subset_ar(tc, sat, el, amb_dict, attempt):
     """Retry AR with one (or more) candidate bad satellites removed."""
-    mres_max = float(getattr(tc.cfg, 'subset_ar_max_mres_m', 0.0) or 0.0)
-    if mres_max > 0.0:
-        last_mres = float(tc._last_main_ddpr_res or 0.0)
-        if last_mres > mres_max:
-            tc._ar_subset_debug = {
-                'candidates': 0, 'used': False,
-                'skip_reason': 'mres_gate', 'mres': last_mres,
-            }
-            return 0, None
     dirty_max = int(getattr(tc.cfg, 'subset_ar_max_dirty_sats', 0) or 0)
     if dirty_max > 0:
         per_sat = tc._last_main_ddpr_per_sat or {}

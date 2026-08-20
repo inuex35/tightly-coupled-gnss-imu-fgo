@@ -60,13 +60,6 @@ def _ar_eligibility(tc, epoch):
 def _run_ar_with_marginals(tc, epoch):
     """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
     info = epoch.info
-    if tc.cfg.ar_precheck_skip:
-        skip_ar, skip_detail = _tc_ar.ar_gates.should_skip_ar_precheck(tc)
-        if skip_ar:
-            info['ar_skipped_precheck'] = True
-            info.update({f'ar_skipped_{k}': v
-                         for k, v in skip_detail.items()})
-            return
     tc._cur_ed = epoch                 # for the fix-vs-LS gate in run_ar
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
@@ -92,8 +85,7 @@ def _run_ar_with_marginals(tc, epoch):
         epoch.sat, epoch.el, epoch.iu, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
-    xv_delta = float(tc.cfg.ar_ddpr_xvalidate_delta_thresh or 0.0)
-    if (xv_thr > 0.0 or xv_delta > 0.0) and epoch.nb > 0 and epoch.xa is not None:
+    if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         try:
             cur_pose = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
             R_body_to_ecef = tc.ecef_T_nav.compose(
@@ -112,13 +104,7 @@ def _run_ar_with_marginals(tc, epoch):
             res_pre = tc._cached_ddpr_res_pre
             if res_pre is not None:
                 info['ar_ddpr_xvalidate_delta'] = float(res_xa - res_pre)
-            reject = False
-            if xv_thr > 0.0 and float(res_xa) > xv_thr:
-                reject = True
-            if (xv_delta > 0.0 and res_pre is not None
-                    and float(res_xa) - float(res_pre) > xv_delta):
-                reject = True
-            if reject:
+            if float(res_xa) > xv_thr:
                 info['ar_ddpr_xvalidate_reject'] = True
                 epoch.nb = 0
                 epoch.xa = None

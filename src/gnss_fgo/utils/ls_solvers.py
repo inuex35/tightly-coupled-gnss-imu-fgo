@@ -11,7 +11,6 @@ import gtsam
 from cssrlib.gnss import sat2prn
 
 from .pipeline_helpers import sorted_sys_ids
-from .robust import maybe_robust
 
 
 
@@ -27,8 +26,6 @@ class DDPRContext:
     lever: gtsam.Point3
     nav_nf: int
     sigma_pr: float
-    huber_pr: float
-    pr_robust_kind: str
     fde_pr: float
     pick_ref_sat_idx: Callable  # (sys_id, idx_sys, sat, el) -> (ri, ref_sat)
 
@@ -70,8 +67,7 @@ def _ddpr_build_specs(obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, ctx):
 def _ddpr_solve_with_fde(specs, spec_sats, key, pose_init, ctx):
     """Iterative LM solve with single-pass FDE outlier rejection (max 3"""
     sigma_pr_m = ctx.sigma_pr * np.sqrt(2)
-    pr_base = gtsam.noiseModel.Isotropic.Sigma(1, sigma_pr_m)
-    pr_noise = maybe_robust(pr_base, ctx.huber_pr, kind=ctx.pr_robust_kind)
+    pr_noise = gtsam.noiseModel.Isotropic.Sigma(1, sigma_pr_m)
     pose_prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
         np.array([0.05, 0.05, 0.1, 50.0, 50.0, 50.0]))
 
@@ -97,14 +93,14 @@ def _ddpr_solve_with_fde(specs, spec_sats, key, pose_init, ctx):
         except RuntimeError:
             return None, active, {}, []
 
-        # Rebuild with non-robust noise to compute raw residuals
+        # Rebuild the active subset to compute residuals for FDE.
         g_eval = gtsam.NonlinearFactorGraph()
         for idx in active:
             a1, a2, a3, a4, sr, st, srb, stb = specs[idx]
             g_eval.add(gtsam.DoubleDifferencePseudorangeFactorArm(
                 key, a1, a2, a3, a4,
                 sr, st, srb, stb, ctx.base_pt, ctx.lever,
-                ctx.ecef_T_nav, pr_base))
+                ctx.ecef_T_nav, pr_noise))
 
         new_active = []
         dropped = 0
