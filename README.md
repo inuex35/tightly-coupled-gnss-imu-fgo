@@ -1,9 +1,17 @@
 # tightly-coupled-gnss-imu-fgo
 
-Tightly-coupled RTK: GNSS double differences and a 100 Hz IMU fused on a
-GTSAM factor graph (cssrlib front end), targeting centimeter FIX in deep
-urban canyons. Ambiguities are float states in the graph, fixed by LAMBDA
-with fix-and-hold; IMU + SD Doppler bridge NLOS storms and tunnels.
+**Open-source tightly-coupled GNSS RTK + IMU factor-graph optimization**
+
+*carrier-phase RTK · LAMBDA ambiguity resolution · GTSAM · urban driving · reproducible*
+
+The full RTK chain lives inside the graph: double-differenced
+pseudorange **and carrier phase**, integer ambiguity resolution
+(LAMBDA, demo5-style retry, partial AR) with fix-and-hold, FDE, and
+100 Hz IMU preintegration — targeting centimeter FIX in deep urban
+canyons, with IMU + single-differenced Doppler bridging NLOS storms
+and tunnels. Everything below is measured on open data
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset), Tokyo) and
+reproducible end to end.
 
 ## Install
 
