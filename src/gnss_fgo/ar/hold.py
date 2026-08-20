@@ -96,7 +96,7 @@ def _apply_holds_phase2_with_gate(tc, hg, key_pose, anchor_added):
 
 
 def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
-    """Phase 1: IncrementalFixedLagSmoother.update with held-N timestamps + amb_factor_indices tracking."""
+    """Phase 1: IncrementalFixedLagSmoother.update with held-N timestamps."""
     isam = tc.isam
     ts_h1 = gtsam.FixedLagSmootherKeyTimestampMap()
     t_p1 = getattr(tc, 'phase1_t', 0.0)
@@ -104,23 +104,18 @@ def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
         ts_h1[amb_dict[sf]] = t_p1
     try:
         isam.update(hg, gtsam.Values(), ts_h1)
-        base_idx = tc.total_factor_count
-        for i, key_id in enumerate(hold_keys):
-            tc._sat_states.get(*key_id).amb_factor_indices.append(
-                base_idx + i)
         tc.total_factor_count += hg.size()
     except (RuntimeError, IndexError):
         pass
 
 
 def _activate_phase2_hold_states(tc, hold_keys, xa):
-    """Phase 2: copy held N → sat_state hold + nav.x; clear amb_key / amb_factor_indices."""
+    """Phase 2: copy held N → sat_state hold + nav.x; clear amb_key."""
     for s, f in hold_keys:
         held_value = float(xa[tc.IB(s, f, tc.nav.na)])
         sat_st = tc._sat_states.get(s, f)
         sat_st.activate_hold(held_value)
         sat_st.amb_key = None
-        sat_st.amb_factor_indices = []
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = held_value
 
 

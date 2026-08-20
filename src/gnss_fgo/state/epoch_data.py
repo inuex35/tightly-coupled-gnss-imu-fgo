@@ -43,7 +43,6 @@ class EpochData:
     iu:  np.ndarray                # rover obs index (n_sat,)
     obs_sd: Any                    # double-difference partner obs
     ir_map: dict                   # base obs index map
-    ref_vel:  np.ndarray           # truth velocity ENU (3,) — diag only
     ref_ecef: np.ndarray           # truth position ECEF (3,) — diag only
     info: dict                     # per-epoch diagnostics dict
     ns:  int                       # number of usable sats
@@ -67,7 +66,6 @@ class EpochData:
     pred_nav: Any = None               # gtsam.NavState (predicted)
 
     # ── Filled by `gate` ──────────────────────────────────────────
-    remove_indices: list = field(default_factory=list)
     slip_keys: set = field(default_factory=set)
     skip_cp_now: bool = False
     pred_enu:  np.ndarray | None = None  # IMU-pred antenna ENU (3,)

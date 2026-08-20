@@ -8,7 +8,7 @@ STAGE_READS = (
     'R_enu2ecef', 'bias_prev', 'dts', 'ecef_tc', 'el', 'estimate', 'graph', 'gyro_mean',
     'info', 'ir_map', 'iu', 'key_idx', 'nb', 'ns', 'nv', 'obs', 'obs_sd',
     'obsb', 'pose_tc', 'pred_ecef', 'pred_nav', 'prev_amb_values',
-    'remove_indices', 'rs', 'rsb', 'sat', 'skip_cp_now', 'slip_keys',
+    'rs', 'rsb', 'sat', 'skip_cp_now', 'slip_keys',
     'values', 'vs',
 )
 STAGE_WRITES = (

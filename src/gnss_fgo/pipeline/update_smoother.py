@@ -23,8 +23,8 @@ def _solve_isam2(tc, epoch):
             if tc._sat_states.at(*sf).amb_key is not None:
                 extra.append(k_old)
         extra.extend(tc._doppler_keep_keys)
-        fls_update(tc, epoch.graph, epoch.values, epoch.key_idx, keep_keys=extra,
-                         remove_indices=epoch.remove_indices)
+        fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
+                   keep_keys=extra)
         epoch.estimate = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         # ValueError: ISAM2 marginalization raises it ("Asking to remove
@@ -52,53 +52,7 @@ def make_isam2(lag, relinearize_skip=1, relinearize_threshold=0.01):
     return gtsam.IncrementalFixedLagSmoother(lag, params)
 
 
-def filter_removable_indices(tc, indices, keep_cp=True, keep_hold=True):
-    """Filter stale factor indices (already marginalized out of isam2).
-
-    Identity guard: every index in these lists was recorded as "a factor
-    of some ambiguity", so the slot must currently hold a factor that
-    references an 'n' key. The FLS reuses freed slots
-    (findUnusedFactorSlots), so a remembered index can point at an
-    unrelated factor — removing that would corrupt the graph.
-    """
-    if not indices:
-        return []
-    facs = tc.isam2.getFactors()
-    n = facs.size()
-    valid = []
-    n_chr = ord('n')
-    for i in indices:
-        if i is None or i < 0 or i >= n:
-            continue
-        try:
-            fac = facs.at(i)
-            if fac is None:
-                continue
-            tname = type(fac).__name__
-            if keep_cp and 'CarrierPhase' in tname:
-                continue
-            if keep_hold and 'Prior' in tname:
-                continue
-            # Never break the BetweenN chain or pull out custom factors
-            # mid-window: with keep_cp/keep_hold those are the only
-            # things an amb_factor_indices entry can still name, and
-            # removing them leaves chained N keys factorless
-            # ("variables that are not unused" on the next
-            # marginalization). Arcs die via gen-bump + natural
-            # marginalization instead — which is also what the historic
-            # stale-slot indices effectively did (no-ops).
-            if 'Between' in tname or tname == 'CustomFactor':
-                continue
-            if not any(gtsam.Symbol(k).chr() == n_chr
-                       for k in fac.keys()):
-                continue
-        except RuntimeError:
-            continue
-        valid.append(i)
-    return valid
-
-
-def fls_update(tc, graph, values, key_idx, keep_keys=(), remove_indices=None,
+def fls_update(tc, graph, values, key_idx, keep_keys=(),
                advance_time=True, include_prev=True):
     """Apply an isam2 update with a timestamp map for Xpose/Vel/Bias(key_idx)."""
     if advance_time:
@@ -117,15 +71,11 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(), remove_indices=None,
             ts[k] = t
     for k in keep_keys:
         ts[k] = t
-    remove_safe = filter_removable_indices(tc, remove_indices)
     timing_on = bool(getattr(tc.cfg, 'fls_update_timing', False))
     if timing_on:
         import time as _time
         _t0 = _time.perf_counter()
-    if remove_safe:
-        tc.isam2.update(graph, values, ts, remove_safe)
-    else:
-        tc.isam2.update(graph, values, ts)
+    tc.isam2.update(graph, values, ts)
     if timing_on:
         _dt = _time.perf_counter() - _t0
         tc._fls_update_time_total = (

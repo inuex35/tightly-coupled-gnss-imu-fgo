@@ -12,7 +12,7 @@ from ..integrity import recovery as _tc_recovery
 STAGE_READS = (
     'R_enu2ecef', 'el', 'estimate', 'graph', 'imu_idx_prev', 'info', 'ir_map', 'iu',
     'key_idx', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_enu', 'pred_nav',
-    'prev_amb_values', 'remove_indices', 'rs', 'sat', 'skip_cp_now',
+    'prev_amb_values', 'rs', 'sat', 'skip_cp_now',
     'slip_keys', 'values',
 )
 STAGE_WRITES = (
@@ -36,7 +36,7 @@ def run(tc, epoch):
         info['fresh_amb_bootstrap'] = int(tc._tc_fresh_amb_epochs)
     sq = _satq.get_sat_quality(tc)
 
-    (forced_hold, epoch.remove_indices, epoch.slip_keys,
+    (forced_hold, epoch.slip_keys,
      epoch.skip_cp_now) = _collect_telemetry_and_tick_holds(tc, epoch, sq)
     sq.forced_hold_per_sat = forced_hold
 
@@ -67,7 +67,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), forced-hold tick, CP-lock update, and the global CP-hold countdown/release decision. Returns the ``forced_hold`` set."""
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
-    n_reset, remove_indices, n_cmc, slip_keys = \
+    n_reset, n_cmc, slip_keys = \
         _tc_slip_detect.detect_slips_and_reset_ambiguities(tc,
             epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu,
             obsb=epoch.obsb, ir_map=epoch.ir_map)
@@ -113,7 +113,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch, sq):
     if skip_cp_now:
         tc._recovery.tick_cp_hold(
             tc.cfg, float(tc._last_main_ddpr_res), info)
-    return forced_hold, remove_indices, slip_keys, skip_cp_now
+    return forced_hold, slip_keys, skip_cp_now
 
 
 

@@ -138,7 +138,7 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
                       sat_pts, sat_xyz, cp_obs,
                       lever, lever_arr, rb,
                       keys_n, held, states,
-                      pair_id, fi_cp, track_indices):
+                      pair_id, fi_cp):
     """Add the DDCP factor for one (ref, j, freq) triple to ``graph``,"""
     key_n_ref, key_n_j = keys_n
     ref_held_value, j_held_value = held
@@ -155,14 +155,10 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
         _emit_held_ddcp_factor(
             **held_kw, key_float=key_n_j,
             offset_m=lam * ref_held_value, coeff_m=-lam)
-        if track_indices:
-            j_state.amb_factor_indices.append(fi_cp)
     elif j_held_value is not None:
         _emit_held_ddcp_factor(
             **held_kw, key_float=key_n_ref,
             offset_m=-lam * j_held_value, coeff_m=lam)
-        if track_indices:
-            ref_state.amb_factor_indices.append(fi_cp)
     else:
         ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
         cp_ref_r, cp_ref_b, cp_j_r, cp_j_b = cp_obs
@@ -171,9 +167,6 @@ def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
             cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
             ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
             lever, tc.ecef_T_nav, cp_noise))
-        if track_indices:
-            ref_state.amb_factor_indices.append(fi_cp)
-            j_state.amb_factor_indices.append(fi_cp)
     return 1
 
 
@@ -183,7 +176,7 @@ class DdFactorBuilder:
 
     def __init__(self, tc, graph, values, obs, obsb, obs_sd,
                  rs, rsb, sat, el, iu, ir_map, pos_ecef,
-                 key_pose, lever, amb_dict, track_indices=False,
+                 key_pose, lever, amb_dict,
                  dd_epoch=0, prev_amb_values=None,
                  skip_cp=False, slip_keys=None):
         # Inputs
@@ -203,7 +196,6 @@ class DdFactorBuilder:
         self.key_pose = key_pose
         self.lever = lever
         self.amb_dict = amb_dict
-        self.track_indices = track_indices
         self.dd_epoch = dd_epoch
         self.prev_amb_values = prev_amb_values
         self.skip_cp = skip_cp
@@ -261,9 +253,6 @@ class DdFactorBuilder:
                              if SAT_SYS_ARR[s] == sys_id]
                 for key in reset_sys:
                     del amb_dict[key]
-                    _st = tc._sat_states.track.get(key)
-                    if _st is not None:
-                        _st.amb_factor_indices = []
         tc.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
 
@@ -367,7 +356,7 @@ class DdFactorBuilder:
             held=(ref_held_value, j_held_value),
             states=(ref_state, j_state),
             pair_id=(ref_sat, j_sat, f),
-            fi_cp=fi_cp, track_indices=self.track_indices)
+            fi_cp=fi_cp)
 
     def _compute_pair_geometry(self, j_idx, j_sat):
         """j-sat SD geometry: rover/base ``Point3`` + xyz arrays. Returns ``(j_pt, j_base_pt, j_xyz, j_base_xyz)``."""
@@ -459,12 +448,12 @@ class DdFactorBuilder:
 
 def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                           rs, rsb, sat, el, iu, ir_map, pos_ecef,
-                          key_pose, lever, amb_dict, track_indices=False,
+                          key_pose, lever, amb_dict,
                           dd_epoch=0, prev_amb_values=None,
                           skip_cp=False, slip_keys=None):
     """Build DD pseudorange + carrier phase factors (Arm version)."""
     builder = DdFactorBuilder(
         tc, graph, values, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
-        ir_map, pos_ecef, key_pose, lever, amb_dict, track_indices,
+        ir_map, pos_ecef, key_pose, lever, amb_dict,
         dd_epoch, prev_amb_values, skip_cp, slip_keys)
     return builder.run()

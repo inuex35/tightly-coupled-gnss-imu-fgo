@@ -35,7 +35,6 @@ def _p1_fresh_restart(tc):
     for st in tc._sat_states.values():
         st.amb_gen += 1
         st.amb_key = None
-        st.amb_factor_indices = []
 
 
 def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,

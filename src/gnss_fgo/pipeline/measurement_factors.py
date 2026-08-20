@@ -31,7 +31,7 @@ def _build_factor_block(tc, epoch, prev_smode):
         epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
         epoch.pred_ecef, tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
         tc.amb_keys_tc,
-        track_indices=True, dd_epoch=epoch.key_idx,
+        dd_epoch=epoch.key_idx,
         prev_amb_values=epoch.prev_amb_values,
         skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
     epoch.nv = nv
