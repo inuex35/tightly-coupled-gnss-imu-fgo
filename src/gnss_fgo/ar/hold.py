@@ -1,13 +1,11 @@
 """Fix-and-hold: turn an accepted fix into priors the graph keeps.
 
 RTKLIB's armode==3, adapted to the two-smoother layout: Phase 1 holds each
-ambiguity with a PriorDouble at sigma = sqrt(varholdamb); Phase 2 anchors the
-pose at the fixed antenna position (optional) and gates the whole hold batch
-with the GICI-style post-AR cost test -- if the post-fit DDPR RMS rises by
-more than ``post_ar_cost_thresh`` after the holds go in, the batch is
-removed again. Accepted Phase-2 holds are then copied onto the per-satellite
-hold state and ``nav.x`` (that value re-enters AR as a pinned input via
-ar_problem, and write_marginals mirrors it into ``nav.P``).
+ambiguity with a PriorDouble at sigma = sqrt(varholdamb). Phase 2 adds no
+graph factors at all — the held integers live on the per-satellite hold
+state and ``nav.x`` (the value re-enters AR as a pinned input via
+ar_problem, write_marginals mirrors it into ``nav.P``, and the DDCP
+builder folds it into the factor offset).
 
 Entry point: :func:`apply_fix_and_hold`.
 """
@@ -16,7 +14,6 @@ import numpy as np
 import gtsam
 
 from ..utils import sorted_amb_items
-from ..pipeline import residuals as _tc_residuals
 
 
 def _collect_held_sat_freq_keys(tc, amb_dict):
@@ -32,44 +29,6 @@ def _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa):
     for s, f in hold_keys:
         hg.addPriorDouble(
             amb_dict[(s, f)], xa[tc.IB(s, f, tc.nav.na)], hold_noise)
-
-
-def _apply_holds_phase2_with_gate(tc, hg, key_pose, anchor_added):
-    """Phase 2: ISAM2.update with the GICI-style post-AR cost gate."""
-    isam = tc.isam2
-    full_graph = isam.getFactors()
-    res_pre = tc._cached_ddpr_res_pre
-    ts_h = gtsam.FixedLagSmootherKeyTimestampMap()
-    if anchor_added:
-        ts_h[key_pose] = tc.tc_time
-    base_idx_undo = tc.total_factor_count
-    n_added = hg.size()
-    try:
-        isam.update(hg, gtsam.Values(), ts_h)
-        tc.total_factor_count += n_added
-        res_post = None
-        if res_pre is not None:
-            try:
-                est_post = isam.calculateEstimate()
-                res_post, _ = _tc_residuals.main_ddpr_residuals(
-                    tc, full_graph, est_post)
-            except (RuntimeError, IndexError):
-                res_post = None
-        if (res_pre is not None and res_post is not None
-                and (res_post - res_pre) > tc.cfg.post_ar_cost_thresh):
-            # Reject: remove hold-prior factors.
-            try:
-                isam.update(
-                    gtsam.NonlinearFactorGraph(),
-                    gtsam.Values(),
-                    gtsam.FixedLagSmootherKeyTimestampMap(),
-                    list(range(base_idx_undo, base_idx_undo + n_added)))
-            except (RuntimeError, IndexError):
-                pass
-            return False
-    except (RuntimeError, IndexError):
-        pass
-    return True
 
 
 def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
@@ -97,21 +56,15 @@ def _activate_phase2_hold_states(tc, hold_keys, xa):
 
 
 def apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
-    """Phase D — fix-and-hold (armode==3): mark held flags, build hold-prior factors, run ISAM2.update with post-AR cost gate, then activate hold on sat_states. Returns True on accept, False when the post-AR cost gate rejects the fix."""
+    """Phase D — fix-and-hold (armode==3): mark held flags, then Phase 1 adds hold-prior factors while Phase 2 activates the hold on sat_states / nav.x (no graph factors). Always returns True; the bool return survives for the Phase-1 call shape."""
     tc.holdamb_flags()
     hold_keys = _collect_held_sat_freq_keys(tc, amb_dict)
-    hg = gtsam.NonlinearFactorGraph()
     if tc.phase != 2:
+        hg = gtsam.NonlinearFactorGraph()
         _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa)
-    anchor_added = False
-    if hg.size() > 0:
-        if tc.phase == 2:
-            if not _apply_holds_phase2_with_gate(
-                    tc, hg, key_pose, anchor_added):
-                return False
-        else:
+        if hg.size() > 0:
             _apply_holds_phase1(tc, hg, hold_keys, amb_dict)
-    if tc.phase == 2:
+    else:
         _activate_phase2_hold_states(tc, hold_keys, xa)
     return True
 

@@ -137,7 +137,6 @@ class TcConfig:
     imu_integ_cov_max: float = 0.5
 
     main_ddpr_res_thresh: float = 3.0
-    post_ar_cost_thresh: float = 9999.0
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
     diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics
