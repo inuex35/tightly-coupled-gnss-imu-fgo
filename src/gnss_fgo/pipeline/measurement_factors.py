@@ -14,7 +14,6 @@ import gtsam
 from ..factors import clock as _tc_clock
 from ..factors import doppler as _tc_doppler
 from ..factors import doppler_sd as _tc_doppler_sd
-from ..factors import tdcp as _tc_tdcp
 from ..factors import factors as _tc_factors
 from ..factors import nhc as _tc_nhc
 from ..factors import zupt as _tc_zupt
@@ -36,9 +35,6 @@ def _build_factor_block(tc, epoch, prev_smode):
     epoch.nv = nv
     n_between = _add_between_n_chain(tc, epoch, prev_smode)
     info['n_dd'] = epoch.nv
-    if tc._last_hold_gauge_rel:
-        info['hold_gauge_rel'] = list(tc._last_hold_gauge_rel)
-        tc._last_hold_gauge_rel = []
     cp_pr_rej = tc._last_cp_pr_reject
     rejc_wipe = tc._last_rejc_wipe
     if cp_pr_rej:
@@ -62,7 +58,6 @@ def _build_factor_block(tc, epoch, prev_smode):
     _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
 
     # TDCP relative-displacement constraints (rover-only carrier deltas)
-    _tc_tdcp.add_tdcp_factors(tc, epoch)
 
     if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
                               _horizontal_speed(tc, epoch),
@@ -110,21 +105,13 @@ def _add_between_n_chain(tc, epoch, prev_smode):
     info['prev_smode'] = prev_smode
     sig_between_flt = tc.cfg.sigma_n_between_flt
     sig_between_fix = tc.cfg.sigma_n_between
-    warmup = max(0, int(tc.cfg.sigma_n_between_warmup))
-    streak_map = tc._fix_streak
     n_between = 0
     if not epoch.skip_cp_now and tc.cfg.betweenn_enable:
         for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
             if (s, f) in epoch.prev_amb_values:
                 k_old, _ = epoch.prev_amb_values[(s, f)]
-                if last_flt:
-                    sig_between = sig_between_flt
-                elif warmup > 0 and streak_map is not None:
-                    streak = streak_map.get((s, f), 0)
-                    sig_between = (sig_between_fix if streak >= warmup
-                                   else sig_between_flt)
-                else:
-                    sig_between = sig_between_fix
+                sig_between = (sig_between_flt if last_flt
+                               else sig_between_fix)
                 epoch.graph.add(gtsam.BetweenFactorDouble(
                     k_old, k_new, 0.0,
                     tc._noise1(sig_between)))

@@ -127,11 +127,7 @@ def _decide_fix_or_flt(tc, epoch):
                 or prev_fix_streak_max
                 <= int(tc.cfg.low_nb_fix_reject_max_prev_fix_streak))
         main_res = float(info.get('main_ddpr_res', 0.0) or 0.0)
-        if (tc.cfg.lambda_corr_max > 0
-                and lc > tc.cfg.lambda_corr_max):
-            info['lambda_corr_reject'] = lc
-            return pose_tc_antenna, 'FLT', 0
-        elif (tc.cfg.lambda_corr_hard_max > 0
+        if (tc.cfg.lambda_corr_hard_max > 0
                 and lc > tc.cfg.lambda_corr_hard_max):
             info['lambda_corr_hard_reject'] = lc
             return pose_tc_antenna, 'FLT', 0

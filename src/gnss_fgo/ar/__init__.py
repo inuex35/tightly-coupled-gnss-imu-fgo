@@ -163,9 +163,6 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     if nb <= 0:
         tc._last_ar_outcome = 'lambda_zero'
         return 0, None
-    if (not tc.cfg.rtklib_mode) and nb < tc.cfg.ar_min_nb:
-        tc._last_ar_outcome = 'min_nb_gate'
-        return 0, None
     return nb, xa
 
 

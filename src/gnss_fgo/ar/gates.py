@@ -1,9 +1,8 @@
 """Gates around a LAMBDA answer: when not to ask, and when not to believe.
 
-Three related judgements, all reading the same context (post-fit DDPR
+Two related judgements, both reading the same context (post-fit DDPR
 residuals, CP-hold and ddpr-bad streaks):
 
-* :func:`should_skip_ar_precheck` -- do not even attempt AR this epoch;
 * :func:`validate_fix` -- RTKLIB valpos on the fixed solution, then the
   graph-objective delta test, then :func:`context_reject`;
 * :func:`context_reject` -- a fix that is small (nb <= ar_context_nb_max)
@@ -16,36 +15,6 @@ import numpy as np
 import gtsam
 
 from ..pipeline import residuals as _tc_residuals
-
-
-def should_skip_ar_precheck(tc):
-    """Pre-AR fast skip — same context as ``_ar_context_reject`` minus"""
-    main_res = float(tc._cached_ddpr_res_pre
-                     or tc._last_main_ddpr_res or 0.0)
-    per_sat = tc._last_main_ddpr_per_sat or {}
-    worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    cp_hold_active = int(tc._recov_cp_hold or 0) > 0
-    ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
-
-    skip = False
-    if (bool(tc.cfg.ar_context_reject_during_cp_hold)
-            and cp_hold_active):
-        skip = True
-    if (bool(tc.cfg.ar_context_reject_during_ddpr_bad)
-            and ddpr_bad_active):
-        skip = True
-    if main_res > float(tc.cfg.ar_context_main_ddpr_max):
-        skip = True
-    if worst_res > float(tc.cfg.ar_context_worst_sat_max):
-        skip = True
-    if not skip:
-        return False, None
-    return True, {
-        'main_ddpr_res': main_res,
-        'worst_sat_res': worst_res,
-        'cp_hold_active': cp_hold_active,
-        'ddpr_bad_active': ddpr_bad_active,
-    }
 
 
 def context_reject(tc, nb):
