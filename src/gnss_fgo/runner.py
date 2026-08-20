@@ -275,7 +275,6 @@ class ImuGnssTc:
         self.thresslip = cfg.thres_slip
         self.cmc_thresh = cfg.cmc_thresh
         self.cn0_min = cfg.cn0_min
-        self.ar_wait_new = cfg.ar_wait_new
         self.ref_sats = {}
         self.amb_gen = {}
         self.amb_lam = {}

@@ -129,16 +129,18 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     diag_estimate_missing = 0
     diag_vsat1 = 0
     diag_vsat0_young = 0
-    diag_ages = []
     diag_amb_el_deg = []  # elevation [deg] of vsat=1 amb sats
     for (s, f), k in sorted_amb_items(amb_dict):
         if estimate.exists(k):
             tc.nav.x[tc.IB(s, f, tc.nav.na)] = estimate.atDouble(k)
-            # Exclude new ambiguities from AR until converged
-            init_ep = tc._sat_states.at(s, f).amb_init_epoch
-            age = tc.epoch - (init_ep if init_ep is not None else 0)
-            diag_ages.append(int(age))
-            if age >= tc.ar_wait_new:
+            # Exclude ambiguities (re)seeded THIS epoch. amb_init_epoch
+            # is cleared by the per-epoch scratch reset, so a non-None
+            # value can only mean amb_seed wrote it this epoch. Making
+            # the wait span real epochs was measured worse (A-1 A/B:
+            # AllRMS 21.35 -> 21.66), so one epoch is the spec.
+            seeded_now = (
+                tc._sat_states.at(s, f).amb_init_epoch is not None)
+            if not seeded_now:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1
                 el_idx = int(s) - 1
@@ -158,8 +160,6 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     tc._last_amb_estimate_missing = diag_estimate_missing
     tc._last_amb_vsat1 = diag_vsat1
     tc._last_amb_vsat0_young = diag_vsat0_young
-    tc._last_amb_age_median = int(np.median(diag_ages)) if diag_ages else -1
-    tc._last_amb_age_min = int(min(diag_ages)) if diag_ages else -1
 
 
 def _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,

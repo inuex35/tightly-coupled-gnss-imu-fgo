@@ -164,7 +164,6 @@ class TcConfig:
     # AR
     ar_mode: int = 3               # 0=none, 1=cont, 3=fix-and-hold
     ar_max_frac: float = 1.0       # skip AR if max DD float fraction > this [cyc]
-    ar_wait_new: int = 3           # new amb waits N epochs before AR
     parmode: int = 1
     par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
     ar_starve_reset: int = 50      # epochs of consecutive lambda_zero
