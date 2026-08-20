@@ -205,8 +205,6 @@ class DdFactorBuilder:
         self._prev_keys = (set(prev_amb_values.keys())
                             if prev_amb_values else set())
 
-        tc._last_cp_pr_reject = 0
-
         # Elevation + SNR / cfg constants used by pair_sigma + bad scaling
         self.el_min_rad = np.radians(max(1.0, tc.cfg.el_mask_deg))
         self.dt_s = float(tc._epoch_dt)
@@ -280,7 +278,7 @@ class DdFactorBuilder:
                             lams, sat_pts, sat_xyz, pr_obs,
                             fresh_pair,
                             amb_dict, new_amb, dd_epoch):
-        """Build the DDCP factor for one (ref, j, f) — handles N init, CP-vs-PR consistency gate, σ computation, and the actual ``_add_ddcp_factor`` call. Returns ``1`` on success, ``0`` when skipped (GLO PR-only / missing λ / zero CP / cp_allowed=False / consistency gate reject)."""
+        """Build the DDCP factor for one (ref, j, f) — handles N init, σ computation, and the actual ``_add_ddcp_factor`` call. Returns ``1`` on success, ``0`` when skipped (GLO PR-only / missing λ / zero CP / CP-hold)."""
         tc = self.tc
         if sys_id == uGNSS.GLO:
             return 0

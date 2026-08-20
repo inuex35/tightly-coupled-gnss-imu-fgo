@@ -192,8 +192,6 @@ class ImuGnssTc:
         self._amb_lam_view = SatFieldView(self._sat_states, 'amb_lam', absent=0.0)
         self._amb_init_epoch_view = SatFieldView(
             self._sat_states, 'amb_init_epoch')
-        self._rejc_cp_pr_view = SatFieldView(
-            self._sat_states, 'rejc_cp_pr', absent=0)
         self._fix_streak_view = SatFieldView(
             self._sat_states, 'fix_streak', absent=0)
 
@@ -224,8 +222,6 @@ class ImuGnssTc:
         self._ar_cp_visible_sf = set()
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
-        self._last_cp_pr_reject = 0
-        self._last_rejc_wipe = 0
         self._last_ddpr_sat_tags = []
         self._last_main_ddpr_res = 0.0
         self._last_main_ddpr_per_sat = {}
@@ -299,7 +295,6 @@ class ImuGnssTc:
         'amb_gen': '_amb_gen_view',
         'amb_lam': '_amb_lam_view',
         'amb_init_epoch': '_amb_init_epoch_view',
-        'rejc_cp_pr': '_rejc_cp_pr_view',
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {

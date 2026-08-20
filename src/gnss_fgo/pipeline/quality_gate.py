@@ -92,13 +92,6 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
                 pass
         if sat_snr:
             info['sat_snr_dbhz'] = sat_snr
-    sat_cppr = {}
-    for s in epoch.sat:
-        s = int(s)
-        cpprs = [int(tc._sat_states.at(s, f).rejc_cp_pr)
-                 for f in range(tc.nav.nf)]
-        sat_cppr[s] = max(cpprs) if cpprs else 0
-    info['sat_cppr_sat'] = sat_cppr
     if skip_cp_now:
         tc._recovery.tick_cp_hold(info)
     return slip_keys, skip_cp_now

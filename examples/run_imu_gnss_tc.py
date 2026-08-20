@@ -366,10 +366,9 @@ def main():
                 f_rel = int(info.get('held_release_flt_freq', 0) or 0)
                 score_rel = float(info.get('held_release_flt_score', 0.0) or 0.0)
                 res_rel = float(info.get('held_release_flt_res', 0.0) or 0.0)
-                cppr_rel = int(info.get('held_release_flt_cppr', 0) or 0)
                 extra += (
                     f" HREL({_format_sat_freq(s_rel, f_rel)}"
-                    f",score={score_rel:.1f},res={res_rel:.1f},cppr={cppr_rel})"
+                    f",score={score_rel:.1f},res={res_rel:.1f})"
                 )
 
         if True:  # (kept indent; printing is unconditional)
@@ -475,7 +474,6 @@ def main():
         per_sat_truth_dump = []
         sat_el_dump = []
         sat_snr_dump = []
-        sat_cppr_dump = []
         pair_main_dump = []
         pair_truth_dump = []
         ref_sats_dump = []
@@ -488,8 +486,6 @@ def main():
             sat_el_dump.append(dict(se) if se else None)
             ss = r.get('sat_snr_dbhz', None)
             sat_snr_dump.append(dict(ss) if ss else None)
-            sc = r.get('sat_cppr_sat', None)
-            sat_cppr_dump.append(dict(sc) if sc else None)
             pm = r.get('main_ddpr_pairs', None)
             pair_main_dump.append(list(pm) if pm else None)
             pt = r.get('ddpr_pairs_at_truth', None)
@@ -501,7 +497,6 @@ def main():
                          'per_sat_truth': per_sat_truth_dump,
                          'sat_el_deg': sat_el_dump,
                          'sat_snr_dbhz': sat_snr_dump,
-                         'sat_cppr_sat': sat_cppr_dump,
                          'pair_main': pair_main_dump,
                          'pair_truth': pair_truth_dump,
                          'ref_sats': ref_sats_dump,

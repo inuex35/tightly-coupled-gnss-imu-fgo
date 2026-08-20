@@ -19,7 +19,6 @@ STAGE_WRITES = (
 def _release_suspicious_held_on_flt(tc, info):
     """Release the single most suspicious externally-held ambiguity."""
     per_sat = info.get('main_ddpr_per_sat') or {}
-    cppr_sat = info.get('sat_cppr_sat') or {}
     worst_pair = info.get('main_ddpr_sat_worst')
     worst_sat = None
     worst_res = 0.0
@@ -36,22 +35,17 @@ def _release_suspicious_held_on_flt(tc, info):
         s_i = int(s)
         f_i = int(f)
         sat_res = float(per_sat.get(s_i, 0.0) or 0.0)
-        cppr = max(
-            int(cppr_sat.get(s_i, 0) or 0),
-            int(tc._sat_states.at(s_i, f_i).rejc_cp_pr))
         score = 0.0
         if sat_res >= res_thr:
             score += sat_res
         if worst_sat is not None and s_i == worst_sat and worst_res >= res_thr:
             score += max(1.0, 0.25 * worst_res)
-        if cppr > 0:
-            score += 10.0 + float(cppr)
         if score > 0.0:
-            candidates.append((score, sat_res, cppr, s_i, f_i))
+            candidates.append((score, sat_res, s_i, f_i))
     if not candidates:
         return 0
     candidates.sort(reverse=True)
-    score, sat_res, cppr, s_i, f_i = candidates[0]
+    score, sat_res, s_i, f_i = candidates[0]
     sat_st = tc._sat_states.get(s_i, f_i)
     sat_st.release_hold(seed=True)
     sat_st.fix_streak = 0
@@ -60,7 +54,6 @@ def _release_suspicious_held_on_flt(tc, info):
     info['held_release_flt_freq'] = f_i
     info['held_release_flt_score'] = float(score)
     info['held_release_flt_res'] = float(sat_res)
-    info['held_release_flt_cppr'] = int(cppr)
     return 1
 
 

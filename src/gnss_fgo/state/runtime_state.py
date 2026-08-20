@@ -130,7 +130,6 @@ class SatState:
     last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
     release_seed_pending: bool = False       # one-shot unary prior on first float epoch
     # Per-(sat, freq) quality counters
-    rejc_cp_pr: int = 0                      # CP-vs-PR consistency reject count
     fix_streak: int = 0                      # consecutive Fix epochs
 
     def activate_hold(self, value: float) -> None:
