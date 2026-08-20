@@ -1,37 +1,43 @@
-"""Per-satellite observation-quality state and policies."""
+"""Per-satellite observation-quality POLICIES.
 
-from dataclasses import dataclass, field
+One explicit class owns every sat-quality dict and the policies over
+them (tick / observation-quality EWMA / CP-lock streaks). Constructed
+with the runner's SatStateMap for future consolidation; note: an
+attempted physical move of these dicts onto the map changed the
+obsq EWMA trajectory with byte-identical inputs (unexplained — see
+task notes) and was backed out.
+"""
 
 
-@dataclass
+
 class SatQualityState:
-    """Owns runtime state for sat-quality / CP-hold behaviour."""
+    """Sat-quality / CP-hold policies over the runner's SatStateMap."""
 
-    persist_bad_streak: dict = field(default_factory=dict)
-    persist_bad_hold: dict = field(default_factory=dict)
-    hold_quarantine: dict = field(default_factory=dict)
-    obsq_ewma: dict = field(default_factory=dict)
-    obsq_bad_streak: dict = field(default_factory=dict)
-    recent_worst: dict = field(default_factory=dict)
-    recent_cppr: dict = field(default_factory=dict)
-    latest_el_deg: dict = field(default_factory=dict)
-    latest_snr_dbhz: dict = field(default_factory=dict)
-    cp_lock_streak: dict = field(default_factory=dict)
-    hold_streak_persat: dict = field(default_factory=dict)
-    forced_hold_per_sat: set = field(default_factory=set)
+    def __init__(self, states):
+        self._states = states
+        self.forced_hold_per_sat = set()
+        self.cp_lock_streak = {}
+        self.hold_quarantine = {}
+        self.hold_streak_persat = {}
+        self.persist_bad_streak = {}
+        self.persist_bad_hold = {}
+        self.obsq_ewma = {}
+        self.obsq_bad_streak = {}
+        self.recent_worst = {}
+        self.recent_cppr = {}
+        self.latest_el_deg = {}
+        self.latest_snr_dbhz = {}
+
 
     def clear(self):
-        self.persist_bad_streak.clear()
-        self.persist_bad_hold.clear()
-        self.hold_quarantine.clear()
-        self.obsq_ewma.clear()
-        self.obsq_bad_streak.clear()
-        self.recent_worst.clear()
-        self.recent_cppr.clear()
-        self.latest_el_deg.clear()
-        self.latest_snr_dbhz.clear()
         self.cp_lock_streak.clear()
+        self.hold_quarantine.clear()
         self.hold_streak_persat.clear()
+        for d in (self.persist_bad_streak, self.persist_bad_hold,
+                  self.obsq_ewma, self.obsq_bad_streak, self.recent_worst,
+                  self.recent_cppr, self.latest_el_deg,
+                  self.latest_snr_dbhz):
+            d.clear()
         self.forced_hold_per_sat.clear()
 
     def tick(self, amb_keys_tc, info):
@@ -156,6 +162,6 @@ def get_sat_quality(tc):
     """Return the runner-owned sat-quality manager, creating it lazily."""
     sq = tc._sat_quality
     if sq is None:
-        sq = SatQualityState()
+        sq = SatQualityState(tc._sat_states)
         tc._sat_quality = sq
     return sq
