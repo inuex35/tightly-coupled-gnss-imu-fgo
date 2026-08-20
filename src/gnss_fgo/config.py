@@ -155,10 +155,8 @@ class TcConfig:
     # published numbers stand; flip individually to persist (measured
     # A/B before changing defaults).
     persist_ref_sats: int = 0
-    persist_amb_init_epoch: int = 0
     persist_sat_quality: int = 0
     persist_amb_gen: int = 0
-    persist_amb_lam: int = 0
     boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
                                    # N epochs after the Phase-2 transition
     boot_ddpr_sigma: float = 0.5   # [m] its translation sigma

@@ -206,6 +206,14 @@ class ImuGnssTc:
 
         self._last_obs_t = None  # for real-seconds dt tracking
         self._epoch_dt = 0.2     # actual seconds since last process() call
+        # Per-epoch scratch (see _reset_epoch_scratch): the historical
+        # every-epoch wipe doubled as the initializer, so with a
+        # persist_* flag on these must exist before the first epoch.
+        self.ref_sats = {}
+        self.amb_gen = {}
+        self.amb_lam = {}
+        self.amb_init_epoch = {}
+        self._sat_quality = None
 
         self._init_epoch_state_defaults()
 
@@ -279,10 +287,8 @@ class ImuGnssTc:
             self.ref_sats = {}
         if not cfg.persist_amb_gen:
             self.amb_gen = {}
-        if not cfg.persist_amb_lam:
-            self.amb_lam = {}
-        if not cfg.persist_amb_init_epoch:
-            self.amb_init_epoch = {}
+        self.amb_lam = {}
+        self.amb_init_epoch = {}
         if not cfg.persist_sat_quality or self._sat_quality is None:
             self._sat_quality = SatQualityState(self._sat_states)
 
