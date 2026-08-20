@@ -7,8 +7,8 @@ from .utils import euler_to_R_body2enu, sensor_to_body_flu
 
 from cssrlib.gnss import time2gpst
 from . import ar as _tc_ar
-from . import recovery as _tc_recovery
-from .buildfactor import factors as _tc_factors
+from .integrity import recovery as _tc_recovery
+from .factors import factors as _tc_factors
 
 
 def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,

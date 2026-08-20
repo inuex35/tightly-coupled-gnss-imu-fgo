@@ -1,5 +1,18 @@
 """Structured runtime state for the TC pipeline."""
 
+from enum import Enum
+
+
+class TcState(Enum):
+    """Five-state FSM landing point. Not yet wired into the runner —
+    transitions still happen via the flag fields below."""
+    NORMAL    = 'normal'      # Fix flowing, residuals clean.
+    DEGRADED  = 'degraded'    # Some sat outliers / CP-hold engaged.
+    DR        = 'dr'          # Dead reckoning — GDOP skip, IMU-only update.
+    INS_ONLY  = 'ins_only'    # Long outage, FLS frozen.
+    RECOVERY  = 'recovery'    # Just warm-reset, gating new measurements.
+
+
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from typing import Optional

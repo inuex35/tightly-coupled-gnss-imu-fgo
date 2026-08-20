@@ -3,7 +3,7 @@
 import numpy as np
 
 from cssrlib.gnss import time2gpst
-from ..buildfactor.factors_support import get_wavelengths as _get_wavelengths
+from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,

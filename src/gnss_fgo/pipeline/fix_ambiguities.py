@@ -10,8 +10,8 @@ import numpy as np
 import gtsam
 
 from .. import ar as _tc_ar
-from ..validation import residuals as _tc_residuals
-from .. import recovery as _tc_recovery
+from ..pipeline import residuals as _tc_residuals
+from ..integrity import recovery as _tc_recovery
 
 
 _AR_OUTCOME_CODES = {

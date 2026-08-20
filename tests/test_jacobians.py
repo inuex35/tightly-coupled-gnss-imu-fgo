@@ -35,7 +35,7 @@ def test_nhc_factor():
 
 
 def test_held_ddcp_factor():
-    from gnss_fgo.buildfactor.factors import _make_ddcp_factor_with_held_n
+    from gnss_fgo.factors.factors import _make_ddcp_factor_with_held_n
     sat_ref = np.array([-15200000.0, 12000000.0, 18300000.0])
     sat_j = np.array([4200000.0, 21000000.0, 15500000.0])
     noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
@@ -51,7 +51,7 @@ def test_held_ddcp_factor():
 
 
 def test_tdcp_factor():
-    from gnss_fgo.buildfactor.tdcp import _make_tdcp_factor
+    from gnss_fgo.factors.tdcp import _make_tdcp_factor
     sat_p = np.array([-15200000.0, 12000000.0, 18300000.0])
     noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
     f = _make_tdcp_factor(1, 2, 3, sat_p, sat_p + 600.0, 4.2,

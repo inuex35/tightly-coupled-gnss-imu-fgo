@@ -10,8 +10,8 @@ import numpy as np
 import gtsam
 
 from . import recovery as _tc_recovery
-from .validation import residuals as _tc_residuals
-from . import state as _tc_state
+from ..pipeline import residuals as _tc_residuals
+from . import recovery as _tc_state
 
 
 def _ddpr_multipath_dominated(tc, info):

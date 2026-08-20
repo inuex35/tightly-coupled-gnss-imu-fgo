@@ -1,4 +1,6 @@
-"""Stage A — PIM build, IMU prediction, IMU chain attach.
+"""IMU prediction: preintegrate to the obs epoch, predict the state,
+and attach that prediction as the process factor (CombinedImuFactor).
+Measurement factors live in measurement_factors.py.
 
 Bumps tc_epoch, integrates IMU up to the GNSS TOW, and seeds Xpose/Vel/
 Bias(key_idx) at the predicted state. If the previous Xpose was already
@@ -10,9 +12,9 @@ import numpy as np
 import gtsam
 
 from cssrlib.gnss import time2gpst
-from ..buildfactor import imu_preintegration as _tc_pim
+from ..factors import imu_preintegration as _tc_pim
 from ..utils import heading_from_pose
-from .. import recovery as _tc_recovery
+from ..integrity import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

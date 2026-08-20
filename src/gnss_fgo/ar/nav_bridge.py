@@ -27,7 +27,7 @@ knows what it is touching.
 import numpy as np
 import gtsam
 
-from .. import sat_quality as _satq
+from ..integrity import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 

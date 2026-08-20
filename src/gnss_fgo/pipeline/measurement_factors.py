@@ -11,14 +11,14 @@ TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``epoch.graph`` /
 import numpy as np
 import gtsam
 
-from ..buildfactor import clock as _tc_clock
-from ..buildfactor import doppler as _tc_doppler
-from ..buildfactor import doppler_sd as _tc_doppler_sd
-from ..buildfactor import tdcp as _tc_tdcp
-from ..buildfactor import factors as _tc_factors
-from ..buildfactor import nhc as _tc_nhc
-from ..buildfactor import zupt as _tc_zupt
-from .. import sat_quality as _satq
+from ..factors import clock as _tc_clock
+from ..factors import doppler as _tc_doppler
+from ..factors import doppler_sd as _tc_doppler_sd
+from ..factors import tdcp as _tc_tdcp
+from ..factors import factors as _tc_factors
+from ..factors import nhc as _tc_nhc
+from ..factors import zupt as _tc_zupt
+from ..integrity import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 

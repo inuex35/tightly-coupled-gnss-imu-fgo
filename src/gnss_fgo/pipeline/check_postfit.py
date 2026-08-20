@@ -9,9 +9,9 @@ output stage reports.
 import numpy as np
 import gtsam
 
-from .. import sat_quality as _satq
+from ..integrity import sat_quality as _satq
 from ..utils import heading_from_pose
-from ..validation import residuals as _tc_residuals
+from ..pipeline import residuals as _tc_residuals
 
 
 def _compute_postfit_diagnostics(tc, epoch):
