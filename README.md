@@ -47,12 +47,14 @@ python examples/run_imu_gnss_tc.py \
 
 ## Architecture
 
-Phase 1 (`phase1_rtk.py`): stationary GNSS-only bootstrap. Phase 2:
-each epoch runs Stages A–E — IMU preintegration (`preprocess/stage.py`),
-quality gate & holds (`preprocess/gate.py`), build→solve→AR→post-fit
-(`optimize/`), FIX/FLT verdict (`validation/`) — with cross-cutting
-outage/reset paths in `recovery.py`. Factor builders live one-per-family
-in `buildfactor/`, the native LAMBDA path in `ar/`.
+Packages are the roles: `state/` (records: SatState, EpochData),
+`pipeline/` (the epoch flow — `imu_prediction` → `quality_gate` →
+`solve` (measurement_factors / update_smoother / fix_ambiguities /
+check_postfit) → `validate_fix` → `report`), `factors/` (measurement →
+gtsam factor builders, one per family), `integrity/` (slip detection,
+per-sat quality, sanity ladder, outage recovery), `ar/` (LAMBDA core +
+retry/subset/hold). Phase 1 bootstrap: `phase1_rtk.py` +
+`initialization.py`; `runner.py` owns state and the cssrlib boundary.
 
 ## Configuration
 

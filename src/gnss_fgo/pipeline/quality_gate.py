@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from .. import sat_quality as _satq
-from . import slip_detect as _tc_slip_detect
+from ..integrity import sat_quality as _satq
+from ..integrity import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
-from .. import recovery as _tc_recovery
+from ..integrity import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

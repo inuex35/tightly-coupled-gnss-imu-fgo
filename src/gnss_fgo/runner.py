@@ -16,17 +16,17 @@ from .utils import (
     make_imu_params as _utils_make_imu_params,
 )
 from .config import TcConfig
-from .buildfactor.epoch_context import make_epoch_diagnostics, prepare_process_epoch
-from .buildfactor import factors as _tc_factors
+from .factors.epoch_context import make_epoch_diagnostics, prepare_process_epoch
+from .factors import factors as _tc_factors
 from . import initialization as _initialization
-from . import tightly_coupled as _tightly_coupled
-from . import recovery as _tc_recovery
-from .runtime_state import (
+from . import pipeline as _pipeline
+from .integrity import recovery as _tc_recovery
+from .state.runtime_state import (
     MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
-from .sat_quality import SatQualityState
-from .optimize import isam as _tc_isam
-from .buildfactor import prefit as _tc_prefit
+from .integrity.sat_quality import SatQualityState
+from .pipeline import update_smoother as _tc_isam
+from .factors import prefit as _tc_prefit
 from .utils import sorted_sys_ids
 
 
@@ -437,7 +437,7 @@ class ImuGnssTc:
     _make_isam2 = staticmethod(_tc_isam.make_isam2)
     process_imu_only = _tc_recovery.process_imu_only
     _run_init_epoch = _initialization.run_init_epoch
-    _run_tc_epoch = _tightly_coupled.run_tc_epoch
+    _run_tc_epoch = _pipeline.run_tc_epoch
 
 
 def _install_forwarders(cls):

@@ -9,7 +9,7 @@ import gtsam
 from cssrlib.rtk import rtkpos
 from cssrlib.gnss import geodist, timediff
 
-from .buildfactor import factors as _tc_factors
+from .factors import factors as _tc_factors
 from .utils import sorted_amb_items, sorted_sys_ids
 
 
