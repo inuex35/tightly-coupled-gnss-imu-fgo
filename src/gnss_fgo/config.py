@@ -171,16 +171,11 @@ class TcConfig:
     post_ar_cost_thresh: float = 9999.0
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
-    anchor_imu_max_gap: float = 20.0
-    anchor_imu_hard_max: float = 200.0
-    anchor_imu_clean_res: float = 1.0          # m, DDPR-LS self-residual
-    anchor_imu_clean_main_res: float = 15.0    # m, post-fit DDPR RMS
-    main_ddpr_res_catastrophic: float = 15.0
+    diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics
+    main_ddpr_res_catastrophic: float = 15.0   # fast-path sanity trigger
     ar_ddpr_xvalidate_thresh: float = 10.0
     ar_ddpr_xvalidate_delta_thresh: float = 0.0
     ddpr_fast_worst_sat_min: float = 30.0
-    ddpr_bad_persist_override: int = 6
-    ddpr_clean_res: float = 1.0
     per_sat_res_thresh: float = 3.0
 
     # IMU noise (select via imu_grade or override individual σ)

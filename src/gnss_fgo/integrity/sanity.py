@@ -1,7 +1,7 @@
 """DDPR sanity escalation ladder — the wrong-basin recovery policy.
 
 Stateful escalation over consecutive epochs (trigger -> persist ->
-anchor -> anchor-vs-IMU -> reset). Lives next to recovery.py because
+diagnostic anchor -> reset). Lives next to recovery.py because
 every rung ends in a recovery action; validation/residuals.py stays a
 pure residual-computation library.
 """
@@ -52,17 +52,10 @@ def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_
         return None
     if not _ddpr_sanity_gdop_ok(tc, info):
         return None
-    anchor = _ddpr_sanity_fetch_anchor(
+    _ddpr_sanity_anchor_diagnostics(
         tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        pose_tc, ecef_tc, info)
-    if anchor is None:
-        return _ddpr_sanity_anchor_fallback(
-            tc, pose_tc, pred, pred_res, info, obs)
-    if not _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
-        return _ddpr_sanity_anchor_fallback(
-            tc, pose_tc, pred, pred_res, info, obs)
-    return _ddpr_sanity_apply_reset(
-        tc, anchor, estimate, pose_tc, pred, pred_res, graph, key_idx, info, obs)
+        pose_tc, ecef_tc, pred, info)
+    return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
 
 
 def _ddpr_sanity_gdop_ok(tc, info):
@@ -74,12 +67,6 @@ def _ddpr_sanity_gdop_ok(tc, info):
         info['sanity_skipped_gdop'] = cur_gdop
         return False
     return True
-
-
-def _ddpr_sanity_anchor_fallback(tc, pose_tc, pred, pred_res, info, obs):
-    """Stages 5/6 fallback: ``_apply_sanity_reset`` is graph surgery and"""
-    info['sanity_anchor_fallback'] = 1
-    return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
 
 
 def _compute_res_at_pred(tc, graph, pred, key_idx, info):
@@ -184,9 +171,20 @@ def _ddpr_sanity_persist(tc, main_res, info):
     return tc._ddpr_bad_count >= tc.cfg.ddpr_sanity_persist
 
 
-def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
-                               ir_map, pose_tc, ecef_tc, info):
-    """Escalation step 3: DDPR-only LS anchor. Returns (ecef, res_rms) or None"""
+def _ddpr_sanity_anchor_diagnostics(tc, obs, obsb, obs_sd, rs, rsb, sat, el,
+                                    iu, ir_map, pose_tc, ecef_tc, pred, info):
+    """Forensics for the reset that is about to happen (no decision).
+
+    The original ladder ran this DDPR-only LS anchor as escalation
+    steps 3-5, but every rung ended in the same _apply_sanity_reset —
+    the anchor result never steered the action, in any public revision.
+    It is now explicitly diagnostics-only: the anchor position, its
+    innovation against the TC pose, and its gap to the IMU prediction
+    land in info for post-run analysis. diag_sanity_anchor=0 skips the
+    extra solve.
+    """
+    if not tc.cfg.diag_sanity_anchor:
+        return
     ecef_ddpr, n_ddpr, res_rms = tc._ddpr_only_position(
         obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_tc)
     info['ddpr_nv'] = n_ddpr
@@ -194,37 +192,8 @@ def _ddpr_sanity_fetch_anchor(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     if ecef_ddpr is not None:
         info['ecef_ddpr'] = ecef_ddpr
         info['ddpr_innov'] = float(np.linalg.norm(ecef_tc - ecef_ddpr))
+        ecef_pred = (tc.R_enu2ecef @ np.array(pred.pose().translation())
+                     + tc.base_ecef)
+        info['anchor_imu_gap'] = float(np.linalg.norm(ecef_ddpr - ecef_pred))
     if ecef_ddpr is None or res_rms > tc.cfg.ddpr_max_res:
         info['ddpr_anchor_untrusted'] = res_rms
-        return None
-    return (ecef_ddpr, res_rms)
-
-
-def _ddpr_sanity_anchor_vs_imu(tc, anchor, main_res, pred, info):
-    """Escalation step 4: anchor must agree with IMU-predicted position (sub-metre"""
-    ecef_ddpr, res_rms = anchor
-    R = tc.R_enu2ecef
-    ecef_pred = R @ np.array(pred.pose().translation()) + tc.base_ecef
-    anchor_imu_gap = float(np.linalg.norm(ecef_ddpr - ecef_pred))
-    info['anchor_imu_gap'] = anchor_imu_gap
-    clean_anchor = (res_rms < tc.cfg.anchor_imu_clean_res
-                    and main_res > tc.cfg.anchor_imu_clean_main_res)
-    if (anchor_imu_gap > tc.cfg.anchor_imu_hard_max
-            and not clean_anchor):
-        info['ddpr_anchor_vs_imu_bad'] = anchor_imu_gap
-        return False
-    catastrophic = main_res > tc.cfg.main_ddpr_res_catastrophic
-    persistent_bad = (tc._ddpr_bad_count
-                      >= tc.cfg.ddpr_bad_persist_override
-                      and res_rms < tc.cfg.ddpr_clean_res)
-    if (anchor_imu_gap > tc.cfg.anchor_imu_max_gap
-            and not catastrophic and not persistent_bad):
-        info['ddpr_anchor_vs_imu_bad'] = anchor_imu_gap
-        return False
-    return True
-
-
-def _ddpr_sanity_apply_reset(tc, anchor, estimate, pose_tc, pred, pred_res,
-                              graph, key_idx, info, obs):
-    """Stage 5: recover from a wrong-basin lock via DDCP removal + N"""
-    return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
