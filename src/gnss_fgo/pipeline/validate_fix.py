@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from .. import sanity as _tc_sanity
+from ..integrity import sanity as _tc_sanity
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────

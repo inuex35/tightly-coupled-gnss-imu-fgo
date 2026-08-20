@@ -1,14 +1,59 @@
 # tightly-coupled-gnss-imu-fgo
 
-Tightly-coupled RTK: GNSS double differences and a 100 Hz IMU fused on a
-GTSAM factor graph (cssrlib front end), targeting centimeter FIX in deep
-urban canyons. Ambiguities are float states in the graph, fixed by LAMBDA
-with fix-and-hold; IMU + SD Doppler bridge NLOS storms and tunnels.
+**Open-source tightly-coupled GNSS RTK + IMU factor-graph optimization**
 
-## Install
+*carrier-phase RTK · LAMBDA ambiguity resolution · GTSAM · urban driving · reproducible*
 
-Linux x86_64, Python 3.11/3.12. **Stock PyPI `gtsam`/`cssrlib` will not
-work** — both come from forks:
+The full RTK chain lives inside the graph: double-differenced
+pseudorange **and carrier phase**, integer ambiguity resolution
+(LAMBDA, exclusion retry, partial AR) with fix-and-hold, FDE, and
+100 Hz IMU preintegration — targeting centimeter FIX in deep urban
+canyons, with IMU + single-differenced Doppler bridging NLOS storms
+and tunnels.
+
+## What's inside
+
+- **RTK in the graph** — DD pseudorange + DD carrier-phase factors on a
+  GTSAM `IncrementalFixedLagSmoother`, ambiguities as float states,
+  clock-free seeding (SD phase − SD code)
+- **Integer ambiguity resolution** — LAMBDA with ratio test, exclusion
+  retry, partial AR, fix-and-hold, and geometry/residual acceptance
+  gates
+- **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
+  NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
+- **Velocity through outages** — between-satellite single-differenced
+  Doppler (clock-free), injected even on GDOP-skipped epochs
+- **Integrity & recovery** — five slip/multipath detectors, per-sat
+  quality policies, post-fit FDE, and an escalation ladder from CP-hold
+  to warm reset
+- **Contributed upstream** — the DD, Doppler and undifferenced GNSS
+  factors are merged into
+  [GTSAM](https://github.com/borglab/gtsam) itself; see the
+  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)
+  for the technique
+
+## Results
+
+![tokyo_defaults](docs/tokyo_defaults.png)
+
+Everything is measured on open data
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset), three full
+urban-Tokyo drives) with all-default settings, and is reproducible
+end to end:
+
+| run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
+|------|-----------|---------|---------|---------|--------|--------|
+| run1 | 11928 ep  | 21.35 m | 0.23 m  | 0.65 m  | 49.6 % | 55.4 % |
+| run2 |  9151 ep  |  6.34 m | 0.053 m | 0.35 m  | 67.6 % | 75.4 % |
+| run3 | 15301 ep  | 18.61 m | 0.051 m | 0.47 m  | 67.8 % | 71.5 % |
+
+run1 is the hardest route — a deep canyon plus a full tunnel blackout,
+bridged by IMU + SD Doppler dead reckoning.
+
+## Quick start
+
+Linux x86_64, Python 3.11/3.12. **Stock PyPI `gtsam`/`cssrlib` will
+not work** — both come from forks:
 
 ```bash
 python3.12 -m venv venv && . venv/bin/activate
@@ -23,11 +68,8 @@ pip install gtsam_develop-*.whl
 pip install -e "git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib"
 ```
 
-No packaging yet — run from the source tree. Datasets are not included
-(results use [PPC-Dataset](https://github.com/taroz/PPC-Dataset) tokyo,
-laid out as `data/PPC-Dataset/tokyo/run{1,2,3}/`).
-
-## Run
+Run (datasets not included; lay out PPC-Dataset under
+`data/PPC-Dataset/tokyo/run{1,2,3}/`):
 
 ```bash
 LEVER_ARM=0.31,0,0.55 \
@@ -35,27 +77,29 @@ python examples/run_imu_gnss_tc.py \
   rover.obs base.obs base.nav imu.csv reference.csv
 ```
 
-### Results — tokyo PPC, full length, all defaults
-
-| run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
-|------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 21.35 m | 0.23 m  | 0.65 m  | 49.6 % | 55.4 % |
-| run2 |  9151 ep  |  6.34 m | 0.053 m | 0.35 m  | 67.6 % | 75.4 % |
-| run3 | 15301 ep  | 18.61 m | 0.051 m | 0.47 m  | 67.8 % | 71.5 % |
-
-![tokyo_defaults](docs/tokyo_defaults.png)
-
 ## Architecture
 
-Phase 1 (`phase1_rtk.py`): stationary GNSS-only bootstrap. Phase 2:
-each epoch runs Stages A–E — IMU preintegration (`preprocess/stage.py`),
-quality gate & holds (`preprocess/gate.py`), build→solve→AR→post-fit
-(`optimize/`), FIX/FLT verdict (`validation/`) — with cross-cutting
-outage/reset paths in `recovery.py`. Factor builders live one-per-family
-in `buildfactor/`, the native LAMBDA path in `ar/`.
+Packages are the roles:
+
+| Package | Role |
+|---|---|
+| `pipeline/` | the epoch flow: `imu_prediction` → `quality_gate` → `solve` (`measurement_factors` / `update_smoother` / `fix_ambiguities` / `check_postfit`) → `validate_fix` → `report` |
+| `factors/` | measurement → GTSAM factor builders, one file per family |
+| `ar/` | LAMBDA core, exclusion retry, subset search, fix-and-hold |
+| `integrity/` | slip detection, per-sat quality, sanity ladder, outage recovery |
+| `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
+
+Phase 1 bootstrap (stationary GNSS-only) is `phase1_rtk.py` +
+`initialization.py`; `runner.py` owns state and the cssrlib boundary.
 
 ## Configuration
 
-All knobs are env vars mirroring `config.py` fields (`LEVER_ARM`,
-`MAX_EP`, `SAVE_NPZ`, `DOPPLER_SD_SIGMA`, …); see `config.py` for the
-commented list.
+Every knob is an env var mirroring a `config.py` field (`LEVER_ARM`,
+`MAX_EP`, `SAVE_NPZ`, `DOPPLER_SD_SIGMA`, …) — see `config.py` for the
+complete, commented list.
+
+## License
+
+BSD 3-Clause. Built on [GTSAM](https://github.com/borglab/gtsam) and
+[cssrlib](https://github.com/hirokawa/cssrlib); evaluated on
+[PPC-Dataset](https://github.com/taroz/PPC-Dataset).

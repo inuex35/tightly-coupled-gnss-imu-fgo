@@ -1,6 +1,6 @@
 """Epoch-level factories shared by runner, tightly_coupled, and recovery."""
 
-from ..epoch_data import EpochData
+from ..state.epoch_data import EpochData
 
 
 def prepare_process_epoch(tc, obs, sat, obs_sd):

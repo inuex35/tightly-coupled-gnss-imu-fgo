@@ -5,14 +5,13 @@ import gtsam
 
 from cssrlib.gnss import time2gpst
 
-from .buildfactor.epoch_context import make_epoch_diagnostics
-from .buildfactor.nhc import add_nhc_factor as _add_nhc_factor
-from .buildfactor.zupt import add_zupt_factors as _add_zupt_factor_inplace
+from ..factors.epoch_context import make_epoch_diagnostics
+from ..factors.nhc import add_nhc_factor as _add_nhc_factor
+from ..factors.zupt import add_zupt_factors as _add_zupt_factor_inplace
 from . import sat_quality as _satq
-from .state import effective_cp_hold_epochs
-from .buildfactor import imu_preintegration as _tc_pim
-from .buildfactor import doppler_sd as _tc_doppler_sd
-from .optimize import isam as _tc_isam
+from ..factors import imu_preintegration as _tc_pim
+from ..factors import doppler_sd as _tc_doppler_sd
+from ..pipeline import update_smoother as _tc_isam
 
 
 def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
@@ -368,3 +367,37 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
     except (RuntimeError, IndexError, ValueError):
         pass
     return advance_epoch_and_pack(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
+
+
+# ── CP-hold triggering (formerly state.py) ─────────────────────────
+
+def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
+    """Engage global CP-hold for RECOV_CP_HOLD epochs.
+    Triggers: slip_burst (≥N sats slipped this epoch),
+    innovation (pose jump from IMU prediction), fde_safeguard (runaway FDE).
+
+    skip_if_active=True prevents re-trigger during active hold (fde/innovation
+    would fire every epoch during recovery, creating infinite loop).
+    """
+    fired = tc._recovery.start_cp_hold(
+        effective_cp_hold_epochs(tc), reason, info, value=value,
+        skip_if_active=skip_if_active)
+    if fired:
+        sq = getattr(tc, '_sat_quality', None)
+        if sq is not None:
+            sq.clear()
+    return fired
+
+
+def effective_cp_hold_epochs(tc) -> int:
+    """Configured cp-hold length, with startup bootstrap suppression.
+
+    During the first few live Phase-2 epochs we rely on the DDPR-only
+    translation anchor to hand off from the init graph into the regular
+    graph. A global CP hold during that same window leaves the graph
+    floating with no DDCP/AR pull-back channel, so suppress it until the
+    bootstrap-DDPR countdown expires.
+    """
+    if int(tc._tc_bootstrap_ddpr_epochs or 0) > 0:
+        return 0
+    return int(tc.cfg.recov_cp_hold)

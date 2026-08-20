@@ -1,10 +1,8 @@
 """Ambiguity seeding: the clock-free property that run1 ep1619 proved vital."""
-import numpy as np
 import gtsam
 import pytest
 
-from gnss_fgo.ar.ambiguity_resolver import AmbiguityResolver  # noqa: F401 (import check)
-from gnss_fgo.buildfactor import amb_seed
+from gnss_fgo.factors import amb_seed
 
 
 class _Cfg:

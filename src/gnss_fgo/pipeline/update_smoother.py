@@ -11,7 +11,7 @@ import gtsam
 
 from ..utils import sorted_amb_items
 
-from .. import recovery as _tc_recovery
+from ..integrity import recovery as _tc_recovery
 
 
 def _solve_isam2(tc, epoch):

@@ -1,6 +1,6 @@
 """Phase-2 pipeline data-flow contract checker.
 
-Each stage module under ``tc/stages/`` declares two module-level tuples:
+Each stage module under ``pipeline/`` declares two module-level tuples:
 
   ``STAGE_READS``   — fields the stage reads from the shared EpochData.
   ``STAGE_WRITES``  — fields the stage writes (or in-place mutates) on it.
@@ -44,11 +44,11 @@ def _seed_fields():
 # (stage-name, dotted module path under gnss_fgo) — order matches the
 # Phase-2 pipeline data flow.
 _DEFAULT_ORDER = (
-    ('preprocess',  '.preprocess.stage'),
-    ('gate',        '.preprocess.gate'),
-    ('optimize',    '.optimize.stage'),
-    ('postprocess', '.validation.postprocess'),
-    ('output',      '.validation.output'),
+    ('A imu',     '.pipeline.imu_prediction'),
+    ('B gate',    '.pipeline.quality_gate'),
+    ('C solve',   '.pipeline.solve'),
+    ('D verdict', '.pipeline.validate_fix'),
+    ('E output',  '.pipeline.report'),
 )
 
 

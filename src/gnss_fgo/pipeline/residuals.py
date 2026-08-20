@@ -2,7 +2,7 @@
 
 import numpy as np
 import gtsam
-from .. import state as _tc_state
+from ..integrity import recovery as _tc_state
 
 
 def all_factor_residuals(tc, graph, estimate):
