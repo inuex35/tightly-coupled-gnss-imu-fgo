@@ -29,7 +29,6 @@ _AR_DIAG_ATTRS = (
     ('_last_amb_estimate_missing', 'amb_estimate_missing'),
     ('_last_amb_vsat1', 'amb_vsat1'),
     ('_last_amb_vsat0_young', 'amb_vsat0_young'),
-    ('_last_amb_vsat0_held_bad', 'amb_vsat0_held_bad'),
     ('_last_amb_age_median', 'amb_age_median'),
     ('_last_amb_age_min', 'amb_age_min'),
     ('_last_amb_not_in_obs', 'amb_not_in_obs'),

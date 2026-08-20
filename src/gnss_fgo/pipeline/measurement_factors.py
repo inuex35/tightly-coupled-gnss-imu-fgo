@@ -18,7 +18,6 @@ from ..factors import tdcp as _tc_tdcp
 from ..factors import factors as _tc_factors
 from ..factors import nhc as _tc_nhc
 from ..factors import zupt as _tc_zupt
-from ..integrity import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 
@@ -35,7 +34,6 @@ def _build_factor_block(tc, epoch, prev_smode):
         prev_amb_values=epoch.prev_amb_values,
         skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
     epoch.nv = nv
-    _record_lock_age(tc, epoch)
     n_between = _add_between_n_chain(tc, epoch, prev_smode)
     info['n_dd'] = epoch.nv
     if tc._last_hold_gauge_rel:
@@ -99,21 +97,6 @@ def _build_factor_block(tc, epoch, prev_smode):
         tc._tc_bootstrap_ddpr_epochs = max(0, bootstrap_ddpr_epochs - 1)
 
     # ────────────────────────────────────────────────────────────────
-
-def _record_lock_age(tc, epoch):
-    """Diagnostics: per-sat max CP-lock streak across bands."""
-    sq = _satq.get_sat_quality(tc)
-    sat_lock_age = {}
-    for s in epoch.sat:
-        s = int(s)
-        ages = [
-            int(sq.cp_lock_streak.get((s, f), 0))
-            for f in range(tc.nav.nf)
-            if (s, f) in sq.cp_lock_streak
-        ]
-        sat_lock_age[s] = (int(max(ages)) if ages else np.nan)
-    epoch.info['sat_lock_age'] = sat_lock_age
-
 
 def _add_between_n_chain(tc, epoch, prev_smode):
     """BetweenFactor(N_prev, N_new, 0) on continuing ambiguities.

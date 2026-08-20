@@ -240,6 +240,11 @@ class RecoveryState:
         fde/innovation would otherwise fire every epoch of the recovery
         and loop forever.
         """
+        if self.recov_cp_hold > 0:
+            self.cp_hold_retrigger_streak += 1
+            info['cp_hold_retrigger_streak'] = self.cp_hold_retrigger_streak
+        else:
+            self.cp_hold_retrigger_streak = 0
         if skip_if_active and self.recov_cp_hold > 0:
             return False
         self.recov_cp_hold = max(self.recov_cp_hold, hold_n)

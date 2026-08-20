@@ -1,17 +1,16 @@
 numpy
 matplotlib
 
-# GTSAM with the project's custom factors (DD PR/CP, Doppler, SD Doppler,
-# NHC). Install the prebuilt wheel from inuex35/gtsam custom-wheels-latest
-# (branch custom/develop, re-merged with upstream weekly) — see README.
-# The stock PyPI 'gtsam' wheel lacks these factors.
-gtsam
-
-# cssrlib must come from the inuex35 fork (branch gtsam-gnss-frontend),
-# whose layered DD-only RTK core keeps just the double-difference path
-# this pipeline needs. The upstream
-# PyPI cssrlib lacks prepare_double_difference_measurements /
-# base_process_dd_only. Pinned to a commit for reproducibility.
-# Install with:
-#   pip install -e git+https://github.com/inuex35/cssrlib-numba.git@55e0c29#egg=cssrlib
-cssrlib>=1.2.1
+# NOTE — two dependencies deliberately do NOT come from PyPI:
+#
+# gtsam: this pipeline needs the custom factors (DD PR/CP, Doppler,
+# SD Doppler, NHC), which the stock PyPI 'gtsam' wheel lacks. Install
+# the prebuilt wheel from inuex35/gtsam (branch custom/develop,
+# re-merged with upstream weekly):
+#   gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
+#   pip install "$(ls wheels/*.whl | sort | tail -1)"
+#
+# cssrlib: upstream lacks prepare_double_difference_measurements /
+# base_process_dd_only (the layered DD-only RTK core this pipeline
+# drives). Pinned to a commit for reproducibility:
+cssrlib @ git+https://github.com/inuex35/cssrlib.git@55e0c29cfcf91c100186e46939a8e3f113a63890

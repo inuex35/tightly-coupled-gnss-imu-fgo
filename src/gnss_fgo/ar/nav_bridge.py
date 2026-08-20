@@ -27,7 +27,6 @@ knows what it is touching.
 import numpy as np
 import gtsam
 
-from ..integrity import sat_quality as _satq
 from ..utils import sorted_amb_items
 
 
@@ -130,7 +129,6 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     diag_estimate_missing = 0
     diag_vsat1 = 0
     diag_vsat0_young = 0
-    diag_vsat0_held_bad = 0
     diag_ages = []
     diag_amb_el_deg = []  # elevation [deg] of vsat=1 amb sats
     for (s, f), k in sorted_amb_items(amb_dict):
@@ -140,8 +138,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
             init_ep = tc._sat_states.at(s, f).amb_init_epoch
             age = tc.epoch - (init_ep if init_ep is not None else 0)
             diag_ages.append(int(age))
-            held_bad = int(_satq.get_sat_quality(tc).persist_bad_hold.get(int(s), 0)) > 0
-            if age >= tc.ar_wait_new and not held_bad:
+            if age >= tc.ar_wait_new:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1
                 el_idx = int(s) - 1
@@ -149,10 +146,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
                     diag_amb_el_deg.append(float(np.degrees(tc.nav.el[el_idx])))
             else:
                 tc.nav.vsat[s - 1, f] = 0  # exclude from LAMBDA
-                if held_bad:
-                    diag_vsat0_held_bad += 1
-                else:
-                    diag_vsat0_young += 1
+                diag_vsat0_young += 1
         else:
             diag_estimate_missing += 1
     tc._last_amb_el_min_deg = (int(round(min(diag_amb_el_deg)))
@@ -164,7 +158,6 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     tc._last_amb_estimate_missing = diag_estimate_missing
     tc._last_amb_vsat1 = diag_vsat1
     tc._last_amb_vsat0_young = diag_vsat0_young
-    tc._last_amb_vsat0_held_bad = diag_vsat0_held_bad
     tc._last_amb_age_median = int(np.median(diag_ages)) if diag_ages else -1
     tc._last_amb_age_min = int(min(diag_ages)) if diag_ages else -1
 
@@ -172,18 +165,17 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
 def _publish_held_ambiguities(tc, cp_visible_sf, hold_epochs,
                               last_visible, amb_dict):
     """Held integers enter nav.x at varholdamb variance; vsat only
-    while the sat stays CP-visible and not persist-bad. Also counts
-    orphan CP signals (visible but neither held nor float)."""
+    while the sat stays CP-visible. Also counts orphan CP signals
+    (visible but neither held nor float)."""
     held_var = max(float(tc.cfg.varholdamb), 1e-6)
     for (s, f), held_value in tc._sat_states.held_items():
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = float(held_value)
         tc.nav.P[tc.IB(s, f, tc.nav.na), tc.IB(s, f, tc.nav.na)] = held_var
-        held_bad = int(_satq.get_sat_quality(tc).persist_bad_hold.get(int(s), 0)) > 0
         is_visible = (s, f) in cp_visible_sf
         if not is_visible and hold_epochs > 0:
             last_ep = last_visible.get((s, f), -10**9)
             is_visible = (tc.epoch - last_ep) <= hold_epochs
-        tc.nav.vsat[s - 1, f] = (1 if is_visible and not held_bad else 0)
+        tc.nav.vsat[s - 1, f] = (1 if is_visible else 0)
 
     held_sf = {(int(s), int(f)) for (s, f), _ in tc._sat_states.held_items()}
     amb_sf = {(int(s), int(f)) for (s, f) in amb_dict.keys()}

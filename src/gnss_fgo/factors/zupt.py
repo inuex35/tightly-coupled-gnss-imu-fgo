@@ -163,9 +163,8 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
 
 def add_zupt_factors_for_stage(tc, epoch):
     """Phase-2 optimize-stage wrapper around :func:`add_zupt_factors`.
-    Optimize stage is the DD-having path — flag ``gnss_available`` from
-    ``epoch.nb`` so the anchor branch defers to the recovery entry
-    points where DD has not constrained pose this epoch.
+    Passes ``gnss_available=False`` deliberately, so the stationary
+    anchor stays unconditional (see the note at the call below).
     """
     return add_zupt_factors(
         tc, epoch.graph, epoch.key_idx,
