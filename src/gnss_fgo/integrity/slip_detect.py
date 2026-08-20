@@ -8,8 +8,8 @@ from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
                                 obsb=None, ir_map=None):
-    """Run the five slip/multipath detectors (LLI, CMC, GF, Doppler,
-    MW) plus the outage expiry, then reset every flagged ambiguity.
+    """Run the four slip/multipath detectors (LLI, CMC, GF, Doppler)
+    plus the outage expiry, then reset every flagged ambiguity.
     Returns (n_reset, n_cmc_jumps, slip_keys)."""
     nf = tc.nav.nf
     ns = len(sat)
