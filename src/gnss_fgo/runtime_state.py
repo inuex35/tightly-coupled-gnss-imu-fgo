@@ -208,13 +208,6 @@ class SatStateMap:
                 if st.amb_key is not None]
 
 @dataclass
-class AmbiguityState:
-    """Phase-2 ambiguity bookkeeping. Per-(sat, freq) state (key /"""
-
-    total_factor_count: int = 0
-
-
-@dataclass
 class RecoveryState:
     """Cross-cutting recovery / degradation flags."""
 
