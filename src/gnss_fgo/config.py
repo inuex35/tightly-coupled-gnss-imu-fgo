@@ -161,19 +161,15 @@ class TcConfig:
     recov_cp_hold: int = 5         # hold DDCP for N epochs after any trigger
     recov_cp_release_thresh: float = 0.0
     recov_cp_release_count: int = 3
-    bad_sat_release_thresh_scale: float = 0.7
-    bad_sat_release_count_scale: float = 2.0
     cp_hold_sigma_penalty: float = 0.0
-    ddcp_res_weight_thresh_m: float = 0.0
     ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
-    ddcp_res_weight_max_m: float = 0.0
     imu_integ_cov_max: float = 0.5
-    obsq_res_thresh: float = 2.0
-    obsq_bad_streak_cap: int = 8
-    obsq_release_thresh_scale: float = 0.85
-    obsq_release_count_scale: float = 1.5
+    obsq_ewma_alpha: float = 0.2         # per-sat residual EWMA smoothing
+    obsq_bad_streak_thresh: float = 2.0  # [m] residual above -> bad streak
+    obsq_recent_worst_decay: float = 0.8 # worst-sat score decay per epoch
+    obsq_recent_cppr_decay: float = 0.8  # cp-pr reject score decay
 
     main_ddpr_res_thresh: float = 3.0
     main_ddpr_per_sat_thresh: float = 0.0
@@ -328,11 +324,11 @@ class TcConfig:
 
     def __post_init__(self):
         """Apply IMU grade preset if user hasn't explicitly set individual σ."""
-        tactical = IMU_PRESETS['tactical']
-        is_default = (self.accel_noise == tactical['accel_noise'] and
-                      self.gyro_noise == tactical['gyro_noise'] and
-                      self.accel_bias_sigma == tactical['accel_bias_sigma'] and
-                      self.gyro_bias_sigma == tactical['gyro_bias_sigma'])
+        cls_fields = type(self).__dataclass_fields__
+        is_default = all(
+            getattr(self, k) == cls_fields[k].default
+            for k in ('accel_noise', 'gyro_noise',
+                      'accel_bias_sigma', 'gyro_bias_sigma'))
         if is_default and self.imu_grade != 'tactical':
             preset = IMU_PRESETS.get(self.imu_grade)
             if preset is None:
