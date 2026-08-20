@@ -285,8 +285,7 @@ class ImuGnssTc:
         self.ar_wait_new = cfg.ar_wait_new
         if not cfg.persist_ref_sats:
             self.ref_sats = {}
-        if not cfg.persist_amb_gen:
-            self.amb_gen = {}
+        self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
         if not cfg.persist_sat_quality or self._sat_quality is None:
