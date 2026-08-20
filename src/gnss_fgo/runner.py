@@ -268,13 +268,11 @@ class ImuGnssTc:
         self._last_obs_t = obs.t
 
     def _reset_epoch_scratch(self):
-        """Historical every-epoch wipes, now individually gated.
+        """Per-epoch scratch reset (review finding A-1).
 
-        For most of this project's life ALL of these were wiped every
-        epoch, silently disabling ref-sat continuity, ar_wait_new and
-        the sat-quality subsystem (review finding A-1). The persist_*
-        flags default to the historical wipe so the published numbers
-        stand; flip individually for a measured A/B.
+        Persisting any of these across epochs was measured on run1 and
+        every variant came back equal or worse, so the every-epoch
+        reset is the spec, not an accident.
         total_factor_count is never reset here — zeroing the cumulative
         counter once made the held-CP FDE bookkeeping silently inert.
         """
@@ -283,13 +281,11 @@ class ImuGnssTc:
         self.cmc_thresh = cfg.cmc_thresh
         self.cn0_min = cfg.cn0_min
         self.ar_wait_new = cfg.ar_wait_new
-        if not cfg.persist_ref_sats:
-            self.ref_sats = {}
+        self.ref_sats = {}
         self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
-        if not cfg.persist_sat_quality or self._sat_quality is None:
-            self._sat_quality = SatQualityState(self._sat_states)
+        self._sat_quality = SatQualityState(self._sat_states)
 
 
     def _assign_view(self, view: SatFieldView, value):
