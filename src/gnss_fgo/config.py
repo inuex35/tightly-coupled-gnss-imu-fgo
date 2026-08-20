@@ -161,15 +161,10 @@ class TcConfig:
     recov_cp_hold: int = 5         # hold DDCP for N epochs after any trigger
     recov_cp_release_thresh: float = 0.0
     recov_cp_release_count: int = 3
-    cp_hold_sigma_penalty: float = 0.0
     ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
     imu_integ_cov_max: float = 0.5
-    obsq_ewma_alpha: float = 0.2         # per-sat residual EWMA smoothing
-    obsq_bad_streak_thresh: float = 2.0  # [m] residual above -> bad streak
-    obsq_recent_worst_decay: float = 0.8 # worst-sat score decay per epoch
-    obsq_recent_cppr_decay: float = 0.8  # cp-pr reject score decay
 
     main_ddpr_res_thresh: float = 3.0
     main_ddpr_per_sat_thresh: float = 0.0
@@ -288,10 +283,6 @@ class TcConfig:
     # of wall time on the tokyo run; turn on only for offline diagnostics.
     diag_factor_residuals: int = 0
     fls_update_timing: int = 0
-    ar_persist_bad_enable: int = 1
-    ar_persist_bad_res_thresh: float = 2.0
-    ar_persist_bad_streak: int = 4
-    ar_persist_bad_hold: int = 10
 
     # Phase transition
     vel_thresh: float = 1.0        # motion detection for Phase 1→2 [m/s]

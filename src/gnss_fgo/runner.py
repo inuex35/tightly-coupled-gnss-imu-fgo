@@ -24,7 +24,6 @@ from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
     MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
-from .integrity.sat_quality import SatQualityState
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
 from .utils import sorted_sys_ids
@@ -212,7 +211,6 @@ class ImuGnssTc:
         self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
-        self._sat_quality = None
 
         self._init_epoch_state_defaults()
 
@@ -284,7 +282,6 @@ class ImuGnssTc:
         self.amb_gen = {}
         self.amb_lam = {}
         self.amb_init_epoch = {}
-        self._sat_quality = SatQualityState(self._sat_states)
 
 
     def _assign_view(self, view: SatFieldView, value):
