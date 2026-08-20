@@ -46,7 +46,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
             st.amb_gen += 1
         st.clear_hold()
         st.amb_key = None
-        st.amb_factor_indices = []
     tc.total_factor_count = 0
 
     bias0 = tc.tc_bias if tc.tc_bias is not None \
@@ -111,7 +110,6 @@ def reset_ambiguities_with_cp_hold(tc):
             st.amb_gen += 1
         st.clear_hold()
         st.amb_key = None
-        st.amb_factor_indices = []
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc._recov_cp_release_streak = 0
     _satq.get_sat_quality(tc).clear()
@@ -158,15 +156,11 @@ def _outage_drain_imu(tc, tow_obs):
 
 def _outage_tick_sat_outc(tc, info):
     """Tick sat_outc on every currently-tracked ambiguity key and expire"""
-    skip_remove_indices = []
     n_skip_reset = 0
     maxout = tc._sat_states.maxout
     for st in tc._sat_states.values():
         st.outc += 1
         if st.outc > maxout:
-            if st.amb_factor_indices:
-                skip_remove_indices.extend(st.amb_factor_indices)
-                st.amb_factor_indices = []
             st.clear_hold()
             if st.amb_key is not None:
                 st.amb_key = None
@@ -174,7 +168,6 @@ def _outage_tick_sat_outc(tc, info):
                 n_skip_reset += 1
     if n_skip_reset:
         info['skip_amb_reset'] = n_skip_reset
-    return skip_remove_indices
 
 
 def _outage_add_pseudo_measurements(tc, graph, key_idx, info, imu_idx_prev,
@@ -210,15 +203,14 @@ def _outage_anchor_bias_prior(tc, graph, key_idx):
         gtsam.noiseModel.Diagonal.Sigmas(sigmas))
 
 
-def _outage_solve_and_adopt(tc, graph, values, key_idx, skip_remove_indices,
+def _outage_solve_and_adopt(tc, graph, values, key_idx,
                             R_enu2ecef, info, record_error=False):
     """Shared outage-epoch tail: FLS update, adopt the solved pose into
     nav.x, refresh tc.tc_bias. Returns the antenna ECEF (or the previous
     nav.x[0:3] when the solve fails)."""
     try:
         _tc_isam.fls_update(tc, graph, values, key_idx,
-                         keep_keys=tc._sat_states.amb_key_values(),
-                         remove_indices=skip_remove_indices or None)
+                         keep_keys=tc._sat_states.amb_key_values())
         estimate = tc.isam2.calculateEstimate()
         pose_tc = estimate.atPose3(tc.Xpose(key_idx))
         tc.tc_bias = estimate.atConstantBias(tc.Bias(key_idx))
@@ -245,7 +237,7 @@ def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
             and tc.cfg.doppler_sd_sigma > 0):
         _tc_doppler_sd.add_sd_doppler_factors(tc, epoch, in_outage=True)
     _outage_advance_skip_count(tc, info, source='gdop')
-    skip_remove_indices = _outage_tick_sat_outc(tc, info)
+    _outage_tick_sat_outc(tc, info)
     _outage_anchor_bias_prior(tc, graph, key_idx)
     try:
         est_now = tc.isam2.calculateEstimate()
@@ -274,8 +266,7 @@ def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
             tc.Vel(key_idx - 1), np.asarray(gdop_vel_prev, dtype=float),
             gtsam.noiseModel.Isotropic.Sigma(
                 3, tc.cfg.propagate_vel_sigma))
-    _outage_solve_and_adopt(tc, graph, values, key_idx,
-                            skip_remove_indices, R_enu2ecef, info)
+    _outage_solve_and_adopt(tc, graph, values, key_idx, R_enu2ecef, info)
     tc.nav.smode = 5
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
@@ -302,7 +293,7 @@ def process_imu_only(tc, obs):
     key_idx = tc.tc_epoch
     info['tc_epoch'] = key_idx
 
-    skip_remove_indices = _outage_tick_sat_outc(tc, info)
+    _outage_tick_sat_outc(tc, info)
 
     imu_idx_prev = tc.imu_idx
     pim, n_imu, gyro_mean = _tc_pim.build_pim(tc, 
@@ -332,8 +323,7 @@ def process_imu_only(tc, obs):
     _outage_add_pseudo_measurements(
         tc, graph, key_idx, info, imu_idx_prev, pose_p, vel_prev, gyro_mean)
 
-    sol = _outage_solve_and_adopt(tc, graph, values, key_idx,
-                                  skip_remove_indices, R, info,
+    sol = _outage_solve_and_adopt(tc, graph, values, key_idx, R, info,
                                   record_error=True)
 
     tc.nav.smode = 5

@@ -10,7 +10,7 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
                                 obsb=None, ir_map=None):
     """Run the five slip/multipath detectors (LLI, CMC, GF, Doppler,
     MW) plus the outage expiry, then reset every flagged ambiguity.
-    Returns (n_reset, remove_indices, n_cmc_jumps, slip_keys)."""
+    Returns (n_reset, n_cmc_jumps, slip_keys)."""
     nf = tc.nav.nf
     ns = len(sat)
     reset_keys = set()
@@ -67,15 +67,13 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
             if st.outc > maxout:
                 reset_keys.add(key)
 
-    n_reset, remove_indices = reset_slipped_ambiguities(tc, reset_keys)
-    return n_reset, remove_indices, len(cmc_exclude), reset_keys
+    n_reset = reset_slipped_ambiguities(tc, reset_keys)
+    return n_reset, len(cmc_exclude), reset_keys
 
 
 def reset_slipped_ambiguities(tc, reset_keys):
     """Kill the ambiguity of every slipped (sat, f): drop the key, clear
-    holds, bump the generation (next build creates a fresh N variable)
-    and collect the FLS factor indices to remove."""
-    remove_indices = []
+    holds, bump the generation (next build creates a fresh N variable)."""
     n_reset = 0
     for key in reset_keys:
         sat_st = tc._sat_states.get(*key)
@@ -83,11 +81,8 @@ def reset_slipped_ambiguities(tc, reset_keys):
             sat_st.amb_key = None
             n_reset += 1
         sat_st.clear_hold()
-        if sat_st.amb_factor_indices:
-            remove_indices.extend(sat_st.amb_factor_indices)
-            sat_st.amb_factor_indices = []
         sat_st.amb_gen += 1
-    return n_reset, remove_indices
+    return n_reset
 
 
 def _detslp_dop(tc, obs, sat, iu, reset_keys):

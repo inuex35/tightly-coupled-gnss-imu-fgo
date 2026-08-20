@@ -67,7 +67,6 @@ class EpochData:
     pred_nav: Any = None               # gtsam.NavState (predicted)
 
     # ── Filled by `gate` ──────────────────────────────────────────
-    remove_indices: list = field(default_factory=list)
     slip_keys: set = field(default_factory=set)
     skip_cp_now: bool = False
     pred_enu:  np.ndarray | None = None  # IMU-pred antenna ENU (3,)

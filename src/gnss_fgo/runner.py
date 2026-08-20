@@ -193,8 +193,6 @@ class ImuGnssTc:
         self._amb_lam_view = SatFieldView(self._sat_states, 'amb_lam', absent=0.0)
         self._amb_init_epoch_view = SatFieldView(
             self._sat_states, 'amb_init_epoch')
-        self._amb_factor_indices_view = SatFieldView(
-            self._sat_states, 'amb_factor_indices', absent=[])
         self._rejc_cp_pr_view = SatFieldView(
             self._sat_states, 'rejc_cp_pr', absent=0)
         self._fix_streak_view = SatFieldView(
@@ -273,7 +271,6 @@ class ImuGnssTc:
         self._sat_quality = SatQualityState(self._sat_states)
         self.ar_wait_new = self.cfg.ar_wait_new
 
-        self.amb_factor_indices = {}
         # NOTE: total_factor_count (running count of factors added to
         # ISAM2) is intentionally NOT reset here — this method runs
         # every epoch, and zeroing the cumulative counter made every
@@ -299,9 +296,7 @@ class ImuGnssTc:
         'amb_gen': '_amb_gen_view',
         'amb_lam': '_amb_lam_view',
         'amb_init_epoch': '_amb_init_epoch_view',
-        'amb_factor_indices': '_amb_factor_indices_view',
         'rejc_cp_pr': '_rejc_cp_pr_view',
-        '_cp_hold_streak_persat': '_cp_hold_streak_view',
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
