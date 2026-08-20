@@ -14,7 +14,6 @@ from .pipeline_helpers import sorted_sys_ids
 from .robust import maybe_robust
 
 
-OMGE = 7.2921151467e-5  # Earth rotation rate [rad/s] (WGS-84)
 
 
 
@@ -143,7 +142,7 @@ def ddpr_only_position(obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
 
     rejected_sats = {spec_sats[idx][0]
                      for idx in range(len(specs))
-                     if idx not in active}
+                     if idx not in set(active)}
 
     if est is None or len(active) < 4:
         return None, len(active), float('inf'), per_sat_max, rejected_sats

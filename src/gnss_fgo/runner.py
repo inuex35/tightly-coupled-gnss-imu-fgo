@@ -193,8 +193,6 @@ class ImuGnssTc:
         self._amb_lam_view = SatFieldView(self._sat_states, 'amb_lam', absent=0.0)
         self._amb_init_epoch_view = SatFieldView(
             self._sat_states, 'amb_init_epoch')
-        self._amb_factor_indices_view = SatFieldView(
-            self._sat_states, 'amb_factor_indices', absent=[])
         self._rejc_cp_pr_view = SatFieldView(
             self._sat_states, 'rejc_cp_pr', absent=0)
         self._fix_streak_view = SatFieldView(
@@ -208,6 +206,14 @@ class ImuGnssTc:
 
         self._last_obs_t = None  # for real-seconds dt tracking
         self._epoch_dt = 0.2     # actual seconds since last process() call
+        # Per-epoch scratch (see _reset_epoch_scratch): the historical
+        # every-epoch wipe doubled as the initializer, so with a
+        # persist_* flag on these must exist before the first epoch.
+        self.ref_sats = {}
+        self.amb_gen = {}
+        self.amb_lam = {}
+        self.amb_init_epoch = {}
+        self._sat_quality = None
 
         self._init_epoch_state_defaults()
 
@@ -249,7 +255,9 @@ class ImuGnssTc:
         self._last_s1 = 0.0
 
     def _update_epoch_dt(self, obs):
-        """Refresh self._epoch_dt with elapsed seconds since the previous"""
+        """Refresh self._epoch_dt with elapsed seconds since the previous
+        obs epoch. dt only — the per-epoch state wipes live in
+        _reset_epoch_scratch (review finding A-1)."""
         if self._last_obs_t is not None:
             try:
                 dt = float(timediff(obs.t, self._last_obs_t))
@@ -258,27 +266,26 @@ class ImuGnssTc:
             except (TypeError, ValueError):
                 pass
         self._last_obs_t = obs.t
-        self.thresslip = self.cfg.thres_slip
-        self.cmc_thresh = self.cfg.cmc_thresh
-        self.cn0_min = self.cfg.cn0_min
 
-        # Reference satellite tracking per system
+    def _reset_epoch_scratch(self):
+        """Per-epoch scratch reset (review finding A-1).
+
+        Persisting any of these across epochs was measured on run1 and
+        every variant came back equal or worse, so the every-epoch
+        reset is the spec, not an accident.
+        total_factor_count is never reset here — zeroing the cumulative
+        counter once made the held-CP FDE bookkeeping silently inert.
+        """
+        cfg = self.cfg
+        self.thresslip = cfg.thres_slip
+        self.cmc_thresh = cfg.cmc_thresh
+        self.cn0_min = cfg.cn0_min
+        self.ar_wait_new = cfg.ar_wait_new
         self.ref_sats = {}
-
         self.amb_gen = {}
-        # Wavelength cache: {(sat, f): wavelength}
         self.amb_lam = {}
-
         self.amb_init_epoch = {}
         self._sat_quality = SatQualityState(self._sat_states)
-        self.ar_wait_new = self.cfg.ar_wait_new
-
-        self.amb_factor_indices = {}
-        # NOTE: total_factor_count (running count of factors added to
-        # ISAM2) is intentionally NOT reset here — this method runs
-        # every epoch, and zeroing the cumulative counter made every
-        # absolute factor-slot index derived from it point at the wrong
-        # slot (the held-CP FDE bookkeeping was silently inert).
 
 
     def _assign_view(self, view: SatFieldView, value):
@@ -299,9 +306,7 @@ class ImuGnssTc:
         'amb_gen': '_amb_gen_view',
         'amb_lam': '_amb_lam_view',
         'amb_init_epoch': '_amb_init_epoch_view',
-        'amb_factor_indices': '_amb_factor_indices_view',
         'rejc_cp_pr': '_rejc_cp_pr_view',
-        '_cp_hold_streak_persat': '_cp_hold_streak_view',
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
@@ -416,7 +421,7 @@ class ImuGnssTc:
             R_enu2ecef, self.base_ecef)
 
     def process(self, obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd,
-                ir_map, ref_vel=None, ref_ecef=None):
+                ir_map, ref_ecef=None):
         """Process one epoch. Returns (sol_ecef, tag, nb, info_dict)."""
         R, ns, init_ecef = prepare_process_epoch(self, obs, sat, obs_sd)
         info = make_epoch_diagnostics(self)
@@ -431,7 +436,7 @@ class ImuGnssTc:
                 info, init_ecef, R)
         return self._run_tc_epoch(
             obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-            ref_vel, ref_ecef, info, ns, init_ecef, R)
+            ref_ecef, info, ns, init_ecef, R)
 
 
     _make_isam2 = staticmethod(_tc_isam.make_isam2)

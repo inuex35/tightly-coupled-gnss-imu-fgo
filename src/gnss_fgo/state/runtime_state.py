@@ -128,7 +128,6 @@ class SatState:
     amb_gen: int = 0                         # generation counter (++ on slip / reset)
     amb_lam: float = 0.0                     # wavelength [m]
     amb_init_epoch: Optional[int] = None     # epoch when N was last initialised
-    amb_factor_indices: list = field(default_factory=list)  # FLS factor indices for this N
     held_value: Optional[float] = None       # conditioned-out held integer [cyc]
     last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
     release_seed_pending: bool = False       # one-shot unary prior on first float epoch
@@ -227,6 +226,7 @@ class RecoveryState:
     skip_count: int = 0
     recov_cp_hold: int = 0
     recov_cp_release_streak: int = 0
+    cp_hold_retrigger_streak: int = 0   # consecutive re-arms while active (loop audit)
     pim_discontinuity: bool = False
     ddpr_bad_count: int = 0
     zupt_anchor_pose: object = None
@@ -273,6 +273,7 @@ class RecoveryState:
         self.skip_count = 0
         self.recov_cp_hold = 0
         self.recov_cp_release_streak = 0
+        self.cp_hold_retrigger_streak = 0
         self.pim_discontinuity = False
         self.ddpr_bad_count = 0
         self.zupt_anchor_pose = None
