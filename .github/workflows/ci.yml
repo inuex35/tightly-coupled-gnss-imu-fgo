@@ -23,8 +23,7 @@ jobs:
           pip install "$(ls /tmp/wheels/*.whl | sort | tail -1)"
       - name: Install dependencies
         run: |
-          pip install numpy pytest
-          pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@gtsam-gnss-frontend"
+          pip install pytest -r requirements.txt
       - name: Unit tests
         run: pytest tests/ -q
       - name: Stage contract check (import-time gate)
