@@ -375,10 +375,9 @@ def main():
                     f",score={score_rel:.1f},res={res_rel:.1f})"
                 )
 
-        if True:  # (kept indent; printing is unconditional)
-            print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
-                  f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
-                  f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
+        print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
+              f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
+              f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
 
     dec.fobs.close()
     decb.fobs.close()
@@ -413,6 +412,7 @@ def main():
             print(f"  Fix 3D RMS: {np.sqrt(np.mean(e3f**2)):.4f}m")
 
     savefile = os.environ.get('SAVE_NPZ')
+    out = {}
     if savefile:
         n = len(results)
         # Always-present scalars / vectors
@@ -504,7 +504,7 @@ def main():
                          'pair_main': pair_main_dump,
                          'pair_truth': pair_truth_dump,
                          'ref_sats': ref_sats_dump,
-                          'err3d': out.get('err3d') if 'err3d' in out else None,
+                          'err3d': out.get('err3d'),
                           'smode': out.get('smode') if 'smode' in out else None}, f)
         print(f"Saved per-sat residuals to {persatfile}")
 

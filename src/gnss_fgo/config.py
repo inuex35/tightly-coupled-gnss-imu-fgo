@@ -137,7 +137,7 @@ class TcConfig:
     sanity_max_median_min_sats: int = 6
     imu_integ_cov_max: float = 0.5
 
-    main_ddpr_res_thresh: float = 3.0
+    main_ddpr_res_thresh: float = 3.0   # elevation-normalized pseudo-m (see residuals.main_ddpr_residuals)
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
     diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics

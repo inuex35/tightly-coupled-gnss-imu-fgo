@@ -55,7 +55,7 @@ bridged by IMU + SD Doppler dead reckoning.
 
 ## Quick start
 
-Linux x86_64, Python 3.11/3.12. **Stock PyPI `gtsam`/`cssrlib` will
+Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). **Stock PyPI `gtsam`/`cssrlib` will
 not work** — both come from forks:
 
 ```bash
@@ -89,7 +89,7 @@ Packages are the roles:
 | `pipeline/` | the epoch flow: `imu_prediction` → `quality_gate` → `solve` (`measurement_factors` / `update_smoother` / `fix_ambiguities` / `check_postfit`) → `validate_fix` → `report` |
 | `factors/` | measurement → GTSAM factor builders, one file per family |
 | `ar/` | LAMBDA core, exclusion retry, subset search, fix-and-hold |
-| `integrity/` | slip detection, per-sat quality, sanity ladder, outage recovery |
+| `integrity/` | slip detection, sanity ladder, outage recovery |
 | `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
 
 Phase 1 bootstrap (stationary GNSS-only) is `initialization.py`;

@@ -25,7 +25,6 @@ from .ls_solvers import DDPRContext, ddpr_only_position
 from .pipeline_helpers import (
     heading_from_pose,
     sorted_amb_items,
-    sorted_amb_keys,
     sorted_sys_ids,
 )
 
@@ -55,6 +54,5 @@ __all__ = [
     'R_NED2ENU',
     'sensor_to_body_flu',
     'sorted_amb_items',
-    'sorted_amb_keys',
     'sorted_sys_ids',
 ]

@@ -49,6 +49,10 @@ def make_isam2(lag, relinearize_skip=1, relinearize_threshold=0.01):
     params = gtsam.ISAM2Params()
     params.setRelinearizeThreshold(float(relinearize_threshold))
     params.relinearizeSkip = int(relinearize_skip)
+    # apply_fde derives factor slots as nf_total - graph.size(), which
+    # assumes new factors always append; keep slot reuse OFF (the
+    # gtsam default) and say so explicitly.
+    params.findUnusedFactorSlots = False
     return gtsam.IncrementalFixedLagSmoother(lag, params)
 
 
@@ -77,9 +81,4 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(),
         _t0 = _time.perf_counter()
     tc.isam2.update(graph, values, ts)
     if timing_on:
-        _dt = _time.perf_counter() - _t0
-        tc._fls_update_time_total = (
-            tc._fls_update_time_total + _dt)
-        tc._fls_update_calls = tc._fls_update_calls + 1
-        tc._fls_update_last_ms = _dt * 1000.0
-    tc.total_factor_count += graph.size()
+        tc._fls_update_last_ms = (_time.perf_counter() - _t0) * 1000.0

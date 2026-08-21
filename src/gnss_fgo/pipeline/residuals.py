@@ -83,7 +83,17 @@ def _ddpr_factor_error(fac, estimate):
 
 
 def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
-    """DDPR residuals in main graph at estimate."""
+    """DDPR residuals in the main graph at ``estimate``.
+
+    UNIT CAVEAT (r5 #4): res = sqrt(2*err)*sigma_pr*sqrt(2) rescales
+    the factor-whitened residual by the FLAT sigma_pr — but with
+    varerr_enable=1 the factor sigma is elevation-dependent, so these
+    are elevation-NORMALIZED residuals in pseudo-metres (zenith ~1.5x
+    the true residual, 10-deg elevation ~0.36x), and every threshold
+    documented as [m] (main_ddpr_res_thresh, per_sat_res_thresh,
+    fde_pr/fde_cp, ...) actually cuts on that normalized scale. The
+    elevation-weighted rejection is deliberate; the unit labels were
+    not."""
     sigma_pr_m = tc.cfg.sigma_pr * np.sqrt(2)
     res_sq = []
     per_sat = {}
