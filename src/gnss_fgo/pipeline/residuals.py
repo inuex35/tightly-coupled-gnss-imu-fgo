@@ -82,6 +82,27 @@ def _ddpr_factor_error(fac, estimate):
         return None
 
 
+def ddpr_res_at_fixed_pose(tc, graph, estimate, key_pose, xa):
+    """Main-graph DDPR RMS with the pose moved to the LAMBDA-fixed
+    antenna position ``xa[0:3]`` (rotation kept from ``estimate``).
+    Returns None when the evaluation is impossible. Shared by the
+    absolute (ar_ddpr_xvalidate_thresh) and delta (ar_fix_dres_max)
+    gates, which used to carry two copies of these five steps (r6 #6).
+    """
+    try:
+        cur_pose = estimate.atPose3(key_pose)
+        R_be = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
+        body_ecef = (np.asarray(xa[0:3], dtype=float)
+                     - R_be @ np.array(tc.lever_arm_tc))
+        body_nav = tc.ecef_T_nav.transformTo(gtsam.Point3(*body_ecef))
+        v_xa = gtsam.Values()
+        v_xa.insert(key_pose, gtsam.Pose3(cur_pose.rotation(), body_nav))
+        res, _ = main_ddpr_residuals(tc, graph, v_xa)
+        return float(res)
+    except (RuntimeError, ValueError, IndexError):
+        return None
+
+
 def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
     """DDPR residuals in the main graph at ``estimate``.
 

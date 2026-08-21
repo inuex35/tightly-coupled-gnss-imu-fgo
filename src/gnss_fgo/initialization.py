@@ -16,6 +16,12 @@ def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
     """Phase 1: GNSS-only Pose3 RTK on shared ambiguity keys."""
     est = _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb,
                               sat, el, iu, ir_map, init_ecef, R)
+    if est is None:
+        # Double smoother failure inside _p1_build_and_solve (the
+        # restart's update failed too): skip the epoch as FLT instead
+        # of crashing on the None estimate (r6 #1).
+        return _tc_recovery.advance_epoch_and_pack(
+            tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
     sol, tag, nb, _xa = _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts,
                                             sat, el, iu, R)
     _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
@@ -117,7 +123,8 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
             g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
             tc.Xp(ep), lever, tc.amb_keys,
             dd_epoch=0)
-        tc.phase1_t += tc._epoch_dt
+        # NOTE: phase1_t was already advanced above — advancing it again
+        # here made a failed epoch consume 2*dt of the FLS lag window.
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
         for k in v.keys():
             ts[k] = tc.phase1_t

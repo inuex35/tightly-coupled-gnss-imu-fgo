@@ -46,7 +46,7 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     """Select DD reference satellite index from idx_sys.
 
     The reference ledger lives on the epoch scratch (cross-epoch
-    continuity was measured worse — A-2 A/B: AllRMS 21.35 -> 93.03),
+    continuity was measured worse),
     so the prev-ref preference works WITHIN an epoch only: the main
     build writes it, and later same-epoch DD solves (LS
     fallback, sanity anchor, FDE re-solve) pick the same reference so
@@ -56,6 +56,13 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     Returns (ref_idx, ref_sat).
     """
     prev_ref = tc.current_epoch.ref_sats.get(sys_id)
+    # _last_per_sat_res has NO freshness gate, deliberately: report
+    # is its only writer, so after GDOP skips / resets these are
+    # pre-outage residuals — and that staleness is load-bearing memory
+    # (a satellite that was multipath-dirty entering the tunnel
+    # usually still is leaving it; a blank list lets it become the DD
+    # reference during the recovery's most fragile epochs). Adding a
+    # MresSignals-style cut was measured much worse.
     sats_in_sys = [sat[i] for i in idx_sys]
     prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
                    and _utils_is_bds_geo(prev_ref))

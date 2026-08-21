@@ -106,7 +106,6 @@ class SatState:
 
     # Slip-detector memory
     cmc: Optional[float] = None              # CMC observation [m]
-    prev_phase: Optional[tuple] = None       # (cycles, tow_s) for Doppler-phase slip
     outc: int = 0                            # epochs since last seen
     # Ambiguity bookkeeping
     amb_key: Optional[int] = None            # GTSAM symbol for N

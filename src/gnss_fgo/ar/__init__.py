@@ -150,7 +150,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     except (Exception, SystemExit) as ex:
         # cssrlib mlambda raises SystemExit when Qah is not positive definite
         tc.ar_diag.outcome = 'lambda_exception'
-        tc.ar_diag.exception = type(ex).__name__
+        tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
         return 0, None
 
     tc.ar_diag.resamb_raw_nb = int(nb)
@@ -159,7 +159,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
         try:
             nb, xa = _try_subset_ar(tc, sat, el, amb_dict)
         except (Exception, SystemExit) as ex:
-            tc.ar_diag.exception = type(ex).__name__
+            tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
             nb, xa = 0, None
 
     if nb <= 0:

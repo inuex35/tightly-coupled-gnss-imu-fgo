@@ -37,9 +37,12 @@ def parse_args():
             sys.argv[4], sys.argv[5])
 
 
+SYS_CHAR = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}
+
+
 def _format_sat(sat):
     sys_i, prn = sat2prn(int(sat))
-    sys_ch = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}.get(sys_i, '?')
+    sys_ch = SYS_CHAR.get(sys_i, '?')
     return f"{sys_ch}{prn:02d}"
 
 
@@ -362,7 +365,7 @@ def main():
                 if 'main_ddpr_sat_worst' in info:
                     sw, rw = info['main_ddpr_sat_worst']
                     sys_i, prn = sat2prn(sw)
-                    sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
+                    sys_ch = SYS_CHAR.get(sys_i, '?')
                     extra += f" worst={sys_ch}{prn:02d}:{rw:.1f}"
             if int(info.get('held_release_flt_count', 0) or 0) > 0:
                 s_rel = int(info.get('held_release_flt_sat', 0) or 0)

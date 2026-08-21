@@ -50,7 +50,6 @@ class EpochData:
 
     # ── Filled by `preprocess` ─────────────────────────────────────
     key_idx: int | None = None              # current Phase-2 epoch index
-    is_recovery: bool = False          # epoch follows skip_count > 0
     tow: float | None = None           # GPS time-of-week
     imu_idx_prev: int | None = None    # IMU cursor before PIM build
     pim: Any = None                    # PreintegratedCombinedMeasurements

@@ -1,4 +1,4 @@
-"""TcConfig — tunables for ImuGnssTc. Flat (`cfg.zupt_max_acc_std`) and namespaced (`cfg.zupt.max_acc_std`) access are equivalent."""
+"""TcConfig — tunables for ImuGnssTc. Access is flat (`cfg.zupt_max_acc_std`); the `cfg.zupt.*` namespaced view exists for the zupt group only."""
 
 import os
 from dataclasses import dataclass
@@ -85,11 +85,6 @@ class TcConfig:
     cn0_min: float = 0.0           # C/N0 floor [dB-Hz], 0=off
 
 
-    # Raw per-satellite Doppler (gtsam.DopplerFactorArm). σ is the range-rate
-    # measurement noise; 0 disables. The clock-bias chain the factors
-    # difference needs two more knobs: a random walk between epochs (as a
-    # range-rate σ, converted to seconds inside the builder) and the anchor
-    # prior that pins the otherwise-unobservable absolute bias.
     doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
     doppler_fde_k: float = 4.0     # drop Dopplers beyond k robust scales
     doppler_snr_weight: int = 1    # scale Doppler σ by C/N0 as varerr does
@@ -110,7 +105,10 @@ class TcConfig:
     # GNSS quality gate
     gdop_max: float = 10.0
     nsat_min: int = 6
-    min_dd_for_solve: int = 4
+    min_dd_for_solve: int = 4      # min DD FACTOR count (PR+CP; a
+                                   # 3-band pair alone contributes up
+                                   # to 6) below which the epoch gets
+                                   # propagate priors instead
     boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
                                    # N epochs after the Phase-2 transition
     boot_ddpr_sigma: float = 0.5   # [m] its translation sigma

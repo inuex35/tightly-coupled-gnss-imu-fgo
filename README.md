@@ -23,7 +23,7 @@ and tunnels.
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected even on GDOP-skipped epochs
-- **Integrity & recovery** — four slip/multipath detectors, post-fit
+- **Integrity & recovery** — three slip/multipath detectors, post-fit
   FDE, and an escalation ladder from CP-hold to warm reset
 - **Default-on vs. opt-in** — the results below use the defaults
   (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA via the cssrlib
@@ -97,9 +97,10 @@ Phase 1 bootstrap (stationary GNSS-only) is `initialization.py`;
 
 ## Configuration
 
-Every `config.py` field is an env var (`LEVER_ARM`,
-`MAX_EP`, `SAVE_NPZ`, `DOPPLER_SD_SIGMA`, …) — see `config.py` for the
-complete, commented list.
+Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
+`SIG_PR`, `ZUPT_MAX_SPEED`, …) — see `config.py` for the complete,
+commented list. The example script adds its own env switches
+(`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
 A few recovery-path priors (warm-reset and outage anchors,
 Phase-2 seed sigmas) are hardcoded constants, not knobs.
 

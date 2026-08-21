@@ -116,7 +116,10 @@ def _emit_held_ddcp_factor(tc, graph, pair_id, key_pose, key_float,
     # counter arithmetic cannot name a slot reliably across recovery
     # paths. When both ambiguities are held the factor is pose-only and
     # its key tuple is not unique (every such factor shares the pose
-    # key) — leave those out of the FDE bookkeeping rather than guess.
+    # key) — those factors are DELIBERATELY outside post-fit FDE's
+    # sight (r6 #2): a wrong integer in a held-held pair is caught by
+    # the ar_fix_dres gate at fix time and by the sanity ladder when
+    # the residuals stay bad, not by per-factor exclusion.
     if key_float is not None:
         tc._last_custom_ddcp_global[
             (int(key_pose), int(key_float))] = pair_id

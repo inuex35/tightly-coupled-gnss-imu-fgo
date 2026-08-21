@@ -12,7 +12,6 @@ class _Cfg:
 
 class _SatState:
     def __init__(self):
-        self.amb_lam = 0.0
         self.held_value = None
         self.last_held_value = None
         self.release_seed_pending = False

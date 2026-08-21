@@ -19,7 +19,11 @@ def add_nhc_factor(tc, graph, key_idx, speed, gyro_mean_rh=None):
     """Non-Holonomic Constraint at rear-axle center in the FLU body frame."""
     if not tc.cfg.nhc_enable or speed < tc.cfg.nhc_min_speed:
         return False
-    lever = parse_lever(tc.cfg.nhc_lever)
+    lever = tc._nhc_lever_cache
+    if lever is None or tc._nhc_lever_src != tc.cfg.nhc_lever:
+        lever = parse_lever(tc.cfg.nhc_lever)
+        tc._nhc_lever_cache = lever
+        tc._nhc_lever_src = tc.cfg.nhc_lever
     if gyro_mean_rh is not None:
         bias_gyro = tc.tc_bias.gyroscope() if tc.tc_bias is not None \
             else np.zeros(3)
