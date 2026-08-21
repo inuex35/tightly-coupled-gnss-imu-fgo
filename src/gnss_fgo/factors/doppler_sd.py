@@ -150,7 +150,7 @@ def add_sd_doppler_factors(tc, epoch, in_outage=False):
         omega = np.asarray(epoch.gyro_mean, dtype=float) - bias_gyro
 
     key_idx = int(epoch.key_idx)
-    lever = np.asarray(tc.lever_arm, dtype=float)
+    lever = np.asarray(tc.lever_arm_tc, dtype=float)
     rr = np.asarray(epoch.pred_ecef, dtype=float)
     n = 0
     huber = float(tc.cfg.doppler_huber)

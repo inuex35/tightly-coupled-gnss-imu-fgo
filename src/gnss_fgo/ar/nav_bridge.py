@@ -125,8 +125,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
         if estimate.exists(k):
             tc.nav.x[tc.IB(s, f, tc.nav.na)] = estimate.atDouble(k)
             # Exclude ambiguities (re)seeded THIS epoch. Making the
-            # wait span real epochs was measured worse (A-1 A/B:
-            # AllRMS 21.35 -> 21.66), so one epoch is the spec.
+            # wait span real epochs was measured worse; one epoch is the spec.
             if (s, f) not in tc.current_epoch.seeded_amb_keys:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1

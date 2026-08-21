@@ -6,8 +6,6 @@ diagnostics, and the starvation reset that clears a hopeless ambiguity set.
 """
 
 
-import numpy as np
-import gtsam
 
 from .. import ar as _tc_ar
 from ..pipeline import residuals as _tc_residuals
@@ -83,29 +81,19 @@ def _run_ar_with_marginals(tc, epoch):
         tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
-        try:
-            cur_pose = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
-            R_body_to_ecef = tc.ecef_T_nav.compose(
-                cur_pose).rotation().matrix()
-            lever_arr = np.array(tc.lever_arm_tc)
-            body_ecef_xa = np.asarray(epoch.xa[0:3]) - R_body_to_ecef @ lever_arr
-            body_nav_xa = tc.ecef_T_nav.transformTo(
-                gtsam.Point3(*body_ecef_xa))
-            xa_pose = gtsam.Pose3(cur_pose.rotation(), body_nav_xa)
-            v_xa = gtsam.Values()
-            v_xa.insert(tc.Xpose(epoch.key_idx), xa_pose)
-            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, epoch.graph, v_xa)
-            info['ar_ddpr_xvalidate_res_at_xa'] = float(res_xa)
+        res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
+            tc, epoch.graph, epoch.estimate,
+            tc.Xpose(epoch.key_idx), epoch.xa)
+        if res_xa is not None:
+            info['ar_ddpr_xvalidate_res_at_xa'] = res_xa
             res_pre = tc._cached_ddpr_res_pre
             if res_pre is not None:
                 info['ar_ddpr_xvalidate_delta'] = float(res_xa - res_pre)
-            if float(res_xa) > xv_thr:
+            if res_xa > xv_thr:
                 info['ar_ddpr_xvalidate_reject'] = True
                 epoch.nb = 0
                 epoch.xa = None
                 tc.nav.smode = 5
-        except (RuntimeError, ValueError):
-            pass
 
 
 def _record_ar_diagnostics(tc, info):

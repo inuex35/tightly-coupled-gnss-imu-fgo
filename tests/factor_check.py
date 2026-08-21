@@ -64,7 +64,7 @@ def _unwhiten_sigmas(factor):
     return np.asarray(model.sigmas(), dtype=float)
 
 
-def jacobian_errors(factor, values, eps=1e-5):
+def jacobian_errors(factor, values, eps=1e-3):
     """Max |analytic - numeric| per variable, on the unwhitened error."""
     sig = _unwhiten_sigmas(factor)
     A, _ = factor.linearize(values).jacobian()
@@ -87,8 +87,14 @@ def jacobian_errors(factor, values, eps=1e-5):
     return errs
 
 
-def check_factor_jacobians(factor, values, atol=1e-4, eps=1e-5):
-    """Assert every Jacobian block matches its numeric differentiation."""
+def check_factor_jacobians(factor, values, atol=1e-4, eps=1e-3):
+    """Assert every Jacobian block matches its numeric differentiation.
+
+    eps=1e-3 is deliberate for ~2e7 m range-scale operands: central
+    differences lose ~eps^-1 * ulp(range) to cancellation, so 1e-5 put
+    the noise floor AT the tolerance (r6 #8: the error scales exactly
+    as 1/eps — 1e-3 -> 3e-6, 1e-5 -> 3e-4, 1e-7 -> 2e-2 — proving the
+    analytic side right and the old eps fragile)."""
     errs = jacobian_errors(factor, values, eps=eps)
     bad = {k: e for k, e in errs.items() if e > atol}
     assert not bad, f"Jacobian mismatch (atol={atol}): {bad}"
