@@ -22,7 +22,6 @@ def _solve_isam2(tc, epoch):
         for sf, (k_old, _) in sorted_amb_items(epoch.prev_amb_values):
             if tc._sat_states.at(*sf).amb_key is not None:
                 extra.append(k_old)
-        extra.extend(tc._doppler_keep_keys)
         fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
                    keep_keys=extra)
         epoch.estimate = tc.isam2.calculateEstimate()
@@ -75,10 +74,4 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(),
             ts[k] = t
     for k in keep_keys:
         ts[k] = t
-    timing_on = bool(tc.cfg.fls_update_timing)
-    if timing_on:
-        import time as _time
-        _t0 = _time.perf_counter()
     tc.isam2.update(graph, values, ts)
-    if timing_on:
-        tc._fls_update_last_ms = (_time.perf_counter() - _t0) * 1000.0

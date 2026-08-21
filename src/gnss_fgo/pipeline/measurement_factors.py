@@ -11,8 +11,6 @@ TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``epoch.graph`` /
 import numpy as np
 import gtsam
 
-from ..factors import clock as _tc_clock
-from ..factors import doppler as _tc_doppler
 from ..factors import doppler_sd as _tc_doppler_sd
 from ..factors import factors as _tc_factors
 from ..factors import nhc as _tc_nhc
@@ -38,12 +36,6 @@ def _build_factor_block(tc, epoch, prev_smode):
     if epoch.nv < tc.cfg.min_dd_for_solve:
         _add_thin_epoch_priors(tc, epoch)
     info['n_between'] = n_between
-
-    # Raw per-satellite Doppler factors (opt-in via cfg.doppler_sigma)
-    _tc_doppler.add_doppler_factors(tc, epoch)
-
-    # Undifferenced pseudoranges pinning the clock chain the Doppler needs
-    _tc_clock.add_clock_pr_factors(tc, epoch)
 
     # Between-satellite differenced Doppler (clock-free; cfg.doppler_sd_sigma)
     _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)

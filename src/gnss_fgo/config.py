@@ -84,14 +84,12 @@ class TcConfig:
     cmc_thresh: float = 3.0        # Code-minus-carrier jump threshold [m]
     cn0_min: float = 0.0           # C/N0 floor [dB-Hz], 0=off
 
-    thresdop: float = 0.0          # try 5–10 cyc/s on a clean run
 
     # Raw per-satellite Doppler (gtsam.DopplerFactorArm). σ is the range-rate
     # measurement noise; 0 disables. The clock-bias chain the factors
     # difference needs two more knobs: a random walk between epochs (as a
     # range-rate σ, converted to seconds inside the builder) and the anchor
     # prior that pins the otherwise-unobservable absolute bias.
-    doppler_sigma: float = 0.0     # [m/s] 0 = off — raw, with clock states
     doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
     doppler_fde_k: float = 4.0     # drop Dopplers beyond k robust scales
     doppler_snr_weight: int = 1    # scale Doppler σ by C/N0 as varerr does
@@ -108,15 +106,6 @@ class TcConfig:
                                    # Load-bearing: bounds the NLOS
                                    # feedback loop in the SD screen (see
                                    # buildfactor/doppler_sd.py).
-    doppler_clk_rw: float = 100.0  # [m/s] clock-drift random walk per epoch
-    clock_pr_anchor_sigma: float = 1e-6   # [s] loose anchor on a chain head
-                                   # when pseudoranges observe the level
-    clock_pr_sigma: float = 0.0    # [m] zenith σ of the undifferenced GPS
-                                   # iono-free pseudoranges that observe the
-                                   # clock chain (0 = off; needs doppler_sigma)
-    doppler_clk_anchor_sigma: float = 3.3e-9  # [s] prior pinning the head of
-                                   # a clock chain (the level is unobservable
-                                   # from range rates, so any value does)
 
     # GNSS quality gate
     gdop_max: float = 10.0
@@ -229,13 +218,11 @@ class TcConfig:
     low_nb_fix_only_after_flt: int = 1
     low_nb_fix_reject_max_prev_fix_streak: int = 2
     lambda_corr_hard_max: float = 1.0
-    diag_truth_residual: int = 0
     diag_main_ddpr_res: int = 1
     # Per-bucket factor RMS dump (info['fres_*'] / info['fcnt_*']). Default
     # off because evaluating every Python CustomFactor per epoch costs ~10%
     # of wall time on the tokyo run; turn on only for offline diagnostics.
     diag_factor_residuals: int = 0
-    fls_update_timing: int = 0
 
     # Phase transition
     vel_thresh: float = 1.0        # motion detection for Phase 1→2 [m/s]
