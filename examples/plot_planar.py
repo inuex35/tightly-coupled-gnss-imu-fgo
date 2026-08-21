@@ -133,7 +133,7 @@ ax.set_ylabel("N [m]  (rel. to base)")
 ax.set_title(
     f"{npz}\n"
     f"Solved (colour = err3d, capped {VMAX} m) vs truth (grey).  "
-    f"Black × = OK→wrong-basin FIX onset, "
+    "Black × = OK→wrong-basin FIX onset, "
     f"red ○ = top-5 bad-run starts."
 )
 ax.legend(loc="lower right", fontsize=9)

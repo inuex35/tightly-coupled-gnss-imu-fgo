@@ -77,7 +77,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
         int(epoch.sat[i]): float(np.degrees(epoch.el[i]))
         for i in range(len(epoch.sat))
     }
-    if hasattr(epoch, 'obs') and hasattr(epoch.obs, 'S'):
+    if hasattr(epoch.obs, 'S'):
         sat_snr = {}
         for i, s in enumerate(epoch.sat):
             try:

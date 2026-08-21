@@ -71,7 +71,17 @@ def build_pim(
         elif n >= max_samples:
             break
         gyro = sensor_to_body_flu(im['gyro'])
-        pim.integrateMeasurement(im['acc'], gyro, dt)
+        # Real per-sample timestep from the IMU clock; rounded to 0.1 ms
+        # so a perfectly-uniform log integrates with exactly the nominal
+        # dt (float Δ of large tow values is 0.01±1e-11), while dropped
+        # samples show up as 0.02, 0.03, ... instead of silently
+        # compressing time. First sample (no predecessor): nominal dt.
+        dt_i = dt
+        if idx > 0:
+            d = round(im['tow'] - imu_data[idx - 1]['tow'], 4)
+            if 0.0 < d <= 10 * dt:
+                dt_i = d
+        pim.integrateMeasurement(im['acc'], gyro, dt_i)
         gyro_sum += gyro
         n += 1
         idx += 1
@@ -93,9 +103,16 @@ def build_pim_from_samples(
     pim = gtsam.PreintegratedCombinedMeasurements(params, bias)
     n = 0
     gyro_sum = np.zeros(3)
+    prev_tow = None
     for im in imu_samples:
         gyro = sensor_to_body_flu(im['gyro'])
-        pim.integrateMeasurement(im['acc'], gyro, dt)
+        dt_i = dt
+        if prev_tow is not None:
+            d = round(im['tow'] - prev_tow, 4)
+            if 0.0 < d <= 10 * dt:
+                dt_i = d
+        prev_tow = im['tow']
+        pim.integrateMeasurement(im['acc'], gyro, dt_i)
         gyro_sum += gyro
         n += 1
     gyro_mean = gyro_sum / n if n > 0 else np.zeros(3)

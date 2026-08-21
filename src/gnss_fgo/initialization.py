@@ -121,7 +121,12 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
         for k in v.keys():
             ts[k] = tc.phase1_t
-        tc.isam.update(g, v, ts)
+        try:
+            tc.isam.update(g, v, ts)
+        except (RuntimeError, IndexError):
+            # A second consecutive failure used to take the whole run
+            # down (r5 #11); skip the epoch instead.
+            return None
     # Record everything we just inserted so the next epoch can skip.
     tc._isam_p1_inserted.add(tc.Xp(ep))
     for k in v.keys():
@@ -168,7 +173,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
 def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
                                        rsb, sat, el, iu, ir_map,
                                        sol, info, R):
-    """Phase 1C — collect IMU samples + estimate velocity from a 1-second sliding Fix-position window, accumulate fixes once we are moving, and trigger Phase-2 init when ``n_collect`` fixes are in hand."""
+    """Phase 1C — collect IMU samples + estimate velocity from a 1.5-second sliding Fix-position window, accumulate fixes once we are moving, and trigger Phase-2 init when ``n_collect`` fixes are in hand."""
     # Collect IMU samples up to current GNSS epoch
     _, _tow_obs = time2gpst(obs.t)
     imu_samples = tc._collect_imu_samples(target_tow=_tow_obs)
@@ -391,7 +396,6 @@ def transition_to_tc(tc, collected_fixes):
                                 tc.cfg.isam2_relinearize_skip,
                                 tc.cfg.isam2_relinearize_threshold)
     tc.isam2.update(g, v, ts)
-    tc.total_factor_count = g.size()
 
     # AR on initial graph (using last epoch's GNSS data)
     last = collected_fixes[-1]

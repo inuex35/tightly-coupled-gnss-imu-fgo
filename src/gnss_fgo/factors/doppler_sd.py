@@ -18,7 +18,92 @@ the reference satellite, screens the epoch and sets the weights.
 import numpy as np
 import gtsam
 
-from .doppler import _doppler_rows, screen_rows
+from cssrlib.gnss import sat2prn, uGNSS
+
+from ..utils import get_wavelengths
+
+
+
+def _doppler_rows(tc, epoch):
+    """(sat, sat ECEF pos/vel, Doppler [Hz], wavelength [m], elevation [rad]).
+
+    Mirrors the constellation and band choice the LS rows used: GLONASS is
+    skipped (its FDMA channel makes the wavelength satellite-specific and the
+    DD-only core never resolves it), and each satellite contributes the first
+    band that actually carries a Doppler observation.
+    """
+    rows = []
+    for si, i_obs in enumerate(epoch.iu):
+        s = int(epoch.sat[si])
+        if sat2prn(s)[0] == uGNSS.GLO:
+            continue
+        if i_obs >= epoch.obs.D.shape[0]:
+            continue
+        lams = None
+        for f in range(min(tc.nav.nf, epoch.obs.D.shape[1])):
+            d_obs = epoch.obs.D[i_obs, f]
+            if d_obs == 0.0:
+                continue
+            if lams is None:
+                lams = get_wavelengths(epoch.obs_sd, s, glo_ch=tc.nav.glo_ch)
+            if f < len(lams) and lams[f] > 0:
+                snr = (float(epoch.obs.S[i_obs, f])
+                       if f < epoch.obs.S.shape[1] else 0.0)
+                rows.append((s, epoch.rs[i_obs, :3], epoch.vs[i_obs, :3],
+                             float(d_obs), float(lams[f]),
+                             float(epoch.el[si]), snr))
+                break
+    return rows
+
+
+def screen_rows(tc, epoch, rows):
+    """Robust epoch screen: drop outliers, return a residual scale [m/s].
+
+    A quick least squares for (velocity correction, clock drift) over the
+    epoch's own Doppler rows, then the robust scale of what it cannot fit.
+    Two things come out of it. Satellites whose residual is far outside that
+    scale are dropped, and the scale itself is handed back so the factor
+    sigmas can follow the measurements: entering the tokyo canyon the
+    truth-referenced Doppler error goes 0.02 -> 0.14 m/s with the elevations
+    and C/N0 barely moving, and a sigma that ignores that lets a degraded
+    epoch pull the velocity as hard as a clean one.
+    """
+    if len(rows) < 5:
+        return rows, 0.0
+    v_pred = np.asarray(epoch.R_enu2ecef, dtype=float) @ np.asarray(
+        epoch.pred_nav.velocity(), dtype=float)
+    p_r = np.asarray(epoch.pred_ecef, dtype=float)
+    A, b, keep = [], [], []
+    for row in rows:
+        p_sat, v_sat, d_obs, lam = row[1], row[2], row[3], row[4]
+        d_vec = np.asarray(p_sat, dtype=float) - p_r
+        rho = float(np.linalg.norm(d_vec))
+        if rho < 1.0:
+            continue
+        e = d_vec / rho
+        pred = float(e @ (np.asarray(v_sat, dtype=float) - v_pred))
+        A.append([-e[0], -e[1], -e[2], 1.0])
+        b.append(-lam * d_obs - pred)
+        keep.append(row)
+    if len(b) < 5:
+        return rows, 0.0
+    A, b = np.asarray(A), np.asarray(b)
+    try:
+        x, *_ = np.linalg.lstsq(A, b, rcond=None)
+    except np.linalg.LinAlgError:
+        return rows, 0.0
+    r = A @ x - b
+    scale = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+    k = float(tc.cfg.doppler_fde_k)
+    if k > 0 and scale > 0:
+        kept = [row for row, ri in zip(keep, r) if abs(ri) <= k * scale]
+        if len(kept) >= 4:
+            n_drop = len(keep) - len(kept)
+            if n_drop:
+                epoch.info['doppler_fde'] = n_drop
+            keep = kept
+    epoch.info['doppler_scale'] = scale
+    return keep, scale
 
 
 def add_sd_doppler_factors(tc, epoch, in_outage=False):

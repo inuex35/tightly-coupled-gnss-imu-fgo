@@ -93,21 +93,12 @@ def _ddpr_solve_with_fde(specs, spec_sats, key, pose_init, ctx):
         except RuntimeError:
             return None, active, {}, []
 
-        # Rebuild the active subset to compute residuals for FDE.
-        g_eval = gtsam.NonlinearFactorGraph()
-        for idx in active:
-            a1, a2, a3, a4, sr, st, srb, stb = specs[idx]
-            g_eval.add(gtsam.DoubleDifferencePseudorangeFactorArm(
-                key, a1, a2, a3, a4,
-                sr, st, srb, stb, ctx.base_pt, ctx.lever,
-                ctx.ecef_T_nav, pr_noise))
-
         new_active = []
         dropped = 0
         res_kept = []
         per_sat_max = {}
         for j, idx in enumerate(active):
-            err = g_eval.at(j).error(est)
+            err = g.at(j + 1).error(est)   # +1: slot 0 is the pose prior
             res_m = np.sqrt(max(err, 0) * 2.0) * sigma_pr_m
             if res_m > ctx.fde_pr and len(active) - dropped > 4:
                 dropped += 1

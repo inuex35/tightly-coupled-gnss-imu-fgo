@@ -43,7 +43,6 @@ class EpochData:
     iu:  np.ndarray                # rover obs index (n_sat,)
     obs_sd: Any                    # double-difference partner obs
     ir_map: dict                   # base obs index map
-    ref_ecef: np.ndarray           # truth position ECEF (3,) — diag only
     info: dict                     # per-epoch diagnostics dict
     ns:  int                       # number of usable sats
     init_ecef:  np.ndarray                # initial-pose ECEF (3,)
