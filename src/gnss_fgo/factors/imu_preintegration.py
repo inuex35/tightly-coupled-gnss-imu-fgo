@@ -123,6 +123,12 @@ def add_imu_chain(tc, graph, values, key_idx, pim, pose_p, vel_prev, info):
         tc.Xpose(key_idx - 1), tc.Vel(key_idx - 1),
         tc.Xpose(key_idx), tc.Vel(key_idx),
         tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
+    # Deliberately redundant with CombinedImuFactor's own bias random
+    # walk, and the prior below deliberately recycles the previous
+    # estimate. Theory says over-confident; measurement says both are
+    # load-bearing regularization against NLOS residual leakage into
+    # the bias states (r5 #3 A/B, run1 AllRMS): base 21.35, prior
+    # off 23.93, Between off 28.49, both off 37.95.
     graph.add(gtsam.BetweenFactorConstantBias(
         tc.Bias(key_idx - 1), tc.Bias(key_idx),
         gtsam.imuBias.ConstantBias(np.zeros(3), np.zeros(3)),
