@@ -58,7 +58,7 @@ def auto_detect_signals(sig_map_rov, sig_map_base, max_freq=2,
         systems = set(systems) & rov_systems & base_systems
 
     sigs, sigsb = [], []
-    for sys in systems:
+    for sys in sorted(systems):
         rov_by_typ = {t: _group_by_band(sig_map_rov[sys], t) for t in required}
         base_by_typ = {t: _group_by_band(sig_map_base[sys], t) for t in required}
         # Bands with full coverage on both sides for every required type.

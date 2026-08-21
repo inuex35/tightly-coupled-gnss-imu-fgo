@@ -207,6 +207,8 @@ class ImuGnssTc:
         self._ar_subset_debug = None
         self.ar_diag = ArDiagnostics()
         self._ar_starve_streak = 0
+        self._nhc_lever_cache = None
+        self._nhc_lever_src = None
         self._ar_key_pose = None
         # Phase-1 motion-detection solution history [(tow, ecef), ...]
         self._sol_hist = []

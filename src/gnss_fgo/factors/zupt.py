@@ -33,12 +33,12 @@ def _zupt_should_fire(tc, n_imu, info, imu_idx_prev, vel_prev, gnss_available):
     or ``None`` when any gate fails. ``info`` is populated with the
     diagnostic stats whenever they were computed."""
     cfg = tc.cfg
-    if not int(getattr(cfg, 'zupt_enable', 0) or 0):
+    if not int(cfg.zupt_enable or 0):
         return None
-    if int(n_imu) < int(getattr(cfg, 'zupt_min_samples', 5)):
+    if int(n_imu) < int(cfg.zupt_min_samples):
         return None
     # Velocity gate — only when GNSS is constraining the estimate.
-    max_speed = float(getattr(cfg, 'zupt_max_speed', 0.0))
+    max_speed = float(cfg.zupt_max_speed)
     if max_speed > 0 and vel_prev is not None and gnss_available:
         sp = float(np.linalg.norm(np.asarray(vel_prev, dtype=np.float64)))
         info['zupt_speed_prev'] = sp
@@ -151,12 +151,12 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
     any_added |= _add_zero_velocity_prior(
         tc, graph, key_idx, info, float(cfg.zupt_sigma_zero_velocity))
     any_added |= _add_zaru_factor(
-        tc, graph, key_idx, info, float(getattr(cfg, 'zupt_sigma_zero_rotation', 0.0)))
+        tc, graph, key_idx, info, float(cfg.zupt_sigma_zero_rotation))
     if not gnss_available:
         any_added |= _maybe_capture_or_apply_anchor(
             tc, graph, key_idx, info, rec, pose_prev,
-            float(getattr(cfg, 'zupt_anchor_sigma_translation', 0.0)),
-            float(getattr(cfg, 'zupt_anchor_sigma_rotation', 0.0)))
+            float(cfg.zupt_anchor_sigma_translation),
+            float(cfg.zupt_anchor_sigma_rotation))
     return any_added
 
 
