@@ -334,7 +334,7 @@ class DdFactorBuilder:
         return j_pt, j_base_pt, j_xyz, j_base_xyz
 
     def pair_sigma(self, code, freq, el_ref_rad, el_j_rad):
-        """DD σ for the (code, freq, ref/j) pair — RTKLIB-demo5 ``varerr``"""
+        """DD σ for the (code, freq, ref/j) pair — RTKLIB-demo5 ``varerr`` when use_varerr, else the flat sigma_pr/sigma_cp base × √2."""
         if self.use_varerr:
             el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
             return _tc_prefit.varerr_dd_sigma(

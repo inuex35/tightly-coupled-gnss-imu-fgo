@@ -71,8 +71,6 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
     if n_cmc > 0:
         info['cp_slip'] = n_cmc
 
-    # Slip burst CP-hold trigger disabled — pure-form pipeline.
-
     # skip_cp_now reflects active global CP-hold (any trigger source).
     skip_cp_now = tc._recov_cp_hold > 0
     info['sat_el_deg'] = {
@@ -100,7 +98,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
 
 
 def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
-    """Step 6 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
+    """Step 5 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     prev_amb_values = {}
     if fresh_amb_bootstrap:
@@ -122,7 +120,7 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
 
 
 def _predict_antenna_position(tc, epoch):
-    """Step 7 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
+    """Step 6 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
     pred_enu = np.array(epoch.pred_nav.pose().translation())
     pred_body_ecef = epoch.R_enu2ecef @ pred_enu + tc.base_ecef
     return pred_enu, tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)

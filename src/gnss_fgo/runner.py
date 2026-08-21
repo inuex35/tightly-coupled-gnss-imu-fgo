@@ -216,6 +216,13 @@ class ImuGnssTc:
         self._ar_context_reject = None
         self._ar_subset_debug = None
         self._last_ar_outcome = 'not_called'
+        self._ar_starve_streak = 0
+        self._ar_key_pose = None
+        # Phase-1 motion-detection solution history [(tow, ecef), ...]
+        self._sol_hist = []
+        # Phase-2 smoother config / bias anchor (set at transition)
+        self.fls_lag = None
+        self.tc_bias_init = None
         # Per-epoch DDCP / DDPR factor bookkeeping (reset in build_dd_factors)
         self._ar_cp_visible_sf = set()
         self._last_custom_ddcp_local = set()
@@ -264,10 +271,6 @@ class ImuGnssTc:
         total_factor_count is never reset here — zeroing the cumulative
         counter once made the held-CP FDE bookkeeping silently inert.
         """
-        cfg = self.cfg
-        self.thresslip = cfg.thres_slip
-        self.cmc_thresh = cfg.cmc_thresh
-        self.cn0_min = cfg.cn0_min
         self.ref_sats = {}
         self.amb_gen = {}
         self.amb_init_epoch = {}

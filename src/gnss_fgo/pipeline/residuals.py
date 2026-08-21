@@ -177,7 +177,7 @@ def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries):
 
 
 def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
-    """Treat every CP factor in ``reject_fi`` as a cycle slip:"""
+    """Treat every CP factor in ``reject_fi`` as a cycle slip: clear the pair's amb keys / holds so the next epoch re-seeds them fresh."""
     custom_cp_meta = tc._last_custom_ddcp_global or {}
     for fi in reject_fi:
         fac = factors_all.at(fi)

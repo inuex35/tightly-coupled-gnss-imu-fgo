@@ -27,8 +27,9 @@ directions over tokyo run2 (4361 + 2422 calls, identical nb and ratio) and
 line-identical over sequential 3000-epoch runs.
 
 The double-difference construction matches cssrlib's ``ddidx``: within each
-constellation and frequency, the satellite with the highest elevation is the
-reference and every other satellite is differenced against it.
+constellation and frequency, the lowest-numbered satellite above the
+elevation mask is the reference and every other satellite is differenced
+against it (elevations are used for masking only).
 """
 
 from dataclasses import dataclass, field

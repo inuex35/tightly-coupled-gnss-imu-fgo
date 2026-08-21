@@ -76,7 +76,6 @@ def _record_innovation(tc, epoch):
                  + tc.base_ecef)
     innov = np.linalg.norm(epoch.ecef_tc - pred_ecef)
     info['innovation'] = innov
-    # Innovation CP-hold trigger disabled — pure-form pipeline.
 
 
 

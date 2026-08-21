@@ -1,4 +1,6 @@
-"""Recovery actions — paths the runner takes when the normal optimize"""
+"""Recovery actions — the paths the runner takes when the normal
+optimize/AR epoch cannot run or must be unwound: GDOP skip, IMU-only
+epochs, outage adoption, warm reset, and the global CP-hold trigger."""
 
 import numpy as np
 import gtsam
@@ -353,8 +355,8 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
 
 def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
     """Engage global CP-hold for RECOV_CP_HOLD epochs.
-    Triggers: slip_burst (≥N sats slipped this epoch),
-    innovation (pose jump from IMU prediction), fde_safeguard (runaway FDE).
+    Triggers: ddpr_main_res (sanity escalation) and fde_safeguard
+    (runaway FDE).
 
     skip_if_active=True prevents re-trigger during active hold (fde/innovation
     would fire every epoch during recovery, creating infinite loop).

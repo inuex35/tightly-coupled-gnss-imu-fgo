@@ -173,8 +173,6 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
     _, _tow_obs = time2gpst(obs.t)
     imu_samples = tc._collect_imu_samples(target_tow=_tow_obs)
 
-    if not hasattr(tc, '_sol_hist'):
-        tc._sol_hist = []  # [(tow, sol_ecef), ...]
     if tc.nav.smode == 4:
         tc._sol_hist.append((_tow_obs, sol.copy()))
         while tc._sol_hist and _tow_obs - tc._sol_hist[0][0] > 1.5:

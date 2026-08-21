@@ -1,4 +1,4 @@
-"""Stage C3 -- the AR pass over the fresh estimate.
+"""Stage C4 -- the AR pass over the fresh estimate.
 
 Eligibility (which needs the epoch healthy and the geometry meaningful),
 marginals publication, the LAMBDA attempt through gnss_fgo.ar, outcome
@@ -58,7 +58,6 @@ def _ar_eligibility(tc, epoch):
 def _run_ar_with_marginals(tc, epoch):
     """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
     info = epoch.info
-    tc._cur_ed = epoch                 # for the fix-vs-LS gate in run_ar
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.nav_bridge.publish_marginals(tc,
@@ -81,7 +80,7 @@ def _run_ar_with_marginals(tc, epoch):
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
         epoch.obs, epoch.rs, epoch.vs, epoch.dts,
         epoch.sat, epoch.el, epoch.iu, epoch.estimate,
-        tc.Xpose(epoch.key_idx), amb_snapshot)
+        tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         try:
@@ -159,7 +158,7 @@ def _ar_starvation_reset(tc, epoch):
         return
     if outcome != 'lambda_zero':
         return
-    tc._ar_starve_streak = int(getattr(tc, '_ar_starve_streak', 0) or 0) + 1
+    tc._ar_starve_streak = int(tc._ar_starve_streak or 0) + 1
     epoch.info['ar_starve_streak'] = tc._ar_starve_streak
     if tc._ar_starve_streak < n_max or tc._recov_cp_hold > 0:
         return
@@ -172,7 +171,7 @@ def _ar_starvation_reset(tc, epoch):
 
 
 def _run_lambda_ar(tc, epoch):
-    """Stage C3 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
+    """Stage C4 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
     tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5

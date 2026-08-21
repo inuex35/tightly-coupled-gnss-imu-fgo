@@ -1,4 +1,4 @@
-"""Stage C4 -- post-fit diagnostics on the solved epoch.
+"""Stage C3 -- post-fit diagnostics on the solved epoch.
 
 Main DDPR residuals, per-satellite bookkeeping (persist-bad holds,
 observation quality), the post-fit FDE re-solve, and the pose snapshot the
@@ -14,7 +14,7 @@ from ..pipeline import residuals as _tc_residuals
 
 
 def _compute_postfit_diagnostics(tc, epoch):
-    """Stage C4 — main DDPR + factor-residual diagnostics, post-fit FDE re-solve, and pose snapshot."""
+    """Stage C3 — main DDPR + factor-residual diagnostics, post-fit FDE re-solve, and pose snapshot."""
     info = epoch.info
     if tc.cfg.diag_main_ddpr_res:
         main_res_pre_fde, per_sat_res, pair_rows = _tc_residuals.main_ddpr_residuals(tc, 

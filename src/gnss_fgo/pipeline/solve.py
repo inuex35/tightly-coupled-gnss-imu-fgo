@@ -29,7 +29,7 @@ def run(tc, epoch):
     early = _solve_isam2(tc, epoch)                   # C2
     if early is not None:
         return early
-    _compute_postfit_diagnostics(tc, epoch)           # C4
-    return _run_lambda_ar(tc, epoch)                  # C3
+    _compute_postfit_diagnostics(tc, epoch)           # C3
+    return _run_lambda_ar(tc, epoch)                  # C4
 
 
