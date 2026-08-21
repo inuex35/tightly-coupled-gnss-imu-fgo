@@ -56,6 +56,14 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     Returns (ref_idx, ref_sat).
     """
     prev_ref = tc.current_epoch.ref_sats.get(sys_id)
+    # _last_per_sat_res has NO freshness gate, deliberately (r6 #3):
+    # report.run is its only writer, so after GDOP skips / resets the
+    # exit epochs filter satellites on pre-outage residuals. Cutting
+    # that staleness like MresSignals does was measured much worse
+    # (run1 AllRMS 21.35 -> 24.46, Fix RMS 0.645 -> 3.61): a satellite
+    # that was multipath-dirty going into the tunnel usually still is
+    # coming out, and a blank list lets it become the DD reference
+    # during the most fragile epochs of the recovery.
     sats_in_sys = [sat[i] for i in idx_sys]
     prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
                    and _utils_is_bds_geo(prev_ref))
