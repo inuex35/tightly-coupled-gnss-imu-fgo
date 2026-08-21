@@ -219,6 +219,29 @@ class CurrentEpochState:
 
 
 @dataclass
+class ArDiagnostics:
+    """Per-AR-call diagnostic counters (drained into epoch info by
+    _record_ar_diagnostics; None = not produced this call)."""
+
+    outcome: str = 'not_called'
+    orphan_cp_count: Optional[int] = None
+    amb_dict_size: Optional[int] = None
+    held_size: Optional[int] = None
+    cp_visible_size: Optional[int] = None
+    amb_estimate_missing: Optional[int] = None
+    amb_vsat1: Optional[int] = None
+    amb_vsat0_young: Optional[int] = None
+    amb_not_in_obs: Optional[int] = None
+    held_not_in_obs: Optional[int] = None
+    sat_in_obs_size: Optional[int] = None
+    resamb_raw_nb: Optional[int] = None
+    amb_el_min_deg: Optional[int] = None
+    amb_el_median_deg: Optional[int] = None
+    amb_el_above15: Optional[int] = None
+    amb_el_above25: Optional[int] = None
+
+
+@dataclass
 class RecoveryState:
     """Cross-cutting recovery / degradation flags."""
 

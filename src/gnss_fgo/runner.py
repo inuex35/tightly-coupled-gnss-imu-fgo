@@ -22,7 +22,8 @@ from . import initialization as _initialization
 from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
-    CurrentEpochState, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
+    ArDiagnostics, CurrentEpochState, MresSignalsState, RecoveryState,
+    SatFieldView, SatStateMap,
 )
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
@@ -211,7 +212,7 @@ class ImuGnssTc:
         # AR diagnostics (set inside ar.run_ar)
         self._ar_context_reject = None
         self._ar_subset_debug = None
-        self._last_ar_outcome = 'not_called'
+        self.ar_diag = ArDiagnostics()
         self._ar_starve_streak = 0
         self._ar_key_pose = None
         # Phase-1 motion-detection solution history [(tow, ecef), ...]
@@ -224,9 +225,6 @@ class ImuGnssTc:
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
         self._last_ddpr_sat_tags = []
-        self._last_main_ddpr_res = 0.0
-        self._last_main_ddpr_per_sat = {}
-        self._last_main_ddpr_epoch = -10**9
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # write_marginals diagnostics (cp visibility hysteresis)
@@ -298,9 +296,6 @@ class ImuGnssTc:
         '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
         '_pim_discontinuity': ('_recovery', 'pim_discontinuity'),
         '_ddpr_bad_count': ('_recovery', 'ddpr_bad_count'),
-        '_last_main_ddpr_res': ('_mres_signals', 'last_res'),
-        '_last_main_ddpr_per_sat': ('_mres_signals', 'per_sat'),
-        '_last_main_ddpr_epoch': ('_mres_signals', 'epoch'),
     }
 
 

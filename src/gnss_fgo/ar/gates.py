@@ -23,8 +23,8 @@ def context_reject(tc, nb):
     if nb <= 0:
         return False, None
     main_res = float(tc._cached_ddpr_res_pre
-                     or tc._last_main_ddpr_res or 0.0)
-    per_sat = tc._last_main_ddpr_per_sat or {}
+                     or tc._mres_signals.last_res or 0.0)
+    per_sat = tc._mres_signals.per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
     cp_hold_active = int(tc._recov_cp_hold or 0) > 0
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
@@ -63,7 +63,7 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
     v_fix, _, R_fix = tc.sdres(obs, xa, yu[iu], eu[iu], sat, el)
 
     if not tc.valpos(v_fix, R_fix):
-        tc._last_ar_outcome = 'valpos_failed'
+        tc.ar_diag.outcome = 'valpos_failed'
         return False
 
     # Likelihood-ratio gate in the graph's OWN objective (pre-hold):
@@ -94,16 +94,16 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
         if res_pre is not None and res_xa is not None:
             fix_dres = float(res_xa) - float(res_pre)
             if fix_dres > dres_thr:
-                tc._last_ar_outcome = 'fix_dres'
+                tc.ar_diag.outcome = 'fix_dres'
                 return False
 
     reject_ctx, reject_detail = context_reject(tc, nb)
     if reject_ctx:
         tc._ar_context_reject = reject_detail
-        tc._last_ar_outcome = 'ar_context_reject'
+        tc.ar_diag.outcome = 'ar_context_reject'
         return False
     tc._ar_context_reject = None
-    tc._last_ar_outcome = 'success'
+    tc.ar_diag.outcome = 'success'
 
     return True
 
