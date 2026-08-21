@@ -68,7 +68,7 @@ gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*'
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
 # cssrlib DD-only RTK core (pinned):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@55e0c29cfcf91c100186e46939a8e3f113a63890"
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@24ec6450e9a9d1fc69b451006a6c4eac5fdf4fd8"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
