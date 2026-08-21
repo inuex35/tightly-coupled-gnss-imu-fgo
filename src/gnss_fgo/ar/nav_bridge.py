@@ -182,7 +182,7 @@ def _publish_covariances(tc, factors, estimate, key_pose, amb_dict, R):
     # graph (including every Python CustomFactor) and dominates the AR
     # stage. ISAM2 already has the cached factorization. FLS exposes
     # marginalCovariance but joint marginals must come from getISAM2().
-    smoother = getattr(tc, 'isam2', None)
+    smoother = tc.isam2
     isam2 = smoother.getISAM2() if smoother is not None else None
     try:
         if isam2 is not None:

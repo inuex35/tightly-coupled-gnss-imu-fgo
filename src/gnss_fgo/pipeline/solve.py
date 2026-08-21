@@ -24,7 +24,7 @@ from .fix_ambiguities import _run_lambda_ar
 
 def run(tc, epoch):
     """Stage C: solve (DD factors → ISAM2 → FDE → LAMBDA AR)."""
-    prev_smode = int(getattr(tc.nav, 'smode', 0))
+    prev_smode = int(tc.nav.smode)
     _build_factor_block(tc, epoch, prev_smode)        # C1
     early = _solve_isam2(tc, epoch)                   # C2
     if early is not None:

@@ -43,7 +43,7 @@ def _resolve_native(tc, sat_list):
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
-        el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
+        el_mask=float(tc.nav.elmaskar))
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations)
     nav_bridge.publish_attempt(tc, sat_list, res)

@@ -29,7 +29,7 @@ def _release_suspicious_held_on_flt(tc, info):
         except (ValueError, TypeError):
             worst_sat = None
             worst_res = 0.0
-    res_thr = max(2.0, 0.5 * float(getattr(tc.cfg, 'ar_context_worst_sat_max', 0.0)))
+    res_thr = max(2.0, 0.5 * float(tc.cfg.ar_context_worst_sat_max))
     candidates = []
     for (s, f), _held_value in tc._sat_states.held_items():
         s_i = int(s)

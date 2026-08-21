@@ -74,7 +74,7 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
     # defeats absolute thresholds. Evaluated BEFORE fix-and-hold, so a
     # wrong basin is rejected before holds can lock it (once holds drag
     # the float into the basin the delta vanishes — timing matters).
-    dres_thr = float(getattr(tc.cfg, 'ar_fix_dres_max', 0.0) or 0.0)
+    dres_thr = float(tc.cfg.ar_fix_dres_max)
     if dres_thr > 0.0 and graph is not None and estimate is not None \
             and key_pose is not None:
         res_pre = tc._cached_ddpr_res_pre
@@ -82,9 +82,7 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
         try:
             cur_pose = estimate.atPose3(key_pose)
             R_be = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
-            lever_arr = (np.array(tc.lever_arm_tc)
-                         if getattr(tc, 'lever_arm_tc', None) is not None
-                         else np.zeros(3))
+            lever_arr = np.array(tc.lever_arm_tc)
             body_xa = np.asarray(xa[0:3], dtype=float) - R_be @ lever_arr
             body_nav = tc.ecef_T_nav.transformTo(gtsam.Point3(*body_xa))
             v_xa = gtsam.Values()

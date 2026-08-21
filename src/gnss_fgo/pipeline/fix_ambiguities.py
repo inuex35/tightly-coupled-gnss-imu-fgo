@@ -71,7 +71,7 @@ def _run_ar_with_marginals(tc, epoch):
     # controls: measured feedback death, fix 46%->0.6%). GDOP is pure
     # geometry: no loop. Measured run1 separation: correct fixes GDOP
     # p50 3.3 / p99 7.6, basin wrong fixes p50 9.5.
-    ar_gdop = float(getattr(tc.cfg, 'ar_gdop_max', 0.0) or 0.0)
+    ar_gdop = float(tc.cfg.ar_gdop_max)
     gdop_now = float(info.get('gdop', 0.0) or 0.0)
     if ar_gdop > 0.0 and gdop_now > ar_gdop:
         info['ar_gdop_skip'] = True
@@ -87,9 +87,7 @@ def _run_ar_with_marginals(tc, epoch):
             cur_pose = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
             R_body_to_ecef = tc.ecef_T_nav.compose(
                 cur_pose).rotation().matrix()
-            lever_arr = (np.array(tc.lever_arm_tc)
-                         if getattr(tc, 'lever_arm_tc', None) is not None
-                         else np.zeros(3))
+            lever_arr = np.array(tc.lever_arm_tc)
             body_ecef_xa = np.asarray(epoch.xa[0:3]) - R_body_to_ecef @ lever_arr
             body_nav_xa = tc.ecef_T_nav.transformTo(
                 gtsam.Point3(*body_ecef_xa))

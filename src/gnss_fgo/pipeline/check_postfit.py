@@ -22,7 +22,7 @@ def _compute_postfit_diagnostics(tc, epoch):
         info['main_ddpr_res'] = main_res_pre_fde
         info['main_ddpr_per_sat'] = per_sat_res
         info['main_ddpr_pairs'] = pair_rows
-        info['ref_sats'] = dict(getattr(tc, 'ref_sats', {}) or {})
+        info['ref_sats'] = dict(tc.ref_sats)
         tc._cached_ddpr_res_pre = main_res_pre_fde
         tc._mres_signals.update(
             last_res=main_res_pre_fde,
@@ -54,12 +54,12 @@ def _compute_postfit_diagnostics(tc, epoch):
     enu_tc = np.array(epoch.pose_tc.translation())
     epoch.ecef_tc = epoch.R_enu2ecef @ enu_tc + tc.base_ecef
 
-    ref = getattr(epoch, 'ref_ecef', None)
+    ref = epoch.ref_ecef
     if ref is not None and tc.cfg.diag_truth_residual:
         try:
             R_e2n = tc.R_enu2ecef.T
             lever_arr = np.array(tc.lever_arm_tc) \
-                if getattr(tc, 'lever_arm_tc', None) is not None \
+                if tc.lever_arm_tc is not None \
                 else np.zeros(3)
             R_body = np.array(
                 tc.ecef_T_nav.compose(epoch.pose_tc).rotation().matrix())

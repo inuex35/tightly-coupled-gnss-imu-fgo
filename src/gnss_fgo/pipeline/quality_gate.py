@@ -54,8 +54,8 @@ def _gdop_gate_and_skip(tc, epoch):
         return _tc_recovery.process_gdop_skip(tc,
             epoch.obs, epoch.key_idx, epoch.graph, epoch.values, epoch.R_enu2ecef, info,
             imu_idx_prev=epoch.imu_idx_prev,
-            gyro_mean=getattr(epoch, 'gyro_mean', None),
-            vel_prev=getattr(epoch, 'vel_prev', None), epoch=epoch)
+            gyro_mean=epoch.gyro_mean,
+            vel_prev=epoch.vel_prev, epoch=epoch)
 
 
 

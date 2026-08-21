@@ -35,7 +35,7 @@ def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
     """Phase 1: IncrementalFixedLagSmoother.update with held-N timestamps."""
     isam = tc.isam
     ts_h1 = gtsam.FixedLagSmootherKeyTimestampMap()
-    t_p1 = getattr(tc, 'phase1_t', 0.0)
+    t_p1 = tc.phase1_t
     for sf in hold_keys:
         ts_h1[amb_dict[sf]] = t_p1
     try:

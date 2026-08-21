@@ -49,10 +49,10 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
 
 def try_subset_ar(tc, sat, el, amb_dict, attempt):
     """Retry AR with one (or more) candidate bad satellites removed."""
-    dirty_max = int(getattr(tc.cfg, 'subset_ar_max_dirty_sats', 0) or 0)
+    dirty_max = int(tc.cfg.subset_ar_max_dirty_sats)
     if dirty_max > 0:
         per_sat = tc._last_main_ddpr_per_sat or {}
-        dirty_thr = float(getattr(tc.cfg, 'subset_ar_dirty_sat_res_m', 1.0))
+        dirty_thr = float(tc.cfg.subset_ar_dirty_sat_res_m)
         dirty_n = sum(1 for v in per_sat.values()
                       if float(v or 0.0) > dirty_thr)
         if dirty_n > dirty_max:
@@ -62,7 +62,7 @@ def try_subset_ar(tc, sat, el, amb_dict, attempt):
             }
             return 0, None
     min_nb = max(1, int(tc.cfg.subset_ar_min_nb))
-    max_drop = max(1, int(getattr(tc.cfg, 'subset_ar_max_drop', 1) or 1))
+    max_drop = max(1, int(tc.cfg.subset_ar_max_drop))
     best = None
     candidates = _rank_subset_drop_sats(tc, sat, el, amb_dict)
     tc._ar_subset_debug = {

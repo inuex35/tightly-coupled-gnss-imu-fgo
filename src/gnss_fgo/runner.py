@@ -319,9 +319,7 @@ class ImuGnssTc:
 
     def _antenna_ecef(self, pose, ecef_body):
         """ECEF antenna position = body ECEF + R_body @ lever. Lever=0 → passthrough."""
-        lever_arr = np.array(self.lever_arm_tc) \
-            if getattr(self, 'lever_arm_tc', None) is not None \
-            else np.zeros(3)
+        lever_arr = np.array(self.lever_arm_tc)
         if np.linalg.norm(lever_arr) == 0:
             return ecef_body
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
@@ -378,9 +376,7 @@ class ImuGnssTc:
     def _ddpr_only_position(self, obs, obsb, obs_sd, rs, rsb,
                               sat, el, iu, ir_map, pose_init):
         """Standalone DDPR-only LS. See utils.ls_solvers.ddpr_only_position."""
-        lever = (self.lever_arm_tc
-                 if getattr(self, 'lever_arm_tc', None) is not None
-                 else gtsam.Point3(0, 0, 0))
+        lever = self.lever_arm_tc
         ctx = _DDPRContext(
             R_enu2ecef=self.R_enu2ecef,
             base_ecef=self.base_ecef,
