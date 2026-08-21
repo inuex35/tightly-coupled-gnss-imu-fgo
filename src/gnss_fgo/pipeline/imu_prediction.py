@@ -44,7 +44,7 @@ def run(tc, epoch):
 
     # IMU preintegration: integrate up to current GNSS epoch TOW.
     # Relaxed PIM on recovery so stale pose(key_idx-1) doesn't tightly bind.
-    epoch.is_recovery = getattr(tc, 'skip_count', 0) > 0
+    epoch.is_recovery = tc.skip_count > 0
     epoch.imu_idx_prev = tc.imu_idx
     _, tow_obs = time2gpst(epoch.obs.t)
     epoch.tow = tow_obs

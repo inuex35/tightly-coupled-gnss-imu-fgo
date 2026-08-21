@@ -54,7 +54,7 @@ def context_reject(tc, nb):
 
 
 def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
-                  estimate=None, key_pose=None):
+                  estimate=None, key_pose=None, graph=None):
     """Phase C — RTKLIB-style post-fit valpos + project-specific ar_context_reject. Returns True when the fix is accepted, False when either gate trips."""
     # xa[0:3] is already antenna position (nav.x[0:3] was set to antenna pos)
     fix_antenna = xa[0:3]
@@ -74,29 +74,26 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
     # defeats absolute thresholds. Evaluated BEFORE fix-and-hold, so a
     # wrong basin is rejected before holds can lock it (once holds drag
     # the float into the basin the delta vanishes — timing matters).
-    dres_thr = float(getattr(tc.cfg, 'ar_fix_dres_max', 0.0) or 0.0)
-    epoch = getattr(tc, '_cur_ed', None)
-    if dres_thr > 0.0 and epoch is not None and estimate is not None \
+    dres_thr = float(tc.cfg.ar_fix_dres_max)
+    if dres_thr > 0.0 and graph is not None and estimate is not None \
             and key_pose is not None:
         res_pre = tc._cached_ddpr_res_pre
         res_xa = None
         try:
             cur_pose = estimate.atPose3(key_pose)
             R_be = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
-            lever_arr = (np.array(tc.lever_arm_tc)
-                         if getattr(tc, 'lever_arm_tc', None) is not None
-                         else np.zeros(3))
+            lever_arr = np.array(tc.lever_arm_tc)
             body_xa = np.asarray(xa[0:3], dtype=float) - R_be @ lever_arr
             body_nav = tc.ecef_T_nav.transformTo(gtsam.Point3(*body_xa))
             v_xa = gtsam.Values()
             v_xa.insert(key_pose,
                         gtsam.Pose3(cur_pose.rotation(), body_nav))
-            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, epoch.graph, v_xa)
+            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, graph, v_xa)
         except (RuntimeError, ValueError, IndexError):
             res_xa = None
         if res_pre is not None and res_xa is not None:
-            tc._last_fix_dres = float(res_xa) - float(res_pre)
-            if tc._last_fix_dres > dres_thr:
+            fix_dres = float(res_xa) - float(res_pre)
+            if fix_dres > dres_thr:
                 tc._last_ar_outcome = 'fix_dres'
                 return False
 

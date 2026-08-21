@@ -41,16 +41,6 @@ def _euler_frd_to_R_body2ned_ref(
     return R_ned2body.T
 
 
-def frd_to_flu(vec: np.ndarray) -> np.ndarray:
-    """Convert a vector from dataset FRD axes to internal FLU axes."""
-    return R_FRD2FLU @ np.asarray(vec, dtype=float)
-
-
-def flu_to_frd(vec: np.ndarray) -> np.ndarray:
-    """Convert a vector from internal FLU axes to dataset FRD axes."""
-    return R_FLU2FRD @ np.asarray(vec, dtype=float)
-
-
 def euler_to_R_body2ned(roll: float, pitch: float, heading: float) -> np.ndarray:
     """Reference NED/FRD Euler angles -> internal FLU body-to-NED matrix.
 

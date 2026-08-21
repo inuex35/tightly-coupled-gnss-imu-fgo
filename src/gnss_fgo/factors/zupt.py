@@ -45,7 +45,7 @@ def _zupt_should_fire(tc, n_imu, info, vel_prev, gnss_available):
         if sp > max_speed:
             return None
     # Bias-init-subtracted IMU stats.
-    bias_init = getattr(tc, 'tc_bias_init', None)
+    bias_init = tc.tc_bias_init
     if bias_init is not None:
         ref_acc = np.asarray(bias_init.accelerometer(), dtype=np.float64)
         ref_gyro = np.asarray(bias_init.gyroscope(), dtype=np.float64)
@@ -168,15 +168,16 @@ def add_zupt_factors_for_stage(tc, epoch):
     """
     return add_zupt_factors(
         tc, epoch.graph, epoch.key_idx,
-        int(getattr(epoch, 'imu_idx_prev', tc.imu_idx)),
-        int(getattr(epoch, 'n_imu', 0)),
+        int(epoch.imu_idx_prev if epoch.imu_idx_prev is not None
+            else tc.imu_idx),
+        int(epoch.n_imu),
         epoch.info,
-        pose_prev=getattr(epoch, 'pose_p', None),
+        pose_prev=epoch.pose_p,
         # Deliberately False: epoch.nb is not written until the AR stage,
         # so the original nb>0 read was always False here — and measuring
         # the "corrected" gate (nv >= min_dd_for_solve) degraded run1
         # 21.35 -> 31.58 m AllRMS. The stationary anchor at stops is
         # load-bearing; keep it unconditional and say so.
         gnss_available=False,
-        vel_prev=getattr(epoch, 'vel_prev', None))
+        vel_prev=epoch.vel_prev)
 

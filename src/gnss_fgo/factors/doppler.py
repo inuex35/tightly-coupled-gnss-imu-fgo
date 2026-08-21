@@ -125,7 +125,7 @@ def screen_rows(tc, epoch, rows):
     return keep, scale
 
 
-def _estimate_clock_drift(tc, epoch, rows):
+def _estimate_clock_drift(epoch, rows):
     """Median of (measured range rate − geometric rate) over the rows [m/s].
 
     The receiver clock drift is common to every satellite, so the median of
@@ -199,7 +199,7 @@ def add_doppler_factors(tc, epoch):
     # measurement and locked in: tokyo run2 drifted 46 m over nine float
     # epochs that way, against 6.6 m with no Doppler at all.
     drift_mps = (drift_prev if drift_prev is not None
-                 else _estimate_clock_drift(tc, epoch, rows))
+                 else _estimate_clock_drift(epoch, rows))
     cb_init = cb_prev + drift_mps * dt / rCST.CLIGHT     # [s]
     epoch.values.insert(tc.Clk(key_idx), cb_init)
     epoch.info['doppler_drift_mps'] = drift_mps

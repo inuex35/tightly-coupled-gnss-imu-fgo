@@ -27,7 +27,7 @@ def _build_factor_block(tc, epoch, prev_smode):
     nv = _tc_factors.build_dd_factors(tc, 
         epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
         epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
-        epoch.pred_ecef, tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
+        tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
         tc.amb_keys_tc,
         dd_epoch=epoch.key_idx,
         prev_amb_values=epoch.prev_amb_values,
@@ -35,15 +35,6 @@ def _build_factor_block(tc, epoch, prev_smode):
     epoch.nv = nv
     n_between = _add_between_n_chain(tc, epoch, prev_smode)
     info['n_dd'] = epoch.nv
-    cp_pr_rej = tc._last_cp_pr_reject
-    rejc_wipe = tc._last_rejc_wipe
-    if cp_pr_rej:
-        info['cp_pr_reject'] = cp_pr_rej
-    if rejc_wipe:
-        info['rejc_wipe'] = rejc_wipe
-    tc._last_cp_pr_reject = 0
-    tc._last_rejc_wipe = 0
-
     if epoch.nv < tc.cfg.min_dd_for_solve:
         _add_thin_epoch_priors(tc, epoch)
     info['n_between'] = n_between

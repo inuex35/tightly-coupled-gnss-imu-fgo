@@ -71,7 +71,7 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(),
             ts[k] = t
     for k in keep_keys:
         ts[k] = t
-    timing_on = bool(getattr(tc.cfg, 'fls_update_timing', False))
+    timing_on = bool(tc.cfg.fls_update_timing)
     if timing_on:
         import time as _time
         _t0 = _time.perf_counter()

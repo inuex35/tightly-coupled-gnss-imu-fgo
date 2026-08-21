@@ -54,8 +54,8 @@ def _gdop_gate_and_skip(tc, epoch):
         return _tc_recovery.process_gdop_skip(tc,
             epoch.obs, epoch.key_idx, epoch.graph, epoch.values, epoch.R_enu2ecef, info,
             imu_idx_prev=epoch.imu_idx_prev,
-            gyro_mean=getattr(epoch, 'gyro_mean', None),
-            vel_prev=getattr(epoch, 'vel_prev', None), epoch=epoch)
+            gyro_mean=epoch.gyro_mean,
+            vel_prev=epoch.vel_prev, epoch=epoch)
 
 
 
@@ -70,8 +70,6 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
     info['n_slip'] = n_reset
     if n_cmc > 0:
         info['cp_slip'] = n_cmc
-
-    # Slip burst CP-hold trigger disabled — pure-form pipeline.
 
     # skip_cp_now reflects active global CP-hold (any trigger source).
     skip_cp_now = tc._recov_cp_hold > 0
@@ -92,13 +90,6 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
                 pass
         if sat_snr:
             info['sat_snr_dbhz'] = sat_snr
-    sat_cppr = {}
-    for s in epoch.sat:
-        s = int(s)
-        cpprs = [int(tc._sat_states.at(s, f).rejc_cp_pr)
-                 for f in range(tc.nav.nf)]
-        sat_cppr[s] = max(cpprs) if cpprs else 0
-    info['sat_cppr_sat'] = sat_cppr
     if skip_cp_now:
         tc._recovery.tick_cp_hold(info)
     return slip_keys, skip_cp_now
@@ -107,7 +98,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
 
 
 def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
-    """Step 6 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
+    """Step 5 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     prev_amb_values = {}
     if fresh_amb_bootstrap:
@@ -129,7 +120,7 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
 
 
 def _predict_antenna_position(tc, epoch):
-    """Step 7 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
+    """Step 6 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
     pred_enu = np.array(epoch.pred_nav.pose().translation())
     pred_body_ecef = epoch.R_enu2ecef @ pred_enu + tc.base_ecef
     return pred_enu, tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)

@@ -28,7 +28,6 @@ def ratio_from_last_lambda(tc):
 def _rank_subset_drop_sats(tc, sat, el, amb_dict):
     """Rank candidate satellites to drop for subset AR fallback."""
     seen = set()
-    cppr = getattr(tc, 'rejc_cp_pr', {}) or {}
     per_sat = tc._last_main_ddpr_per_sat or {}
     sat_el = {}
     for i, s in enumerate(sat):
@@ -39,12 +38,8 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
         if s in seen:
             continue
         seen.add(s)
-        cppr_max = 0
-        for f in range(tc.nav.nf):
-            cppr_max = max(cppr_max, int(cppr.get((s, f), 0)))
         rows.append((
             float(per_sat.get(s, 0.0)),
-            cppr_max,
             -float(sat_el.get(s, 0.0)),
             s))
     rows.sort(reverse=True)
@@ -54,10 +49,10 @@ def _rank_subset_drop_sats(tc, sat, el, amb_dict):
 
 def try_subset_ar(tc, sat, el, amb_dict, attempt):
     """Retry AR with one (or more) candidate bad satellites removed."""
-    dirty_max = int(getattr(tc.cfg, 'subset_ar_max_dirty_sats', 0) or 0)
+    dirty_max = int(tc.cfg.subset_ar_max_dirty_sats)
     if dirty_max > 0:
         per_sat = tc._last_main_ddpr_per_sat or {}
-        dirty_thr = float(getattr(tc.cfg, 'subset_ar_dirty_sat_res_m', 1.0))
+        dirty_thr = float(tc.cfg.subset_ar_dirty_sat_res_m)
         dirty_n = sum(1 for v in per_sat.values()
                       if float(v or 0.0) > dirty_thr)
         if dirty_n > dirty_max:
@@ -67,7 +62,7 @@ def try_subset_ar(tc, sat, el, amb_dict, attempt):
             }
             return 0, None
     min_nb = max(1, int(tc.cfg.subset_ar_min_nb))
-    max_drop = max(1, int(getattr(tc.cfg, 'subset_ar_max_drop', 1) or 1))
+    max_drop = max(1, int(tc.cfg.subset_ar_max_drop))
     best = None
     candidates = _rank_subset_drop_sats(tc, sat, el, amb_dict)
     tc._ar_subset_debug = {
