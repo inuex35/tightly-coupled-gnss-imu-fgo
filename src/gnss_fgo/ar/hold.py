@@ -40,7 +40,6 @@ def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
         ts_h1[amb_dict[sf]] = t_p1
     try:
         isam.update(hg, gtsam.Values(), ts_h1)
-        tc.total_factor_count += hg.size()
     except (RuntimeError, IndexError):
         pass
 
@@ -51,6 +50,12 @@ def _activate_phase2_hold_states(tc, hold_keys, xa):
         held_value = float(xa[tc.IB(s, f, tc.nav.na)])
         sat_st = tc._sat_states.get(s, f)
         sat_st.activate_hold(held_value)
+        # Count the FIX streak HERE, before amb_key is cleared: the
+        # Stage-D streak loop only sees (s, f) still carrying amb_key,
+        # so held sats never counted and prev_fix_streak_max was 0 on
+        # every epoch (review r5 #1) — the low-nb established-fix
+        # guard could never pass.
+        sat_st.fix_streak += 1
         sat_st.amb_key = None
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = held_value
 

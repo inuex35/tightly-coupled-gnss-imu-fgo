@@ -254,8 +254,7 @@ def main():
         ref_ecef = ref[ri_ref]['ecef']
 
         sol, tag, nb, info = tc.process(
-            obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-            ref_ecef=ref_ecef)
+            obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map)
         roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
         axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
 
@@ -375,10 +374,9 @@ def main():
                     f",score={score_rel:.1f},res={res_rel:.1f})"
                 )
 
-        if True:  # (kept indent; printing is unconditional)
-            print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
-                  f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
-                  f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
+        print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
+              f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
+              f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
 
     dec.fobs.close()
     decb.fobs.close()
@@ -413,6 +411,7 @@ def main():
             print(f"  Fix 3D RMS: {np.sqrt(np.mean(e3f**2)):.4f}m")
 
     savefile = os.environ.get('SAVE_NPZ')
+    out = {}
     if savefile:
         n = len(results)
         # Always-present scalars / vectors
@@ -475,36 +474,28 @@ def main():
     if persatfile:
         import pickle
         per_sat_dump = []
-        per_sat_truth_dump = []
         sat_el_dump = []
         sat_snr_dump = []
         pair_main_dump = []
-        pair_truth_dump = []
         ref_sats_dump = []
         for r in results:
             d = r.get('main_ddpr_per_sat', None)
             per_sat_dump.append(dict(d) if d else None)
-            dt = r.get('ddpr_per_sat_at_truth', None)
-            per_sat_truth_dump.append(dict(dt) if dt else None)
             se = r.get('sat_el_deg', None)
             sat_el_dump.append(dict(se) if se else None)
             ss = r.get('sat_snr_dbhz', None)
             sat_snr_dump.append(dict(ss) if ss else None)
             pm = r.get('main_ddpr_pairs', None)
             pair_main_dump.append(list(pm) if pm else None)
-            pt = r.get('ddpr_pairs_at_truth', None)
-            pair_truth_dump.append(list(pt) if pt else None)
             rs = r.get('ref_sats', None)
             ref_sats_dump.append(dict(rs) if rs else None)
         with open(persatfile, 'wb') as f:
             pickle.dump({'per_sat': per_sat_dump,
-                         'per_sat_truth': per_sat_truth_dump,
                          'sat_el_deg': sat_el_dump,
                          'sat_snr_dbhz': sat_snr_dump,
                          'pair_main': pair_main_dump,
-                         'pair_truth': pair_truth_dump,
                          'ref_sats': ref_sats_dump,
-                          'err3d': out.get('err3d') if 'err3d' in out else None,
+                          'err3d': out.get('err3d'),
                           'smode': out.get('smode') if 'smode' in out else None}, f)
         print(f"Saved per-sat residuals to {persatfile}")
 

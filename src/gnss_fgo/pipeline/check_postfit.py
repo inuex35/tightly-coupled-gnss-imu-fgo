@@ -7,7 +7,6 @@ output stage reports.
 
 
 import numpy as np
-import gtsam
 
 from ..utils import heading_from_pose
 from ..pipeline import residuals as _tc_residuals
@@ -53,31 +52,3 @@ def _compute_postfit_diagnostics(tc, epoch):
     tc.tc_bias = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx))
     enu_tc = np.array(epoch.pose_tc.translation())
     epoch.ecef_tc = epoch.R_enu2ecef @ enu_tc + tc.base_ecef
-
-    ref = epoch.ref_ecef
-    if ref is not None and tc.cfg.diag_truth_residual:
-        try:
-            R_e2n = tc.R_enu2ecef.T
-            lever_arr = np.array(tc.lever_arm_tc) \
-                if tc.lever_arm_tc is not None \
-                else np.zeros(3)
-            R_body = np.array(
-                tc.ecef_T_nav.compose(epoch.pose_tc).rotation().matrix())
-            truth_body_ecef = np.asarray(ref) - R_body @ lever_arr
-            truth_body_enu = R_e2n @ (truth_body_ecef - tc.base_ecef)
-            v_truth = gtsam.Values()
-            v_truth.insert(tc.Xpose(epoch.key_idx),
-                           gtsam.Pose3(epoch.pose_tc.rotation(),
-                                        gtsam.Point3(*truth_body_enu)))
-            truth_res, truth_per_sat, truth_pair_rows = _tc_residuals.main_ddpr_residuals(tc, 
-                epoch.graph, v_truth, with_pairs=True)
-            info['ddpr_res_at_truth'] = float(truth_res)
-            info['ddpr_per_sat_at_truth'] = (
-                dict(truth_per_sat) if truth_per_sat else {}
-            )
-            info['ddpr_pairs_at_truth'] = truth_pair_rows
-            info['truth_offset'] = float(np.linalg.norm(
-                np.array(epoch.pose_tc.translation())
-                - np.asarray(truth_body_enu)))
-        except (RuntimeError, ValueError):
-            pass

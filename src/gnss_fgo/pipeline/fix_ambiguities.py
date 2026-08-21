@@ -115,6 +115,8 @@ def _record_ar_diagnostics(tc, info):
         if v is not None:
             info[info_key] = int(v)
     outcome = tc.ar_diag.outcome
+    if tc.ar_diag.exception:
+        info['ar_exception'] = tc.ar_diag.exception
     if outcome:
         info['ar_outcome_code'] = _AR_OUTCOME_CODES.get(outcome, -1)
     ar_ctx_reject = tc._ar_context_reject

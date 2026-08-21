@@ -224,6 +224,7 @@ class ArDiagnostics:
     _record_ar_diagnostics; None = not produced this call)."""
 
     outcome: str = 'not_called'
+    exception: Optional[str] = None   # type name of a swallowed AR exception
     orphan_cp_count: Optional[int] = None
     amb_dict_size: Optional[int] = None
     held_size: Optional[int] = None
@@ -261,6 +262,8 @@ class RecoveryState:
         fde/innovation would otherwise fire every epoch of the recovery
         and loop forever.
         """
+        if hold_n <= 0:
+            return False   # suppressed (bootstrap window) — not a firing
         if self.recov_cp_hold > 0:
             self.cp_hold_retrigger_streak += 1
             info['cp_hold_retrigger_streak'] = self.cp_hold_retrigger_streak

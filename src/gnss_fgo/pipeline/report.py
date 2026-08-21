@@ -38,9 +38,6 @@ def run(tc, epoch):
     tc._last_sol_ecef = np.array(epoch.sol)
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
-    if tc.cfg.fls_update_timing:
-        info['fls_update_ms'] = float(
-            tc._fls_update_last_ms)
     tc._last_per_sat_res = info.get('main_ddpr_per_sat', {})
     return _tc_recovery.advance_epoch_and_pack(tc, 
         epoch.sol, epoch.tag, epoch.nb, info, epoch.obs)

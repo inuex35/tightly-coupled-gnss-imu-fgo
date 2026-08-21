@@ -22,23 +22,9 @@ def sorted_amb_items(amb_dict):
                   key=lambda item: (int(item[0][0]), int(item[0][1])))
 
 
-def sorted_amb_keys(amb_dict):
-    """Deterministic ``(sat, freq)`` iteration sorted by sat then freq."""
-    return sorted(amb_dict.keys(),
-                  key=lambda key: (int(key[0]), int(key[1])))
-
-
 def heading_from_pose(pose):
     """Body forward-axis heading [deg] from a Pose3 body→ENU rotation."""
     r_body2enu = np.array(pose.rotation().matrix())
     return float(np.degrees(np.arctan2(r_body2enu[0, 0], r_body2enu[1, 0])))
 
 
-def skew_matrix(v):
-    """3×3 cross-product (skew-symmetric) matrix for a 3-vector."""
-    x, y, z = np.asarray(v, dtype=float)
-    return np.array([
-        [0.0, -z,  y],
-        [z,  0.0, -x],
-        [-y,  x, 0.0],
-    ], dtype=float)

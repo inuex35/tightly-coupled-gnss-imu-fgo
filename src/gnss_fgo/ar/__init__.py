@@ -147,9 +147,10 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = tc.resamb_lambda_rtklib(sat)
         else:
             nb, xa = tc.resamb_lambda(sat, tc.nav.parmode, tc.nav.par_P0)
-    except (Exception, SystemExit):
+    except (Exception, SystemExit) as ex:
         # cssrlib mlambda raises SystemExit when Qah is not positive definite
         tc.ar_diag.outcome = 'lambda_exception'
+        tc.ar_diag.exception = type(ex).__name__
         return 0, None
 
     tc.ar_diag.resamb_raw_nb = int(nb)
@@ -157,7 +158,8 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             and len(amb_dict) >= int(tc.cfg.subset_ar_min_nb) + 1):
         try:
             nb, xa = _try_subset_ar(tc, sat, el, amb_dict)
-        except (Exception, SystemExit):
+        except (Exception, SystemExit) as ex:
+            tc.ar_diag.exception = type(ex).__name__
             nb, xa = 0, None
 
     if nb <= 0:

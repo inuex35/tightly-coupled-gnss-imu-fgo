@@ -47,7 +47,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
             st.amb_gen += 1
         st.clear_hold()
         st.amb_key = None
-    tc.total_factor_count = 0
 
     bias0 = tc.tc_bias if tc.tc_bias is not None \
         else gtsam.imuBias.ConstantBias()
@@ -73,7 +72,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
     ts0[tc.Vel(0)] = tc.tc_time
     ts0[tc.Bias(0)] = tc.tc_time
     tc.isam2.update(g, v, ts0)
-    tc.total_factor_count += g.size()
 
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc.nav.x[0:3] = ecef_seed.copy()
