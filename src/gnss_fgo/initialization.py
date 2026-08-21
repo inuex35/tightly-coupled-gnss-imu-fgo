@@ -168,7 +168,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
 def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
                                        rsb, sat, el, iu, ir_map,
                                        sol, info, R):
-    """Phase 1C — collect IMU samples + estimate velocity from a 1-second sliding Fix-position window, accumulate fixes once we are moving, and trigger Phase-2 init when ``n_collect`` fixes are in hand."""
+    """Phase 1C — collect IMU samples + estimate velocity from a 1.5-second sliding Fix-position window, accumulate fixes once we are moving, and trigger Phase-2 init when ``n_collect`` fixes are in hand."""
     # Collect IMU samples up to current GNSS epoch
     _, _tow_obs = time2gpst(obs.t)
     imu_samples = tc._collect_imu_samples(target_tow=_tow_obs)
@@ -391,7 +391,6 @@ def transition_to_tc(tc, collected_fixes):
                                 tc.cfg.isam2_relinearize_skip,
                                 tc.cfg.isam2_relinearize_threshold)
     tc.isam2.update(g, v, ts)
-    tc.total_factor_count = g.size()
 
     # AR on initial graph (using last epoch's GNSS data)
     last = collected_fixes[-1]

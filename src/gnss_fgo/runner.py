@@ -130,7 +130,6 @@ class ImuGnssTc:
         self.accel_bias_sigma = self.cfg.accel_bias_sigma
         self.gyro_bias_sigma = self.cfg.gyro_bias_sigma
         self._recovery = RecoveryState()
-        self.total_factor_count = 0
         self._mres_signals = MresSignalsState()
 
         self._init_runtime_state()
@@ -227,19 +226,14 @@ class ImuGnssTc:
         self._last_ddpr_sat_tags = []
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
-        # write_marginals diagnostics (cp visibility hysteresis)
         # FLS-update timing accumulators
-        self._fls_update_calls = 0
-        self._fls_update_time_total = 0.0
         self._fls_update_last_ms = 0.0
         # Phase-2 init bootstrap counters (filled by transition_to_tc)
         self._tc_bootstrap_ddpr_epochs = 0
         self._tc_fresh_amb_epochs = 0
         # Phase-1 last solution (used by velocity estimator)
         self._last_sol_ecef = None
-        # Reset-flag for per-Phase-2 amb cleanup (build_dd_factors first call)
-        self._rejc_reset_at_p2 = False
-        # GF cycle-slip detector running state {sat: [last_gf, n, mean_gf]}
+        # AR ratio stash (resamb_lambda writes s0/s1 here)
         self._last_s0 = 0.0
         self._last_s1 = 0.0
 
@@ -267,8 +261,6 @@ class ImuGnssTc:
         any of this across epochs was measured on run1 and every
         variant came back equal or worse (#22), so the one-epoch
         lifetime is the spec.
-        total_factor_count is never reset here — zeroing the cumulative
-        counter once made the held-CP FDE bookkeeping silently inert.
         """
         self.current_epoch = CurrentEpochState()
         self.amb_gen = {}

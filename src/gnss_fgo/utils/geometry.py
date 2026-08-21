@@ -70,18 +70,11 @@ def is_bds_geo(prn_sat: int) -> bool:
 def load_imu_csv(path: str) -> list:
     """Load raw IMU CSV measurements in the dataset's sensor FRD frame."""
     data = []
-    flip_x = flip_y = flip_z = False
     with open(path) as f:
         reader = csv.reader(f)
         next(reader)  # header
         for row in reader:
             acc = np.array([float(row[2]), float(row[3]), float(row[4])])
-            if flip_x:
-                acc[0] *= -1.0
-            if flip_y:
-                acc[1] *= -1.0
-            if flip_z:
-                acc[2] *= -1.0
             data.append({
                 'tow': float(row[0]),
                 'acc': acc,

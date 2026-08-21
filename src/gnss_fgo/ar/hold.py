@@ -40,7 +40,6 @@ def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
         ts_h1[amb_dict[sf]] = t_p1
     try:
         isam.update(hg, gtsam.Values(), ts_h1)
-        tc.total_factor_count += hg.size()
     except (RuntimeError, IndexError):
         pass
 
