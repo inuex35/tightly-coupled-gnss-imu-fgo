@@ -224,6 +224,7 @@ class ArDiagnostics:
     _record_ar_diagnostics; None = not produced this call)."""
 
     outcome: str = 'not_called'
+    exception: Optional[str] = None   # type name of a swallowed AR exception
     orphan_cp_count: Optional[int] = None
     amb_dict_size: Optional[int] = None
     held_size: Optional[int] = None

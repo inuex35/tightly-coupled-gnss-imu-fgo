@@ -28,7 +28,7 @@ def _clear_zupt_anchor(rec):
         rec.zupt_anchor_start_ep = None
 
 
-def _zupt_should_fire(tc, n_imu, info, vel_prev, gnss_available):
+def _zupt_should_fire(tc, n_imu, info, imu_idx_prev, vel_prev, gnss_available):
     """Run the ZUPT detection gates and return ``stats`` dict on hit,
     or ``None`` when any gate fails. ``info`` is populated with the
     diagnostic stats whenever they were computed."""
@@ -51,7 +51,7 @@ def _zupt_should_fire(tc, n_imu, info, vel_prev, gnss_available):
         ref_gyro = np.asarray(bias_init.gyroscope(), dtype=np.float64)
     else:
         ref_acc = ref_gyro = None
-    samples = tc.imu_data[int(info.get('_zupt_idx_prev', tc.imu_idx)):tc.imu_idx]
+    samples = tc.imu_data[int(imu_idx_prev):tc.imu_idx]
     stats = _utils_compute_zupt_stats(samples, ref_acc, ref_gyro)
     if stats is None:
         return None
@@ -141,9 +141,8 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
     diagnostic stats into ``info`` — even when no factor fires.
     """
     rec = tc._recovery
-    info['_zupt_idx_prev'] = int(imu_idx_prev)
-    stats = _zupt_should_fire(tc, n_imu, info, vel_prev, gnss_available)
-    info.pop('_zupt_idx_prev', None)
+    stats = _zupt_should_fire(tc, n_imu, info, int(imu_idx_prev),
+                              vel_prev, gnss_available)
     if stats is None:
         _clear_zupt_anchor(rec)
         return False

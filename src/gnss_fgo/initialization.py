@@ -121,7 +121,12 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ts = gtsam.FixedLagSmootherKeyTimestampMap()
         for k in v.keys():
             ts[k] = tc.phase1_t
-        tc.isam.update(g, v, ts)
+        try:
+            tc.isam.update(g, v, ts)
+        except (RuntimeError, IndexError):
+            # A second consecutive failure used to take the whole run
+            # down (r5 #11); skip the epoch instead.
+            return None
     # Record everything we just inserted so the next epoch can skip.
     tc._isam_p1_inserted.add(tc.Xp(ep))
     for k in v.keys():
