@@ -172,11 +172,10 @@ def add_zupt_factors_for_stage(tc, epoch):
         int(epoch.n_imu),
         epoch.info,
         pose_prev=epoch.pose_p,
-        # Deliberately False: epoch.nb is not written until the AR stage,
-        # so the original nb>0 read was always False here — and measuring
-        # the "corrected" gate (nv >= min_dd_for_solve) degraded run1
-        # 21.35 -> 31.58 m AllRMS. The stationary anchor at stops is
-        # load-bearing; keep it unconditional and say so.
+        # Deliberately False: epoch.nb is not written until the AR
+        # stage, so the original nb>0 read was always False here — and
+        # the "corrected" gate was measured worse. The stationary anchor at
+        # stops is load-bearing; keep it unconditional and say so.
         gnss_available=False,
         vel_prev=epoch.vel_prev)
 
