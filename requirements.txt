@@ -13,4 +13,4 @@ matplotlib
 # cssrlib: upstream lacks prepare_double_difference_measurements /
 # base_process_dd_only (the layered DD-only RTK core this pipeline
 # drives). Pinned to a commit for reproducibility:
-cssrlib @ git+https://github.com/inuex35/cssrlib.git@55e0c29cfcf91c100186e46939a8e3f113a63890
+cssrlib @ git+https://github.com/inuex35/cssrlib.git@24ec6450e9a9d1fc69b451006a6c4eac5fdf4fd8
