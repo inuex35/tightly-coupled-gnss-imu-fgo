@@ -22,7 +22,7 @@ def _compute_postfit_diagnostics(tc, epoch):
         info['main_ddpr_res'] = main_res_pre_fde
         info['main_ddpr_per_sat'] = per_sat_res
         info['main_ddpr_pairs'] = pair_rows
-        info['ref_sats'] = dict(tc.ref_sats)
+        info['ref_sats'] = dict(tc.current_epoch.ref_sats)
         tc._cached_ddpr_res_pre = main_res_pre_fde
         tc._mres_signals.update(
             last_res=main_res_pre_fde,

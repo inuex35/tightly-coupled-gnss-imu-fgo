@@ -111,7 +111,6 @@ class SatState:
     # Ambiguity bookkeeping
     amb_key: Optional[int] = None            # GTSAM symbol for N
     amb_gen: int = 0                         # generation counter (++ on slip / reset)
-    amb_init_epoch: Optional[int] = None     # epoch when N was last initialised
     held_value: Optional[float] = None       # conditioned-out held integer [cyc]
     last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
     release_seed_pending: bool = False       # one-shot unary prior on first float epoch
@@ -199,6 +198,48 @@ class SatStateMap:
         """List of all non-None amb_key values (for FLS keep_keys)."""
         return [st.amb_key for st in self.track.values()
                 if st.amb_key is not None]
+
+@dataclass
+class CurrentEpochState:
+    """State that lives exactly one epoch (vs EpochData, which is the
+    stage-to-stage I/O record for one process() call).
+
+    Replaced WHOLESALE at each epoch start (prepare_process_epoch /
+    process_imu_only) — never wiped field-by-field. The A-1/A-2 root
+    cause was epoch-lifetime state living on the runner behind manual
+    per-field wipes; object replacement makes the lifetime structural.
+    """
+
+    # sys_id -> reference sat. Written by the main DD build, read by
+    # the later same-epoch DD solves (LS fallback, sanity anchor, FDE
+    # re-solve) so their DD definitions stay comparable.
+    ref_sats: dict = field(default_factory=dict)
+    # (sat, freq) ambiguities (re)seeded THIS epoch -> excluded from AR.
+    seeded_amb_keys: set = field(default_factory=set)
+
+
+@dataclass
+class ArDiagnostics:
+    """Per-AR-call diagnostic counters (drained into epoch info by
+    _record_ar_diagnostics; None = not produced this call)."""
+
+    outcome: str = 'not_called'
+    orphan_cp_count: Optional[int] = None
+    amb_dict_size: Optional[int] = None
+    held_size: Optional[int] = None
+    cp_visible_size: Optional[int] = None
+    amb_estimate_missing: Optional[int] = None
+    amb_vsat1: Optional[int] = None
+    amb_vsat0_young: Optional[int] = None
+    amb_not_in_obs: Optional[int] = None
+    held_not_in_obs: Optional[int] = None
+    sat_in_obs_size: Optional[int] = None
+    resamb_raw_nb: Optional[int] = None
+    amb_el_min_deg: Optional[int] = None
+    amb_el_median_deg: Optional[int] = None
+    amb_el_above15: Optional[int] = None
+    amb_el_above25: Optional[int] = None
+
 
 @dataclass
 class RecoveryState:

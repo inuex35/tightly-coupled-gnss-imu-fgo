@@ -16,7 +16,6 @@ class _SatState:
         self.held_value = None
         self.last_held_value = None
         self.release_seed_pending = False
-        self.amb_init_epoch = None
 
     def clear_hold(self):
         self.held_value = None
@@ -36,6 +35,8 @@ class _Tc:
     def __init__(self):
         self.cfg = _Cfg()
         self._sat_states = _SatMap()
+        from gnss_fgo.state.runtime_state import CurrentEpochState
+        self.current_epoch = CurrentEpochState()
 
     @staticmethod
     def _noise1(sigma):

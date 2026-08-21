@@ -52,8 +52,8 @@ def bias_prior_anchor(tc, bias_prev):
 
 def _apply_mres_integ_cov_override(tc):
     """Per-epoch ``integ_eff = min(imu_integ_cov_max, max(imu_integ_cov, mres²/dt))``."""
-    last_mres = float(tc._last_main_ddpr_res)
-    last_ep = int(tc._last_main_ddpr_epoch)
+    last_mres = float(tc._mres_signals.last_res)
+    last_ep = int(tc._mres_signals.epoch)
     stale_max = int(tc.cfg.ddcp_res_weight_stale_max_epochs)
     is_stale = stale_max > 0 and (tc.epoch - last_ep) > stale_max
     default_cov = float(tc.cfg.imu_integ_cov)

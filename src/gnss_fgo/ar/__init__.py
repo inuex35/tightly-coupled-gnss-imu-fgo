@@ -98,9 +98,9 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
               key_pose, amb_dict, graph=None):
     """LAMBDA AR with validation."""
     tc._ar_subset_debug = None
-    tc._last_ar_outcome = 'not_called'
+    tc.ar_diag.outcome = 'not_called'
     if tc.nav.armode == 0:
-        tc._last_ar_outcome = 'armode_off'
+        tc.ar_diag.outcome = 'armode_off'
         return 0, None
     _record_amb_diagnostics(tc, sat, amb_dict)
     nb, xa = _run_lambda_attempts(tc, sat, el, amb_dict)
@@ -124,15 +124,15 @@ def _record_amb_diagnostics(tc, sat, amb_dict):
     diag_held_not_in_obs = sum(
         1 for (ss, ff), _ in tc._sat_states.held_items()
         if int(ss) not in sat_in_obs)
-    tc._last_amb_not_in_obs = diag_amb_not_in_obs
-    tc._last_held_not_in_obs = diag_held_not_in_obs
-    tc._last_sat_in_obs_size = len(sat_in_obs)
-    tc._last_ar_outcome = 'entered'
+    tc.ar_diag.amb_not_in_obs = diag_amb_not_in_obs
+    tc.ar_diag.held_not_in_obs = diag_held_not_in_obs
+    tc.ar_diag.sat_in_obs_size = len(sat_in_obs)
+    tc.ar_diag.outcome = 'entered'
 
 
 def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
-    tc._last_resamb_raw_nb = -1
+    tc.ar_diag.resamb_raw_nb = -1
     try:
         # Match the path being replaced: the round-robin retry belongs to
         # resamb_lambda_rtklib, and the default path calls plain resamb_lambda.
@@ -149,10 +149,10 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = tc.resamb_lambda(sat, tc.nav.parmode, tc.nav.par_P0)
     except (Exception, SystemExit):
         # cssrlib mlambda raises SystemExit when Qah is not positive definite
-        tc._last_ar_outcome = 'lambda_exception'
+        tc.ar_diag.outcome = 'lambda_exception'
         return 0, None
 
-    tc._last_resamb_raw_nb = int(nb)
+    tc.ar_diag.resamb_raw_nb = int(nb)
     if (nb <= 0 and bool(tc.cfg.subset_ar_enable)
             and len(amb_dict) >= int(tc.cfg.subset_ar_min_nb) + 1):
         try:
@@ -161,7 +161,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = 0, None
 
     if nb <= 0:
-        tc._last_ar_outcome = 'lambda_zero'
+        tc.ar_diag.outcome = 'lambda_zero'
         return 0, None
     return nb, xa
 

@@ -124,14 +124,10 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     for (s, f), k in sorted_amb_items(amb_dict):
         if estimate.exists(k):
             tc.nav.x[tc.IB(s, f, tc.nav.na)] = estimate.atDouble(k)
-            # Exclude ambiguities (re)seeded THIS epoch. amb_init_epoch
-            # is cleared by the per-epoch scratch reset, so a non-None
-            # value can only mean amb_seed wrote it this epoch. Making
-            # the wait span real epochs was measured worse (A-1 A/B:
+            # Exclude ambiguities (re)seeded THIS epoch. Making the
+            # wait span real epochs was measured worse (A-1 A/B:
             # AllRMS 21.35 -> 21.66), so one epoch is the spec.
-            seeded_now = (
-                tc._sat_states.at(s, f).amb_init_epoch is not None)
-            if not seeded_now:
+            if (s, f) not in tc.current_epoch.seeded_amb_keys:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1
                 el_idx = int(s) - 1
@@ -142,15 +138,15 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
                 diag_vsat0_young += 1
         else:
             diag_estimate_missing += 1
-    tc._last_amb_el_min_deg = (int(round(min(diag_amb_el_deg)))
+    tc.ar_diag.amb_el_min_deg = (int(round(min(diag_amb_el_deg)))
                                  if diag_amb_el_deg else -1)
-    tc._last_amb_el_median_deg = (int(round(float(np.median(diag_amb_el_deg))))
+    tc.ar_diag.amb_el_median_deg = (int(round(float(np.median(diag_amb_el_deg))))
                                     if diag_amb_el_deg else -1)
-    tc._last_amb_el_above15 = sum(1 for e in diag_amb_el_deg if e >= 15)
-    tc._last_amb_el_above25 = sum(1 for e in diag_amb_el_deg if e >= 25)
-    tc._last_amb_estimate_missing = diag_estimate_missing
-    tc._last_amb_vsat1 = diag_vsat1
-    tc._last_amb_vsat0_young = diag_vsat0_young
+    tc.ar_diag.amb_el_above15 = sum(1 for e in diag_amb_el_deg if e >= 15)
+    tc.ar_diag.amb_el_above25 = sum(1 for e in diag_amb_el_deg if e >= 25)
+    tc.ar_diag.amb_estimate_missing = diag_estimate_missing
+    tc.ar_diag.amb_vsat1 = diag_vsat1
+    tc.ar_diag.amb_vsat0_young = diag_vsat0_young
 
 
 def _publish_held_ambiguities(tc, cp_visible_sf, amb_dict):
@@ -168,10 +164,10 @@ def _publish_held_ambiguities(tc, cp_visible_sf, amb_dict):
     amb_sf = {(int(s), int(f)) for (s, f) in amb_dict.keys()}
     orphan = [(s, f) for (s, f) in cp_visible_sf
               if (s, f) not in held_sf and (s, f) not in amb_sf]
-    tc._last_orphan_cp_count = len(orphan)
-    tc._last_amb_dict_size = len(amb_sf)
-    tc._last_held_size = len(held_sf)
-    tc._last_cp_visible_size = len(cp_visible_sf)
+    tc.ar_diag.orphan_cp_count = len(orphan)
+    tc.ar_diag.amb_dict_size = len(amb_sf)
+    tc.ar_diag.held_size = len(held_sf)
+    tc.ar_diag.cp_visible_size = len(cp_visible_sf)
 
 
 def _publish_covariances(tc, factors, estimate, key_pose, amb_dict, R):
