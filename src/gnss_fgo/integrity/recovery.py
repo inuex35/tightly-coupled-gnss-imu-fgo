@@ -78,8 +78,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
     tc.skip_count = 0
     # Conditionally break IMU preintegration chain. See docstring.
     tc._pim_discontinuity = bool(break_pim)
-    for st in tc._sat_states.track.values():
-        st.prev_phase = None
 
 
 def reset_ambiguities_with_cp_hold(tc):

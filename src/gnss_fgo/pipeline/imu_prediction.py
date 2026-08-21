@@ -24,7 +24,7 @@ STAGE_READS = (
     'rs', 'rsb', 'sat', 'values', 'vel_prev',
 )
 STAGE_WRITES = (
-    'bias_prev', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'is_recovery',
+    'bias_prev', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev',
     'key_idx', 'n_imu', 'pim', 'pose_p', 'pred_nav', 'tow', 'values', 'vel_prev',
 )
 
@@ -32,7 +32,7 @@ STAGE_WRITES = (
 def run(tc, epoch):
     """Stage A: IMU preintegration + pose/vel prediction from ISAM2 prior.
 
-    Populates epoch: key_idx, pim, n_imu, gyro_mean, is_recovery,
+    Populates epoch: key_idx, pim, n_imu, gyro_mean,
       graph, values, estimate, pose_p, vel_prev, bias_prev, pred.
     Early-return when n_imu==0 (no IMU samples) or prev pose is
     marginalized out (warm-reset via DDPR if possible).
@@ -44,7 +44,6 @@ def run(tc, epoch):
 
     # IMU preintegration: integrate up to current GNSS epoch TOW.
     # Relaxed PIM on recovery so stale pose(key_idx-1) doesn't tightly bind.
-    epoch.is_recovery = tc.skip_count > 0
     epoch.imu_idx_prev = tc.imu_idx
     _, tow_obs = time2gpst(epoch.obs.t)
     epoch.tow = tow_obs
@@ -52,8 +51,9 @@ def run(tc, epoch):
         tc.tc_bias, target_tow=tow_obs)
     info['n_imu'] = epoch.n_imu
     # Fixed-dt integration audit: build_pim integrates every sample at a
-    # nominal 0.01 s; if the CSV is gappy or phase-shifted this drifts
-    # from the true obs interval (review finding #1 — measure first).
+    # build_pim integrates each sample with its own timestamp
+    # delta (0.1 ms rounded); pim_dt_mismatch now reports the
+    # n_imu*nominal vs wall-clock gap for log forensics only.
     info['pim_dt_mismatch'] = round(
         epoch.n_imu * 0.01 - float(tc._epoch_dt), 6)
     if epoch.n_imu == 0:

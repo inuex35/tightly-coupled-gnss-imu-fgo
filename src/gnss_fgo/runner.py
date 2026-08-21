@@ -47,7 +47,6 @@ class ImuGnssTc:
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
-    Clk = staticmethod(lambda i: gtsam.symbol('c', i))  # rcv clock bias [s]
 
     # ── The cssrlib boundary ────────────────────────────────────────
     # Every capability this pipeline takes from the engine, in one block.
@@ -175,8 +174,6 @@ class ImuGnssTc:
         self.amb_keys = {}
         self._isam_p1_inserted = set()
 
-        # Doppler clock-bias chain: last epoch that owns a Clk key, and the
-        # keys this epoch's factors reach back to (re-stamped by the FLS).
 
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
@@ -223,7 +220,6 @@ class ImuGnssTc:
         self._last_ddpr_sat_tags = []
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
-        # FLS-update timing accumulators
         # Phase-2 init bootstrap counters (filled by transition_to_tc)
         self._tc_bootstrap_ddpr_epochs = 0
         self._tc_fresh_amb_epochs = 0

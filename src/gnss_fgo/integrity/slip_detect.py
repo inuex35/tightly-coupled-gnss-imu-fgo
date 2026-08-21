@@ -6,7 +6,7 @@ from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
                                 obsb=None, ir_map=None):
-    """Run the four slip/multipath detectors (LLI, CMC, GF, Doppler)
+    """Run the three slip/multipath detectors (LLI, CMC, GF)
     plus the outage expiry, then reset every flagged ambiguity.
     Returns (n_reset, n_cmc_jumps, slip_keys)."""
     nf = tc.nav.nf
@@ -70,7 +70,7 @@ def reset_slipped_ambiguities(tc, reset_keys):
 
 def _detslp_cmc(tc, sat_state, obs, obsb, row, brow, s, f, lam,
                 cmc_exclude):
-    """Code-minus-carrier: jump -> slip flag; sustained level -> DD skip."""
+    """Code-minus-carrier: jump -> slip flag;."""
     pr_rov = obs.P[row, f]
     cp_rov = obs.L[row, f]
     pr_bas = obsb.P[brow, f]
