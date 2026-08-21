@@ -267,7 +267,7 @@ def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
 def process_imu_only(tc, obs):
     """Advance the Phase 2 graph by one epoch using IMU only (no GNSS)."""
     tc._update_epoch_dt(obs)
-    tc._reset_epoch_scratch()
+    tc._reset_current_epoch()
     R = tc.R_enu2ecef
     info = make_epoch_diagnostics(tc, gnss_skip=True, imu_only=True)
     _, tow_obs = time2gpst(obs.t)

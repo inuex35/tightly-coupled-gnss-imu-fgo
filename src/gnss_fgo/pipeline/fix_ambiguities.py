@@ -22,21 +22,21 @@ _AR_OUTCOME_CODES = {
 }
 
 _AR_DIAG_ATTRS = (
-    ('_last_orphan_cp_count', 'orphan_cp_count'),
-    ('_last_amb_dict_size', 'amb_dict_size'),
-    ('_last_held_size', 'held_size'),
-    ('_last_cp_visible_size', 'cp_visible_size'),
-    ('_last_amb_estimate_missing', 'amb_estimate_missing'),
-    ('_last_amb_vsat1', 'amb_vsat1'),
-    ('_last_amb_vsat0_young', 'amb_vsat0_young'),
-    ('_last_amb_not_in_obs', 'amb_not_in_obs'),
-    ('_last_held_not_in_obs', 'held_not_in_obs'),
-    ('_last_sat_in_obs_size', 'sat_in_obs_size'),
-    ('_last_resamb_raw_nb', 'resamb_raw_nb'),
-    ('_last_amb_el_min_deg', 'amb_el_min_deg'),
-    ('_last_amb_el_median_deg', 'amb_el_median_deg'),
-    ('_last_amb_el_above15', 'amb_el_above15'),
-    ('_last_amb_el_above25', 'amb_el_above25'),
+    ('orphan_cp_count', 'orphan_cp_count'),
+    ('amb_dict_size', 'amb_dict_size'),
+    ('held_size', 'held_size'),
+    ('cp_visible_size', 'cp_visible_size'),
+    ('amb_estimate_missing', 'amb_estimate_missing'),
+    ('amb_vsat1', 'amb_vsat1'),
+    ('amb_vsat0_young', 'amb_vsat0_young'),
+    ('amb_not_in_obs', 'amb_not_in_obs'),
+    ('held_not_in_obs', 'held_not_in_obs'),
+    ('sat_in_obs_size', 'sat_in_obs_size'),
+    ('resamb_raw_nb', 'resamb_raw_nb'),
+    ('amb_el_min_deg', 'amb_el_min_deg'),
+    ('amb_el_median_deg', 'amb_el_median_deg'),
+    ('amb_el_above15', 'amb_el_above15'),
+    ('amb_el_above25', 'amb_el_above25'),
 )
 
 
@@ -75,7 +75,7 @@ def _run_ar_with_marginals(tc, epoch):
     gdop_now = float(info.get('gdop', 0.0) or 0.0)
     if ar_gdop > 0.0 and gdop_now > ar_gdop:
         info['ar_gdop_skip'] = True
-        tc._last_ar_outcome = 'gdop_gate'
+        tc.ar_diag.outcome = 'gdop_gate'
         return
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
         epoch.obs, epoch.rs, epoch.vs, epoch.dts,
@@ -109,12 +109,12 @@ def _run_ar_with_marginals(tc, epoch):
 
 
 def _record_ar_diagnostics(tc, info):
-    """Copy tc._last_* counters → info + outcome code + ar_context_reject + ar_subset_dbg."""
+    """Copy tc.ar_diag counters → info + outcome code + ar_context_reject + ar_subset_dbg."""
     for diag_attr, info_key in _AR_DIAG_ATTRS:
-        v = getattr(tc, diag_attr, None)
+        v = getattr(tc.ar_diag, diag_attr)
         if v is not None:
             info[info_key] = int(v)
-    outcome = tc._last_ar_outcome
+    outcome = tc.ar_diag.outcome
     if outcome:
         info['ar_outcome_code'] = _AR_OUTCOME_CODES.get(outcome, -1)
     ar_ctx_reject = tc._ar_context_reject
@@ -150,7 +150,7 @@ def _ar_starvation_reset(tc, epoch):
     n_max = int(tc.cfg.ar_starve_reset)
     if n_max <= 0:
         return
-    outcome = tc._last_ar_outcome
+    outcome = tc.ar_diag.outcome
     if outcome == 'success':
         tc._ar_starve_streak = 0
         return
