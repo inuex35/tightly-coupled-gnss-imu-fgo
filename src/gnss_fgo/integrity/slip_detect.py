@@ -1,8 +1,6 @@
 """Slip detection on raw observations (Stage B, step 2)."""
 
-import numpy as np
 
-from cssrlib.gnss import time2gpst
 from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 
@@ -42,9 +40,6 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
     # CMCで検出された衛星もリセット（マルチパスはNを壊す）
     reset_keys.update(cmc_exclude)
 
-    if tc.cfg.thresdop > 0 and hasattr(obs, 'D') and obs.D.size > 0:
-        _detslp_dop(tc, obs, sat, iu, reset_keys)
-
 
     # Outage counter: increment for satellites NOT seen this epoch
     maxout = tc._sat_states.maxout
@@ -71,58 +66,6 @@ def reset_slipped_ambiguities(tc, reset_keys):
         sat_st.clear_hold()
         sat_st.amb_gen += 1
     return n_reset
-
-
-def _detslp_dop(tc, obs, sat, iu, reset_keys):
-    """Inner helper for the Doppler-based slip detector — RTKLIB-demo5"""
-    nf = tc.nav.nf
-    ns = len(sat)
-    thr = tc.cfg.thresdop
-    _, tow_now = time2gpst(obs.t)
-
-    dopdif = {}     # (sat, f) → cycles/s residual
-    inliers = []
-    for i in range(ns):
-        s = sat[i]
-        for f in range(nf):
-            if f >= obs.L.shape[1] or f >= obs.D.shape[1]:
-                continue
-            L = obs.L[iu[i], f]
-            D = obs.D[iu[i], f]
-            if L == 0.0 or D == 0.0:
-                continue
-            _prev_st = tc._sat_states.track.get((s, f))
-            prev = _prev_st.prev_phase if _prev_st is not None else None
-            if prev is None:
-                continue
-            L_prev, t_prev = prev
-            dt = tow_now - t_prev
-            if dt <= 0.0:
-                continue
-            dph = (L - L_prev) / dt
-            dpt = -D
-            dd = dph - dpt
-            dopdif[(s, f)] = dd
-            if abs(dd) < 3 * thr:
-                inliers.append(dd)
-
-    if inliers:
-        mean_dop = float(np.mean(inliers))
-        for (s, f), dd in dopdif.items():
-            if abs(dd - mean_dop) > thr:
-                reset_keys.add((s, f))
-
-    for st in tc._sat_states.track.values():
-        st.prev_phase = None
-    for i in range(ns):
-        s = sat[i]
-        for f in range(nf):
-            if f >= obs.L.shape[1] or f >= obs.D.shape[1]:
-                continue
-            L = obs.L[iu[i], f]
-            D = obs.D[iu[i], f]
-            if L != 0.0 and D != 0.0:
-                tc._sat_states.get(s, f).prev_phase = (L, tow_now)
 
 
 def _detslp_cmc(tc, sat_state, obs, obsb, row, brow, s, f, lam,

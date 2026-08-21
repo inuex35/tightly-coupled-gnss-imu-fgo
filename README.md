@@ -27,8 +27,8 @@ and tunnels.
   FDE, and an escalation ladder from CP-hold to warm reset
 - **Default-on vs. opt-in** — the results below use the defaults
   (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA via the cssrlib
-  resolver). Raw per-satellite Doppler with clock states and the
-  native Python resolver are implemented but ship disabled.
+  resolver). The native Python resolver is implemented but ships
+  disabled.
 - **Contributed upstream** — the DD, Doppler and undifferenced GNSS
   factors are merged into
   [GTSAM](https://github.com/borglab/gtsam) itself; see the

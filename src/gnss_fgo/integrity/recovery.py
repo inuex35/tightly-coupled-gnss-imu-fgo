@@ -73,13 +73,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
     ts0[tc.Bias(0)] = tc.tc_time
     tc.isam2.update(g, v, ts0)
 
-    # The Doppler clock chain refers to smoother keys; after the
-    # rebuild those keys do not exist, and a stale _doppler_clk_last
-    # would make the next epoch chain a BetweenFactor to a missing
-    # Clk() variable (r5 #6).
-    tc._doppler_clk_last = None
-    tc._doppler_cb_prev = None
-    tc._doppler_keep_keys = []
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc.nav.x[0:3] = ecef_seed.copy()
     tc.skip_count = 0

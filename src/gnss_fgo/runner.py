@@ -177,9 +177,6 @@ class ImuGnssTc:
 
         # Doppler clock-bias chain: last epoch that owns a Clk key, and the
         # keys this epoch's factors reach back to (re-stamped by the FLS).
-        self._doppler_clk_last = None
-        self._doppler_keep_keys = []
-        self._doppler_cb_prev = None
 
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
@@ -227,7 +224,6 @@ class ImuGnssTc:
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # FLS-update timing accumulators
-        self._fls_update_last_ms = 0.0
         # Phase-2 init bootstrap counters (filled by transition_to_tc)
         self._tc_bootstrap_ddpr_epochs = 0
         self._tc_fresh_amb_epochs = 0
@@ -385,7 +381,7 @@ class ImuGnssTc:
             R_enu2ecef, self.base_ecef)
 
     def process(self, obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd,
-                ir_map, ref_ecef=None):
+                ir_map):
         """Process one epoch. Returns (sol_ecef, tag, nb, info_dict)."""
         R, ns, init_ecef = prepare_process_epoch(self, obs, sat, obs_sd)
         info = make_epoch_diagnostics(self)
@@ -400,7 +396,7 @@ class ImuGnssTc:
                 info, init_ecef, R)
         return self._run_tc_epoch(
             obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
-            ref_ecef, info, ns, init_ecef, R)
+            info, ns, init_ecef, R)
 
 
     _make_isam2 = staticmethod(_tc_isam.make_isam2)
