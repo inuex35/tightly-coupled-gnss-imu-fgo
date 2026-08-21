@@ -11,8 +11,6 @@ residuals, CP-hold and ddpr-bad streaks):
 These are policy, not resolution: nothing here touches LAMBDA's inputs.
 """
 
-import numpy as np
-import gtsam
 
 from ..pipeline import residuals as _tc_residuals
 
@@ -78,19 +76,8 @@ def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
     if dres_thr > 0.0 and graph is not None and estimate is not None \
             and key_pose is not None:
         res_pre = tc._cached_ddpr_res_pre
-        res_xa = None
-        try:
-            cur_pose = estimate.atPose3(key_pose)
-            R_be = tc.ecef_T_nav.compose(cur_pose).rotation().matrix()
-            lever_arr = np.array(tc.lever_arm_tc)
-            body_xa = np.asarray(xa[0:3], dtype=float) - R_be @ lever_arr
-            body_nav = tc.ecef_T_nav.transformTo(gtsam.Point3(*body_xa))
-            v_xa = gtsam.Values()
-            v_xa.insert(key_pose,
-                        gtsam.Pose3(cur_pose.rotation(), body_nav))
-            res_xa, _ = _tc_residuals.main_ddpr_residuals(tc, graph, v_xa)
-        except (RuntimeError, ValueError, IndexError):
-            res_xa = None
+        res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
+            tc, graph, estimate, key_pose, xa)
         if res_pre is not None and res_xa is not None:
             fix_dres = float(res_xa) - float(res_pre)
             if fix_dres > dres_thr:

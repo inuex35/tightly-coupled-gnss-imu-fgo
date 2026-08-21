@@ -102,7 +102,7 @@ def _add_between_n_chain(tc, epoch, prev_smode):
     return n_between
 
 def _add_thin_epoch_priors(tc, epoch):
-    """Too few DD pairs to solve: leash pose/vel/bias to the IMU
+    """Too few DD factors to solve: leash pose/vel/bias to the IMU
     prediction (propagate_* sigmas) and anchor continuing ambiguities
     so the graph stays determined until geometry returns."""
     epoch.info['propagate_prior'] = epoch.nv

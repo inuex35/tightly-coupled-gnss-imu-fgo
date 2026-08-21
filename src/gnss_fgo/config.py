@@ -105,7 +105,10 @@ class TcConfig:
     # GNSS quality gate
     gdop_max: float = 10.0
     nsat_min: int = 6
-    min_dd_for_solve: int = 4
+    min_dd_for_solve: int = 4      # min DD FACTOR count (PR+CP; a
+                                   # 3-band pair alone contributes up
+                                   # to 6) below which the epoch gets
+                                   # propagate priors instead
     boot_ddpr_epochs: int = 20     # DDPR translation prior for the first
                                    # N epochs after the Phase-2 transition
     boot_ddpr_sigma: float = 0.5   # [m] its translation sigma
