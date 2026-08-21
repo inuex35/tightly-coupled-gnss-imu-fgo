@@ -35,8 +35,8 @@ class _Tc:
     def __init__(self):
         self.cfg = _Cfg()
         self._sat_states = _SatMap()
-        from gnss_fgo.state.runtime_state import EpochScratch
-        self.epoch_scratch = EpochScratch()
+        from gnss_fgo.state.runtime_state import CurrentEpochState
+        self.current_epoch = CurrentEpochState()
 
     @staticmethod
     def _noise1(sigma):

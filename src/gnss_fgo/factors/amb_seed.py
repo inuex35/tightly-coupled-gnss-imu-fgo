@@ -29,7 +29,7 @@ Held satellites are skipped (their integer is pinned outside the graph).
 Reads:  tc.cfg (sigma_cont / sigma_amb0), tc.phase,
         tc.epoch, per-sat ``SatState`` hold fields.
 Writes: ``values`` / ``graph`` (N inserts + priors), ``new_amb``,
-        ``epoch_scratch.seeded_amb_keys / SatState.release_seed_pending``.
+        ``current_epoch.seeded_amb_keys / SatState.release_seed_pending``.
 """
 
 
@@ -46,13 +46,13 @@ def seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
         n0 = sat_st.last_held_value
         values.insert(key_n, n0)
         graph.addPriorDouble(key_n, n0, tc._noise1(0.1))
-        tc.epoch_scratch.seeded_amb_keys.add(key_id)
+        tc.current_epoch.seeded_amb_keys.add(key_id)
         sat_st.release_seed_pending = False
         return
     sig = tc.cfg.sigma_amb0 if tc.phase == 2 else 3.0
     values.insert(key_n, n0_seed)
     graph.addPriorDouble(key_n, n0_seed, tc._noise1(sig))
-    tc.epoch_scratch.seeded_amb_keys.add(key_id)
+    tc.current_epoch.seeded_amb_keys.add(key_id)
 
 
 def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,

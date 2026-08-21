@@ -1,12 +1,12 @@
-"""SatFieldView semantics + the EpochScratch lifetime contract.
+"""SatFieldView semantics + the CurrentEpochState lifetime contract.
 
 Review round 4 (A-1/A-2) traced two behavior bugs to epoch-lifetime
 state living on the runner behind manual per-field wipes. The fix is
-structural: EpochScratch is REPLACED each epoch, so nothing in it can
+structural: CurrentEpochState is REPLACED each epoch, so nothing in it can
 outlive the epoch. These tests pin both halves.
 """
 from gnss_fgo.state.runtime_state import (
-    EpochScratch, SatFieldView, SatStateMap)
+    CurrentEpochState, SatFieldView, SatStateMap)
 
 
 def test_view_reads_only_set_fields():
@@ -29,11 +29,11 @@ def test_clear_resets_every_entry_to_absent():
     assert m.get(3, 0).amb_gen == 0 and m.get(4, 1).amb_gen == 0
 
 
-def test_epoch_scratch_lifetime_is_object_replacement():
-    scratch = EpochScratch()
+def test_current_epoch_lifetime_is_object_replacement():
+    scratch = CurrentEpochState()
     scratch.ref_sats[1] = 7
     scratch.seeded_amb_keys.add((7, 0))
-    fresh = EpochScratch()          # what _reset_epoch_scratch does
+    fresh = CurrentEpochState()          # what _reset_current_epoch does
     assert fresh.ref_sats == {} and fresh.seeded_amb_keys == set()
     # the old epoch's state is unreachable, not "wiped in place"
     assert scratch.ref_sats == {1: 7}

@@ -219,7 +219,7 @@ class DdFactorBuilder:
         tc = self.tc
         ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
             tc, sys_id, idx_sys, sat, el)
-        tc.epoch_scratch.ref_sats[sys_id] = ref_sat
+        tc.current_epoch.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
 
     def _compute_ref_geometry(self, ref_idx, ref_sat):

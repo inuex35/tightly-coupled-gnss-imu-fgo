@@ -55,7 +55,7 @@ def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     DDPR residual exceeded per_sat_res_thresh (likely multipath).
     Returns (ref_idx, ref_sat).
     """
-    prev_ref = tc.epoch_scratch.ref_sats.get(sys_id)
+    prev_ref = tc.current_epoch.ref_sats.get(sys_id)
     sats_in_sys = [sat[i] for i in idx_sys]
     prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
                    and _utils_is_bds_geo(prev_ref))

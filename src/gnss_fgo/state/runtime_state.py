@@ -200,8 +200,9 @@ class SatStateMap:
                 if st.amb_key is not None]
 
 @dataclass
-class EpochScratch:
-    """State that lives exactly one epoch.
+class CurrentEpochState:
+    """State that lives exactly one epoch (vs EpochData, which is the
+    stage-to-stage I/O record for one process() call).
 
     Replaced WHOLESALE at each epoch start (prepare_process_epoch /
     process_imu_only) — never wiped field-by-field. The A-1/A-2 root

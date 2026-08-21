@@ -127,7 +127,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
             # Exclude ambiguities (re)seeded THIS epoch. Making the
             # wait span real epochs was measured worse (A-1 A/B:
             # AllRMS 21.35 -> 21.66), so one epoch is the spec.
-            if (s, f) not in tc.epoch_scratch.seeded_amb_keys:
+            if (s, f) not in tc.current_epoch.seeded_amb_keys:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1
                 el_idx = int(s) - 1
