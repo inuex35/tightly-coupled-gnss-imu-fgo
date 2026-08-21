@@ -214,12 +214,12 @@ class DdFactorBuilder:
     def _select_ref_for_system(self, sys_id, idx_sys, sat, el,
                                 amb_dict, slip_keys):
         """Pick the reference sat for one system and record it in
-        tc.ref_sats for the later same-epoch DD solves (see
+        the epoch scratch for the later same-epoch DD solves (see
         prefit.pick_ref_sat_idx)."""
         tc = self.tc
         ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
             tc, sys_id, idx_sys, sat, el)
-        tc.ref_sats[sys_id] = ref_sat
+        tc.epoch_scratch.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
 
     def _compute_ref_geometry(self, ref_idx, ref_sat):

@@ -45,17 +45,17 @@ def varerr_dd_sigma(tc, code, el_rad, dt_s):
 def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     """Select DD reference satellite index from idx_sys.
 
-    tc.ref_sats is wiped every epoch (cross-epoch continuity was
-    measured worse — A-2 A/B: AllRMS 21.35 -> 93.03), so the
-    prev-ref preference works WITHIN an epoch only: the main graph
-    build writes tc.ref_sats, and later same-epoch DD solves (LS
+    The reference ledger lives on the epoch scratch (cross-epoch
+    continuity was measured worse — A-2 A/B: AllRMS 21.35 -> 93.03),
+    so the prev-ref preference works WITHIN an epoch only: the main
+    build writes it, and later same-epoch DD solves (LS
     fallback, sanity anchor, FDE re-solve) pick the same reference so
     their residuals stay comparable. First pick each epoch is
     highest-elevation, excluding BeiDou GEO and sats whose prev-epoch
     DDPR residual exceeded per_sat_res_thresh (likely multipath).
     Returns (ref_idx, ref_sat).
     """
-    prev_ref = tc.ref_sats.get(sys_id)
+    prev_ref = tc.epoch_scratch.ref_sats.get(sys_id)
     sats_in_sys = [sat[i] for i in idx_sys]
     prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
                    and _utils_is_bds_geo(prev_ref))

@@ -111,7 +111,6 @@ class SatState:
     # Ambiguity bookkeeping
     amb_key: Optional[int] = None            # GTSAM symbol for N
     amb_gen: int = 0                         # generation counter (++ on slip / reset)
-    amb_init_epoch: Optional[int] = None     # epoch when N was last initialised
     held_value: Optional[float] = None       # conditioned-out held integer [cyc]
     last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
     release_seed_pending: bool = False       # one-shot unary prior on first float epoch
@@ -199,6 +198,24 @@ class SatStateMap:
         """List of all non-None amb_key values (for FLS keep_keys)."""
         return [st.amb_key for st in self.track.values()
                 if st.amb_key is not None]
+
+@dataclass
+class EpochScratch:
+    """State that lives exactly one epoch.
+
+    Replaced WHOLESALE at each epoch start (prepare_process_epoch /
+    process_imu_only) — never wiped field-by-field. The A-1/A-2 root
+    cause was epoch-lifetime state living on the runner behind manual
+    per-field wipes; object replacement makes the lifetime structural.
+    """
+
+    # sys_id -> reference sat. Written by the main DD build, read by
+    # the later same-epoch DD solves (LS fallback, sanity anchor, FDE
+    # re-solve) so their DD definitions stay comparable.
+    ref_sats: dict = field(default_factory=dict)
+    # (sat, freq) ambiguities (re)seeded THIS epoch -> excluded from AR.
+    seeded_amb_keys: set = field(default_factory=set)
+
 
 @dataclass
 class RecoveryState:

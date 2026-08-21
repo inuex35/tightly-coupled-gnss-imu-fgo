@@ -22,7 +22,7 @@ from . import initialization as _initialization
 from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
-    MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
+    EpochScratch, MresSignalsState, RecoveryState, SatFieldView, SatStateMap,
 )
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
@@ -189,8 +189,6 @@ class ImuGnssTc:
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
         self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
-        self._amb_init_epoch_view = SatFieldView(
-            self._sat_states, 'amb_init_epoch')
         self._fix_streak_view = SatFieldView(
             self._sat_states, 'fix_streak', absent=0)
 
@@ -202,11 +200,9 @@ class ImuGnssTc:
 
         self._last_obs_t = None  # for real-seconds dt tracking
         self._epoch_dt = 0.2     # actual seconds since last process() call
-        # Per-epoch scratch — reset every epoch by _reset_epoch_scratch;
-        # initialized here for any access before the first epoch.
-        self.ref_sats = {}
+        # Per-epoch scratch — replaced every epoch by _reset_epoch_scratch.
+        self.epoch_scratch = EpochScratch()
         self.amb_gen = {}
-        self.amb_init_epoch = {}
 
         self._init_epoch_state_defaults()
 
@@ -263,18 +259,21 @@ class ImuGnssTc:
         self._last_obs_t = obs.t
 
     def _reset_epoch_scratch(self):
-        """Per-epoch scratch reset (review finding A-1).
+        """Start the epoch's scratch lifetime (review findings A-1/A-2).
 
-        Persisting any of these across epochs was measured on run1 and
-        every variant came back equal or worse, so the every-epoch
-        reset is the spec, not an accident.
+        epoch_scratch is REPLACED, not wiped — anything epoch-scoped
+        belongs in EpochScratch, where it cannot outlive the epoch.
+        amb_gen is the one per-sat field still wiped here: it is part
+        of the N-key value (slip resets bump it pre-build), so it must
+        reset with the epoch to keep key numbering stable. Persisting
+        any of this across epochs was measured on run1 and every
+        variant came back equal or worse (#22), so the one-epoch
+        lifetime is the spec.
         total_factor_count is never reset here — zeroing the cumulative
         counter once made the held-CP FDE bookkeeping silently inert.
         """
-        self.ref_sats = {}
+        self.epoch_scratch = EpochScratch()
         self.amb_gen = {}
-        self.amb_init_epoch = {}
-
 
     def _assign_view(self, view: SatFieldView, value):
         if value is view:
@@ -292,7 +291,6 @@ class ImuGnssTc:
     _VIEW_FORWARDS = {
         'amb_keys_tc': '_amb_key_view',
         'amb_gen': '_amb_gen_view',
-        'amb_init_epoch': '_amb_init_epoch_view',
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
@@ -330,7 +328,7 @@ class ImuGnssTc:
         max_frac = 0.0
         for sys_id in sorted_sys_ids(obs_sd.sig):
             idx_sys = [i for i in range(ns) if sat2prn(sat[i])[0] == sys_id]
-            ref_s = self.ref_sats.get(sys_id)
+            ref_s = self.epoch_scratch.ref_sats.get(sys_id)
             if ref_s is None or len(idx_sys) < 2:
                 continue
             lams = _tc_factors.get_wavelengths(self, obs_sd, ref_s)
