@@ -29,7 +29,7 @@ Held satellites are skipped (their integer is pinned outside the graph).
 Reads:  tc.cfg (sigma_cont / sigma_amb0), tc.phase,
         tc.epoch, per-sat ``SatState`` hold fields.
 Writes: ``values`` / ``graph`` (N inserts + priors), ``new_amb``,
-        ``SatState.amb_lam / amb_init_epoch / release_seed_pending``.
+        ``SatState.amb_init_epoch / release_seed_pending``.
 """
 
 
@@ -61,7 +61,6 @@ def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
     for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
         key_id = (sat_id, freq)
         sat_st = tc._sat_states.get(*key_id)
-        sat_st.amb_lam = lam
         # Clock-free level: SD phase minus SD code (NOT geometry).
         n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
         if sat_st.held_value is not None:

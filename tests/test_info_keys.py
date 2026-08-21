@@ -43,3 +43,17 @@ def test_no_orphan_info_reads():
             continue
         orphans.add(k)
     assert not orphans, f"info keys read but never produced: {sorted(orphans)}"
+
+
+def test_reject_keys_have_one_writer():
+    """Round-4 A-4 regression: two gates once wrote the same
+    'weak_fix_reject' key, making the log ambiguous about which fired.
+    Every *_reject decision key must have exactly one writing module."""
+    import collections
+    wpat = re.compile(r"info\[['\"](\w+_reject)['\"]\]\s*=")
+    writers = collections.defaultdict(set)
+    for p in SRC.rglob('*.py'):
+        for m in wpat.finditer(p.read_text()):
+            writers[m.group(1)].add(p.name)
+    multi = {k: sorted(v) for k, v in writers.items() if len(v) > 1}
+    assert not multi, f'reject keys with multiple writers: {multi}'

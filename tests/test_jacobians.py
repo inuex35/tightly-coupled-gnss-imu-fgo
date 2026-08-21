@@ -41,7 +41,7 @@ def test_held_ddcp_factor():
     noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
     f = _make_ddcp_factor_with_held_n(
         1, 2, noise, sat_ref, sat_j, sat_ref + 30.0, sat_j - 25.0,
-        BASE, 0.1903, 123.456, np.array([0.31, 0.0, 0.55]), enu_frame(BASE),
+        BASE, 123.456, np.array([0.31, 0.0, 0.55]), enu_frame(BASE),
         offset_m=-34387.86, coeff_m=-0.1903)
     v = gtsam.Values()
     v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.05, -0.12, 2.2),

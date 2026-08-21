@@ -18,7 +18,7 @@ from ..utils import is_bds_geo as _utils_is_bds_geo
 _CLIGHT = 299792458.0
 
 
-def varerr_dd_sigma(tc, code, freq, el_rad, dt_s):
+def varerr_dd_sigma(tc, code, el_rad, dt_s):
     """RTKLIB-demo5 varerr formula port (rtkpos.c:402), returning the
     σ in metres to feed the DD factor's noise model.
 
@@ -45,10 +45,14 @@ def varerr_dd_sigma(tc, code, freq, el_rad, dt_s):
 def pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     """Select DD reference satellite index from idx_sys.
 
-    Prefers the previously-locked reference (tc.ref_sats[sys_id]) for
-    continuity; on first use or loss, picks highest-elevation (excluding
-    BeiDou GEO and sats whose prev-epoch DDPR residual exceeded
-    per_sat_res_thresh — they're likely multipath-contaminated).
+    tc.ref_sats is wiped every epoch (cross-epoch continuity was
+    measured worse — A-2 A/B: AllRMS 21.35 -> 93.03), so the
+    prev-ref preference works WITHIN an epoch only: the main graph
+    build writes tc.ref_sats, and later same-epoch DD solves (LS
+    fallback, sanity anchor, FDE re-solve) pick the same reference so
+    their residuals stay comparable. First pick each epoch is
+    highest-elevation, excluding BeiDou GEO and sats whose prev-epoch
+    DDPR residual exceeded per_sat_res_thresh (likely multipath).
     Returns (ref_idx, ref_sat).
     """
     prev_ref = tc.ref_sats.get(sys_id)

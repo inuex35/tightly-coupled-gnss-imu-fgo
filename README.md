@@ -97,9 +97,11 @@ Phase 1 bootstrap (stationary GNSS-only) is `initialization.py`;
 
 ## Configuration
 
-Every knob is an env var mirroring a `config.py` field (`LEVER_ARM`,
+Every `config.py` field is an env var (`LEVER_ARM`,
 `MAX_EP`, `SAVE_NPZ`, `DOPPLER_SD_SIGMA`, …) — see `config.py` for the
 complete, commented list.
+A few recovery-path priors (warm-reset and outage anchors,
+Phase-2 seed sigmas) are hardcoded constants, not knobs.
 
 ## License
 

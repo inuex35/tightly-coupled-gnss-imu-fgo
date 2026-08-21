@@ -1,4 +1,4 @@
-"""Stage C3 -- the AR pass over the fresh estimate.
+"""Stage C4 -- the AR pass over the fresh estimate.
 
 Eligibility (which needs the epoch healthy and the geometry meaningful),
 marginals publication, the LAMBDA attempt through gnss_fgo.ar, outcome
@@ -29,8 +29,6 @@ _AR_DIAG_ATTRS = (
     ('_last_amb_estimate_missing', 'amb_estimate_missing'),
     ('_last_amb_vsat1', 'amb_vsat1'),
     ('_last_amb_vsat0_young', 'amb_vsat0_young'),
-    ('_last_amb_age_median', 'amb_age_median'),
-    ('_last_amb_age_min', 'amb_age_min'),
     ('_last_amb_not_in_obs', 'amb_not_in_obs'),
     ('_last_held_not_in_obs', 'held_not_in_obs'),
     ('_last_sat_in_obs_size', 'sat_in_obs_size'),
@@ -60,7 +58,6 @@ def _ar_eligibility(tc, epoch):
 def _run_ar_with_marginals(tc, epoch):
     """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
     info = epoch.info
-    tc._cur_ed = epoch                 # for the fix-vs-LS gate in run_ar
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.nav_bridge.publish_marginals(tc,
@@ -74,7 +71,7 @@ def _run_ar_with_marginals(tc, epoch):
     # controls: measured feedback death, fix 46%->0.6%). GDOP is pure
     # geometry: no loop. Measured run1 separation: correct fixes GDOP
     # p50 3.3 / p99 7.6, basin wrong fixes p50 9.5.
-    ar_gdop = float(getattr(tc.cfg, 'ar_gdop_max', 0.0) or 0.0)
+    ar_gdop = float(tc.cfg.ar_gdop_max)
     gdop_now = float(info.get('gdop', 0.0) or 0.0)
     if ar_gdop > 0.0 and gdop_now > ar_gdop:
         info['ar_gdop_skip'] = True
@@ -83,16 +80,14 @@ def _run_ar_with_marginals(tc, epoch):
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
         epoch.obs, epoch.rs, epoch.vs, epoch.dts,
         epoch.sat, epoch.el, epoch.iu, epoch.estimate,
-        tc.Xpose(epoch.key_idx), amb_snapshot)
+        tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         try:
             cur_pose = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
             R_body_to_ecef = tc.ecef_T_nav.compose(
                 cur_pose).rotation().matrix()
-            lever_arr = (np.array(tc.lever_arm_tc)
-                         if getattr(tc, 'lever_arm_tc', None) is not None
-                         else np.zeros(3))
+            lever_arr = np.array(tc.lever_arm_tc)
             body_ecef_xa = np.asarray(epoch.xa[0:3]) - R_body_to_ecef @ lever_arr
             body_nav_xa = tc.ecef_T_nav.transformTo(
                 gtsam.Point3(*body_ecef_xa))
@@ -135,7 +130,8 @@ def _record_ar_diagnostics(tc, info):
         info['ar_subset_candidates'] = int(ar_subset_dbg.get('candidates', 0))
         if ar_subset_dbg.get('used'):
             info['ar_subset_used'] = True
-            info['ar_subset_drop_sat'] = int(ar_subset_dbg.get('drop_sat', 0))
+            drop_sats = ar_subset_dbg.get('drop_sats') or []
+            info['ar_subset_drop_sats'] = [int(s) for s in drop_sats]
             info['ar_subset_nb'] = int(ar_subset_dbg.get('nb', 0))
             info['ar_subset_ratio'] = float(ar_subset_dbg.get('ratio', 0.0))
 
@@ -160,7 +156,7 @@ def _ar_starvation_reset(tc, epoch):
         return
     if outcome != 'lambda_zero':
         return
-    tc._ar_starve_streak = int(getattr(tc, '_ar_starve_streak', 0) or 0) + 1
+    tc._ar_starve_streak = int(tc._ar_starve_streak or 0) + 1
     epoch.info['ar_starve_streak'] = tc._ar_starve_streak
     if tc._ar_starve_streak < n_max or tc._recov_cp_hold > 0:
         return
@@ -173,7 +169,7 @@ def _ar_starvation_reset(tc, epoch):
 
 
 def _run_lambda_ar(tc, epoch):
-    """Stage C3 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
+    """Stage C4 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
     tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5

@@ -189,11 +189,8 @@ class ImuGnssTc:
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
         self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
-        self._amb_lam_view = SatFieldView(self._sat_states, 'amb_lam', absent=0.0)
         self._amb_init_epoch_view = SatFieldView(
             self._sat_states, 'amb_init_epoch')
-        self._rejc_cp_pr_view = SatFieldView(
-            self._sat_states, 'rejc_cp_pr', absent=0)
         self._fix_streak_view = SatFieldView(
             self._sat_states, 'fix_streak', absent=0)
 
@@ -209,7 +206,6 @@ class ImuGnssTc:
         # initialized here for any access before the first epoch.
         self.ref_sats = {}
         self.amb_gen = {}
-        self.amb_lam = {}
         self.amb_init_epoch = {}
 
         self._init_epoch_state_defaults()
@@ -220,12 +216,17 @@ class ImuGnssTc:
         self._ar_context_reject = None
         self._ar_subset_debug = None
         self._last_ar_outcome = 'not_called'
+        self._ar_starve_streak = 0
+        self._ar_key_pose = None
+        # Phase-1 motion-detection solution history [(tow, ecef), ...]
+        self._sol_hist = []
+        # Phase-2 smoother config / bias anchor (set at transition)
+        self.fls_lag = None
+        self.tc_bias_init = None
         # Per-epoch DDCP / DDPR factor bookkeeping (reset in build_dd_factors)
         self._ar_cp_visible_sf = set()
         self._last_custom_ddcp_local = set()
         self._last_custom_ddcp_global = {}
-        self._last_cp_pr_reject = 0
-        self._last_rejc_wipe = 0
         self._last_ddpr_sat_tags = []
         self._last_main_ddpr_res = 0.0
         self._last_main_ddpr_per_sat = {}
@@ -233,7 +234,6 @@ class ImuGnssTc:
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # write_marginals diagnostics (cp visibility hysteresis)
-        self._cp_visible_sf_last_ep = {}
         # FLS-update timing accumulators
         self._fls_update_calls = 0
         self._fls_update_time_total = 0.0
@@ -271,14 +271,8 @@ class ImuGnssTc:
         total_factor_count is never reset here — zeroing the cumulative
         counter once made the held-CP FDE bookkeeping silently inert.
         """
-        cfg = self.cfg
-        self.thresslip = cfg.thres_slip
-        self.cmc_thresh = cfg.cmc_thresh
-        self.cn0_min = cfg.cn0_min
-        self.ar_wait_new = cfg.ar_wait_new
         self.ref_sats = {}
         self.amb_gen = {}
-        self.amb_lam = {}
         self.amb_init_epoch = {}
 
 
@@ -298,9 +292,7 @@ class ImuGnssTc:
     _VIEW_FORWARDS = {
         'amb_keys_tc': '_amb_key_view',
         'amb_gen': '_amb_gen_view',
-        'amb_lam': '_amb_lam_view',
         'amb_init_epoch': '_amb_init_epoch_view',
-        'rejc_cp_pr': '_rejc_cp_pr_view',
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
@@ -327,9 +319,7 @@ class ImuGnssTc:
 
     def _antenna_ecef(self, pose, ecef_body):
         """ECEF antenna position = body ECEF + R_body @ lever. Lever=0 → passthrough."""
-        lever_arr = np.array(self.lever_arm_tc) \
-            if getattr(self, 'lever_arm_tc', None) is not None \
-            else np.zeros(3)
+        lever_arr = np.array(self.lever_arm_tc)
         if np.linalg.norm(lever_arr) == 0:
             return ecef_body
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
@@ -386,9 +376,7 @@ class ImuGnssTc:
     def _ddpr_only_position(self, obs, obsb, obs_sd, rs, rsb,
                               sat, el, iu, ir_map, pose_init):
         """Standalone DDPR-only LS. See utils.ls_solvers.ddpr_only_position."""
-        lever = (self.lever_arm_tc
-                 if getattr(self, 'lever_arm_tc', None) is not None
-                 else gtsam.Point3(0, 0, 0))
+        lever = self.lever_arm_tc
         ctx = _DDPRContext(
             R_enu2ecef=self.R_enu2ecef,
             base_ecef=self.base_ecef,

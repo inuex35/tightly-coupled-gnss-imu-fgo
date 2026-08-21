@@ -35,11 +35,11 @@ def _ddpr_multipath_dominated(tc, info):
     return False
 
 
-def run_ddpr_sanity(tc, graph, estimate, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
+def run_ddpr_sanity(tc, graph, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map, key_idx, info, nb=0):
     """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
     main_res = info.get('main_ddpr_res', 0.0)
-    if not _ddpr_sanity_trigger(tc, main_res, info):
+    if not _ddpr_sanity_trigger(tc, main_res):
         return None
     if _ddpr_multipath_dominated(tc, info):
         return None
@@ -132,7 +132,7 @@ def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=
     return _tc_recovery.advance_epoch_and_pack(tc, ecef_tc_now, 'FLT', 0, info, obs)
 
 
-def _ddpr_sanity_trigger(tc, main_res, info):
+def _ddpr_sanity_trigger(tc, main_res):
     """Escalation step 1: clean residual signal → reset bad-count, return False."""
     rms_bad = main_res > tc.cfg.main_ddpr_res_thresh
     if not rms_bad:

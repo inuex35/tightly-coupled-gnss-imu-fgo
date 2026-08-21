@@ -44,7 +44,7 @@ def build(tc, sat_list):
     own keys), a missing pose key, fewer than two candidates, a marginals
     failure, or non-finite covariance.
     """
-    smoother = getattr(tc, 'isam2', None)
+    smoother = tc.isam2
     if tc.phase != 2 or smoother is None:
         return None
     isam2 = smoother.getISAM2()
@@ -73,7 +73,7 @@ def build(tc, sat_list):
         return None
 
     in_graph = [sf for sf in keys if sf in key_of and est.exists(key_of[sf])]
-    key_pose = getattr(tc, '_ar_key_pose', None)
+    key_pose = tc._ar_key_pose
     if key_pose is None:
         return None
     kv = gtsam.KeyVector()

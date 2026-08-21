@@ -43,7 +43,7 @@ def _resolve_native(tc, sat_list):
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
-        el_mask=float(getattr(tc.nav, 'elmaskar', 0.0)))
+        el_mask=float(tc.nav.elmaskar))
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations)
     nav_bridge.publish_attempt(tc, sat_list, res)
@@ -95,7 +95,7 @@ def _try_subset_ar(tc, sat, el, amb_dict):
 
 
 def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
-              key_pose, amb_dict):
+              key_pose, amb_dict, graph=None):
     """LAMBDA AR with validation."""
     tc._ar_subset_debug = None
     tc._last_ar_outcome = 'not_called'
@@ -107,10 +107,10 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
     if nb <= 0:
         return 0, None
     if not ar_gates.validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
-                         estimate=estimate, key_pose=key_pose):
+                         estimate=estimate, key_pose=key_pose, graph=graph):
         return 0, None
     if tc.nav.armode == 3:
-        if not ar_hold.apply_fix_and_hold(tc, estimate, key_pose, amb_dict, xa):
+        if not ar_hold.apply_fix_and_hold(tc, key_pose, amb_dict, xa):
             return 0, None
     tc.nav.smode = 4
     return nb, xa

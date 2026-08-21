@@ -32,7 +32,7 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
 
             if (obsb is not None and ir_map is not None and
                     s in ir_map and f < len(lams) and lams[f] > 0 and
-                    tc.cmc_thresh > 0):
+                    tc.cfg.cmc_thresh > 0):
                 _detslp_cmc(tc, sat_state, obs, obsb, iu[i], ir_map[s],
                             s, f, lams[f], cmc_exclude)
 
@@ -136,7 +136,7 @@ def _detslp_cmc(tc, sat_state, obs, obsb, row, brow, s, f, lam,
         return
     cmc = (pr_rov - pr_bas) - (cp_rov - cp_bas) * lam
     prev = sat_state.cmc
-    if prev is not None and abs(cmc - prev) > tc.cmc_thresh:
+    if prev is not None and abs(cmc - prev) > tc.cfg.cmc_thresh:
         cmc_exclude.add((s, f))
     sat_state.cmc = cmc
 
@@ -150,7 +150,7 @@ def _detslp_gf(tc, obs, row, s, lams, nf, reset_keys):
     gf = L1 * lams[0] - L2 * lams[1]
     prev_gf = tc._sat_states.gf
     if s in prev_gf and prev_gf[s] != 0:
-        if abs(gf - prev_gf[s]) > tc.thresslip:
+        if abs(gf - prev_gf[s]) > tc.cfg.thres_slip:
             for f in range(nf):
                 reset_keys.add((s, f))
     prev_gf[s] = gf

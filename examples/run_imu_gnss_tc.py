@@ -37,10 +37,14 @@ def parse_args():
             sys.argv[4], sys.argv[5])
 
 
-def _format_sat_freq(sat, freq):
+def _format_sat(sat):
     sys_i, prn = sat2prn(int(sat))
     sys_ch = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}.get(sys_i, '?')
-    return f"{sys_ch}{prn:02d}f{int(freq)}"
+    return f"{sys_ch}{prn:02d}"
+
+
+def _format_sat_freq(sat, freq):
+    return f"{_format_sat(sat)}f{int(freq)}"
 
 
 def _pose_rph_deg(tc):
@@ -334,21 +338,21 @@ def main():
             if 'lambda_correction' in info:
                 extra += f" λcorr={info['lambda_correction']:.3f}"
             if info.get('ar_subset_used'):
-                drop_sat = int(info.get('ar_subset_drop_sat', 0))
-                sys_i, prn = sat2prn(drop_sat)
-                sys_ch = {0:'G',1:'E',2:'J',3:'C',4:'R'}.get(sys_i, '?')
+                drop_txt = '+'.join(
+                    _format_sat(int(s))
+                    for s in (info.get('ar_subset_drop_sats') or [])) or '-'
                 extra += (
-                    f" SUBSET_AR({sys_ch}{prn:02d}"
+                    f" SUBSET_AR({drop_txt}"
                     f",nb={int(info.get('ar_subset_nb', 0))}"
                     f",r={float(info.get('ar_subset_ratio', 0.0)):.2f})"
                 )
             if 'lambda_corr_hard_reject' in info:
                 extra += f" LCHR({info['lambda_corr_hard_reject']:.2f})"
-            if info.get('weak_fix_reject'):
+            if info.get('low_nb_fix_reject'):
                 extra += (
-                    f" WEAK_FIX_REJ(nb={int(info.get('weak_fix_reject_nb', 0))}"
-                    f",lc={float(info.get('weak_fix_reject_lc', 0.0)):.2f}"
-                    f",mres={float(info.get('weak_fix_reject_main_ddpr_res', 0.0)):.2f})"
+                    f" LOW_NB_REJ(nb={int(info.get('low_nb_fix_reject_nb', 0))}"
+                    f",lc={float(info.get('low_nb_fix_reject_lc', 0.0)):.2f}"
+                    f",mres={float(info.get('low_nb_fix_reject_main_ddpr_res', 0.0)):.2f})"
                 )
             if 'prev_pose_drift' in info:
                 extra += f" prev_drift={info['prev_pose_drift']:.3f}"
@@ -366,10 +370,9 @@ def main():
                 f_rel = int(info.get('held_release_flt_freq', 0) or 0)
                 score_rel = float(info.get('held_release_flt_score', 0.0) or 0.0)
                 res_rel = float(info.get('held_release_flt_res', 0.0) or 0.0)
-                cppr_rel = int(info.get('held_release_flt_cppr', 0) or 0)
                 extra += (
                     f" HREL({_format_sat_freq(s_rel, f_rel)}"
-                    f",score={score_rel:.1f},res={res_rel:.1f},cppr={cppr_rel})"
+                    f",score={score_rel:.1f},res={res_rel:.1f})"
                 )
 
         if True:  # (kept indent; printing is unconditional)
@@ -475,7 +478,6 @@ def main():
         per_sat_truth_dump = []
         sat_el_dump = []
         sat_snr_dump = []
-        sat_cppr_dump = []
         pair_main_dump = []
         pair_truth_dump = []
         ref_sats_dump = []
@@ -488,8 +490,6 @@ def main():
             sat_el_dump.append(dict(se) if se else None)
             ss = r.get('sat_snr_dbhz', None)
             sat_snr_dump.append(dict(ss) if ss else None)
-            sc = r.get('sat_cppr_sat', None)
-            sat_cppr_dump.append(dict(sc) if sc else None)
             pm = r.get('main_ddpr_pairs', None)
             pair_main_dump.append(list(pm) if pm else None)
             pt = r.get('ddpr_pairs_at_truth', None)
@@ -501,7 +501,6 @@ def main():
                          'per_sat_truth': per_sat_truth_dump,
                          'sat_el_deg': sat_el_dump,
                          'sat_snr_dbhz': sat_snr_dump,
-                         'sat_cppr_sat': sat_cppr_dump,
                          'pair_main': pair_main_dump,
                          'pair_truth': pair_truth_dump,
                          'ref_sats': ref_sats_dump,

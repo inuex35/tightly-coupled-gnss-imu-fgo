@@ -41,7 +41,7 @@ def _tropo_delay(obs_t, pos, el_rad):
     return (hs + wet) * m
 
 
-def _iono_free_rows(tc, epoch):
+def _iono_free_rows(epoch):
     """(satellite, ECEF position, IF pseudorange [m], sat clock [s], el [rad])."""
     pos = ecef2pos(np.asarray(epoch.pred_ecef, dtype=float))
     rows = []
@@ -75,7 +75,7 @@ def estimate_clock_bias(tc, epoch):
     arbitrary as far as the Doppler factors are concerned, but as soon as
     pseudoranges observe it, it has to start at the value they mean.
     """
-    rows = _iono_free_rows(tc, epoch)
+    rows = _iono_free_rows(epoch)
     if not rows:
         return None
     p_r = np.asarray(epoch.pred_ecef, dtype=float)
@@ -97,7 +97,7 @@ def add_clock_pr_factors(tc, epoch):
 
     lever = np.asarray(tc.lever_arm, dtype=float)
     n = 0
-    for _s, p_sat, pr, dts, el in _iono_free_rows(tc, epoch):
+    for _s, p_sat, pr, dts, el in _iono_free_rows(epoch):
         model = gtsam.noiseModel.Isotropic.Sigma(
             1, sigma / max(np.sin(el), 0.1))
         epoch.graph.add(gtsam.PseudorangeFactorArm(
