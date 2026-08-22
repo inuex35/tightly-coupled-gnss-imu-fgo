@@ -124,6 +124,17 @@ class AmbiguityResolver:
         b, s, nfix, ps = mlambda(y, Q, parmode=self.parmode, P0=self.par_p0)
         s0 = float(s[0]) if len(s) > 0 else 0.0
         s1 = float(s[1]) if len(s) > 1 else 0.0
+        if s0 <= 1e-12 * max(s1, 1.0):
+            # Exact-fit best candidate (held ambiguities re-entering the
+            # search): s0 is numerical noise, and s1/s0 measures nothing.
+            # Without this floor the FP draw between an exact 0.0 and a
+            # denormal decides the recorded ratio (0 vs astronomical),
+            # and that garbage value persists in prev_ratio2 where it
+            # arms or disarms the demo5 exclusion retry for every
+            # following epoch. Normalize to the no-ratio-information
+            # case; the s0 <= 0 acceptance branch below still accepts
+            # the fix itself.
+            s0 = 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
         result = ResolverResult(ratio=ratio, s0=s0, s1=s1, nfix=int(nfix),
                           ps=float(ps), pairs=pairs)

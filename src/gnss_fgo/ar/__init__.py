@@ -105,18 +105,6 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
                 if 1 <= s <= tc.nav.vsat.shape[0]:
                     tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
-        if tc.phase != 2:
-            # Phase 1 resolves through cssrlib's resamb as the PARITY
-            # implementation, not a fallback: the native construction
-            # agrees to ~9 digits from the first attempt (probed), but
-            # the shared-key bootstrap problem is ULP-chaotic — the
-            # assembly-order difference alone forks the decision stream
-            # and was measured at 21.35 -> 35.49 AllRMS. Bit-parity
-            # requires cssrlib's exact arithmetic, which is this call.
-            if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
-                return tc.resamb_lambda_rtklib(sat_list)
-            return tc.resamb_lambda(sat_list, tc.nav.parmode,
-                                    tc.nav.par_P0)
         native = (_resolve_native_retry(tc, sat_list, amb_dict)
                   if tc.cfg.rtklib_mode
                   else _resolve_native(tc, sat_list, amb_dict))
@@ -176,21 +164,13 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
     """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc.ar_diag.resamb_raw_nb = -1
     try:
-        # Phase 2: native only (no fallback — problem-unposed epochs
-        # simply do not fix). Phase 1: cssrlib as the parity
-        # implementation, see _run_single_ar_attempt.
-        if tc.phase != 2:
-            if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
-                nb, xa = tc.resamb_lambda_rtklib(sat)
-            else:
-                nb, xa = tc.resamb_lambda(sat, tc.nav.parmode,
-                                          tc.nav.par_P0)
-        else:
-            sats = [int(x) for x in sat]
-            native = (_resolve_native_retry(tc, sats, amb_dict)
-                      if tc.cfg.rtklib_mode
-                      else _resolve_native(tc, sats, amb_dict))
-            nb, xa = native
+        # Native only, both phases (no fallback — problem-unposed
+        # epochs simply do not fix).
+        sats = [int(x) for x in sat]
+        native = (_resolve_native_retry(tc, sats, amb_dict)
+                  if tc.cfg.rtklib_mode
+                  else _resolve_native(tc, sats, amb_dict))
+        nb, xa = native
     except (Exception, SystemExit) as ex:
         # cssrlib mlambda raises SystemExit when Qah is not positive definite
         tc.ar_diag.outcome = 'lambda_exception'
