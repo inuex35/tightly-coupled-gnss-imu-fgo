@@ -77,6 +77,7 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
     sat_list = [int(s) for s in sat]
     vsat_snapshot = tc.nav.vsat.copy()
     fix_snapshot = tc.nav.fix.copy()
+    lock_snapshot = tc.nav.lock.copy()
     try:
         if sat_exclude is not None:
             if isinstance(sat_exclude, (int, np.integer)):
@@ -94,6 +95,8 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
         if restore_state:
             tc.nav.vsat[:, :] = vsat_snapshot
             tc.nav.fix[:, :] = fix_snapshot
+            # Probing attempts must not age the lock counters.
+            tc.nav.lock[:, :] = lock_snapshot
 
 
 def _try_subset_ar(tc, sat, el, amb_dict):
