@@ -1,8 +1,8 @@
 """Every write the AR path makes to cssrlib's ``nav`` state, in one place.
 
 The graph is the estimator; ``nav`` survives as the interface to cssrlib's
-validation (``zdres``/``sdres``/``valpos``), to LAMBDA when the cssrlib path
-runs it, and to this project's own gates. These writes *are* the contract
+validation (``zdres``/``sdres``/``valpos``) and to this project's own gates.
+These writes *are* the contract
 between the two worlds, and every one of them has been broken at least once
 by being implicit -- the table says who reads each field, so the next change
 knows what it is touching.
@@ -35,10 +35,7 @@ def publish_attempt(tc, sat_list, result):
     """Side effects of one resolution attempt, accepted or not.
 
     ``nav.fix`` comes from ``ddidx`` itself rather than a re-implementation:
-    its marks are quirky (the reference of a singleton group is flagged even
-    though no difference is formed; below-mask satellites are flagged only
-    when they precede the reference in PRN order) and reproducing them by
-    hand is how the two paths once drifted apart.
+    its marks are quirky and hand-written reproductions have drifted.
     """
     tc.ddidx(tc.nav, sat_list)
     tc._last_s0, tc._last_s1 = result.s0, result.s1
@@ -80,10 +77,8 @@ def update_lock_counters(tc, sat_list):
 def publish_retry_success(tc, ratio):
     """First-pass fix: prev_ratio2 follows it, the cursor resets.
 
-    A degenerate exact-fit success (ratio normalized to 0 by the
-    resolver's noise floor) measured nothing: keep the last real ratio
-    instead of overwriting the retry heuristic's memory with a
-    non-measurement.
+    A degenerate exact-fit success (ratio 0) measured nothing: keep the
+    last real ratio instead of overwriting the heuristic's memory.
     """
     if ratio > 0.0:
         tc.nav.prev_ratio2 = ratio
