@@ -213,7 +213,16 @@ def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries):
 
 
 def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
-    """Treat every CP factor in ``reject_fi`` as a cycle slip: clear the pair's amb keys / holds so the next epoch re-seeds them fresh."""
+    """Purge the arcs behind every rejected CP factor: release holds
+    (as seeds) and discard the float arcs so the next epoch re-seeds.
+
+    NOT slip handling, despite the treatment being the same — one bad
+    residual says nothing about integer continuity (the slip detectors
+    own that call). The arc discard earns its keep differently: the
+    float value is an accumulation of the same measurements FDE just
+    distrusted, and keeping such arcs alive was measured well worse
+    on the AR-heavy run. The purge is history hygiene, not a verdict
+    on the integer."""
     custom_cp_meta = tc._last_custom_ddcp_global or {}
     for fi in reject_fi:
         fac = factors_all.at(fi)
@@ -231,16 +240,10 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
                 st_hold = tc._sat_states.track.get(key)
                 if st_hold is not None and st_hold.held_value is not None:
                     st_hold.release_hold(seed=True)
-        for ki in range(len(fac.keys())):
-            sym = gtsam.Symbol(fac.keys()[ki])
-            if sym.chr() != ord('n'):
-                continue
-            idx = sym.index() % 100000
-            s_fde, f_fde = idx // 10, idx % 10
-            _st = tc._sat_states.track.get((s_fde, f_fde))
-            if _st is not None and _st.amb_key is not None:
-                _st.amb_key = None
-                _st.amb_gen += 1
+        # The float arcs stay: a rejected residual is evidence about
+        # THIS epoch's measurement (already excluded above), not about
+        # the integer's continuity — the slip detectors own that call.
+        # Held integers were already handed over as seeds above.
 
 
 def apply_fde(tc, graph, key_idx, nv, estimate, info):
