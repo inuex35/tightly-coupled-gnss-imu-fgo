@@ -58,7 +58,18 @@ def _resolve_native(tc, sat_list, amb_dict):
                            problem.elevations)
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
-        if res.declined_partial:
+        if 0 < len(res.pairs) < resolver.min_pairs:
+            # The resolver declines a problem with a lone DD pair; the
+            # cssrlib path instead manufactures a degenerate candidate
+            # from it (exact-fit residual, no ratio) and lets a fix
+            # gate kill it downstream — which freezes the starvation
+            # counter. The decline must freeze it the same way, or the
+            # counter drifts one count per lone-pair epoch and every
+            # later starvation purge fires early. Zero-pair declines
+            # keep counting: the cssrlib path is empty-handed there
+            # too and counts them as starvation.
+            tc.ar_diag.outcome = 'min_pairs_declined'
+        elif res.declined_partial:
             # A candidate-stage verdict, not ratio starvation: mlambda
             # produced integers and the partial-AR guard declined them.
             # Classified apart from lambda_zero so the starvation
@@ -196,7 +207,8 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = 0, None
 
     if nb <= 0:
-        if tc.ar_diag.outcome != 'partial_declined':
+        if tc.ar_diag.outcome not in ('partial_declined',
+                                      'min_pairs_declined'):
             tc.ar_diag.outcome = 'lambda_zero'
         return 0, None
     return nb, xa

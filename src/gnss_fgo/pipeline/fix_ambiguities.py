@@ -17,7 +17,7 @@ _AR_OUTCOME_CODES = {
     'lambda_exception': 3, 'lambda_zero': 4, 'min_nb_gate': 5,
     'valpos_failed': 6, 'ar_context_reject': 7, 'success': 8,
     'fix_dres': 11, 'gdop_gate': 12, 'problem_unposed': 13,
-    'partial_declined': 14,
+    'partial_declined': 14, 'min_pairs_declined': 15,
 }
 
 _AR_DIAG_ATTRS = (
