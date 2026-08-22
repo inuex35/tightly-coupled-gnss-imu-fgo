@@ -9,9 +9,10 @@ from ..integrity import recovery as _tc_recovery
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R_enu2ecef', 'el', 'estimate', 'graph', 'imu_idx_prev', 'info', 'ir_map', 'iu',
+    'R_enu2ecef', 'el', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'info',
+    'ir_map', 'iu',
     'key_idx', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_enu', 'pred_nav',
-    'prev_amb_values', 'rs', 'sat', 'skip_cp_now',
+    'prev_amb_values', 'rs', 'sat', 'skip_cp_now', 'vel_prev',
     'slip_keys', 'values',
 )
 STAGE_WRITES = (

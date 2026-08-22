@@ -13,8 +13,8 @@ Selection contract (measured, not designed -- both halves are load-bearing):
   an excluded satellite back in. Each mistake was measured on tokyo run2
   before this line was written the way it is.
 * a **held** ambiguity contributes its pinned value with ``varholdamb``
-  variance on the diagonal, and keeps the graph's off-diagonal terms --
-  the same content ``publish_marginals`` leaves in ``nav.P``.
+  variance on the diagonal; its off-diagonal terms are zero unless the
+  key still lives in the graph.
 """
 
 from dataclasses import dataclass, field
@@ -116,16 +116,14 @@ def build(tc, sat_list, amb_dict):
     gpos = {sf: i for i, sf in enumerate(in_graph)}
     for i, a in enumerate(keys):
         gi = gpos.get(a)
-        if gi is None:
-            cov[i, i] = held_var.get(a, 0.0)
-            continue
-        for j, b in enumerate(keys):
-            gj = gpos.get(b)
-            if gj is not None:
-                cov[i, j] = cov_g[gi, gj]
-        cross[:, i] = cross_g[:, gi]
-    for sf, var in held_var.items():
-        cov[keys.index(sf)][keys.index(sf)] = var
+        if gi is not None:
+            for j, b in enumerate(keys):
+                gj = gpos.get(b)
+                if gj is not None:
+                    cov[i, j] = cov_g[gi, gj]
+            cross[:, i] = cross_g[:, gi]
+        if a in held_var:
+            cov[i, i] = held_var[a]
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
         return None
 
@@ -146,8 +144,7 @@ def fixed_state(tc, problem, result):
     position enough for ``valpos`` to reach a different verdict from the
     same integers.
 
-    Returns ``(xa, Qb, Qab)``; ``Qb``/``Qab`` are handed on so the caller
-    can update ``nav.Pa`` without rebuilding them.
+    Returns ``xa``.
     """
     keys, cov, values = problem.keys, problem.cov, problem.values
     xa = tc.nav.x.copy()
@@ -166,7 +163,7 @@ def fixed_state(tc, problem, result):
     try:
         gain = Qab @ np.linalg.inv(Qb)
     except np.linalg.LinAlgError:
-        return xa, Qb, None
+        return xa
     d_enu = gain @ (D @ (x_float - x_fixed))
     xa[0:3] = tc.nav.x[0:3] - tc.R_enu2ecef @ d_enu
-    return xa, Qb, Qab
+    return xa

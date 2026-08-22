@@ -92,17 +92,14 @@ class ImuGnssTc:
     def _last_s1(self, v):
         self.engine._last_s1 = v
 
-    _NOISE1_CACHE = {}
-
     @staticmethod
     def _noise1(sigma):
-        """Cached 1-D isotropic noise model for ``sigma``."""
-        sigma_f = float(sigma)
-        nm = ImuGnssTc._NOISE1_CACHE.get(sigma_f)
-        if nm is None:
-            nm = gtsam.noiseModel.Isotropic.Sigma(1, sigma_f)
-            ImuGnssTc._NOISE1_CACHE[sigma_f] = nm
-        return nm
+        """1-D isotropic noise model for ``sigma``.
+
+        Not cached: with elevation-dependent varerr sigmas nearly every
+        DD pair is a fresh key, so a cache only accumulates.
+        """
+        return gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))
 
     def __init__(self, nav, pos0, base_ecef, imu_data,
                  lever_arm=np.zeros(3), logfile=None, cfg=None):

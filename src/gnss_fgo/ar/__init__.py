@@ -58,8 +58,7 @@ def _resolve(tc, sat_list, amb_dict):
             # partial-AR guard declined them.
             tc.ar_diag.outcome = 'partial_declined'
         return 0, tc.nav.x.copy()
-    xa, Qb, Qab = ar_problem.fixed_state(tc, problem, res)
-    nav_bridge.publish_fix(tc, xa, Qb, Qab)
+    xa = ar_problem.fixed_state(tc, problem, res)
     return res.nb, xa
 
 

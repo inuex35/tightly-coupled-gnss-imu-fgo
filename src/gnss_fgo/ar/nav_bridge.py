@@ -16,7 +16,6 @@ knows what it is touching.
     nav.vsat                 publish_marginals       ddidx selection, retries
     nav.el                   qcedit (cssrlib)        ddidx mask, weights
     nav.fix                  ddidx                   hold policy
-    nav.xa, nav.Pa           accepted fix (both)     hold policy, output
     nav.lock                 retry, every call       next epoch's arfilter
     nav.excsat               retry outcome           next epoch's round-robin
     nav.prev_ratio2          retry outcome           next epoch's arfilter
@@ -39,22 +38,6 @@ def publish_attempt(tc, sat_list, result):
     """
     tc.ddidx(tc.nav, sat_list)
     tc._last_s0, tc._last_s1 = result.s0, result.s1
-
-
-def publish_fix(tc, xa, Qb, Qab):
-    """Side effects of an accepted fix: ``nav.xa`` and ``nav.Pa``."""
-    tc.nav.xa = tc.nav.x.copy()
-    tc.nav.xa[0:tc.nav.na] = xa[0:tc.nav.na]
-    na = tc.nav.na
-    Pa = tc.nav.P[0:na, 0:na].copy()
-    if Qab is not None:
-        Qab_full = np.zeros((na, Qb.shape[0]))
-        Qab_full[0:3, :] = tc.R_enu2ecef @ Qab
-        try:
-            Pa = Pa - Qab_full @ np.linalg.inv(Qb) @ Qab_full.T
-        except np.linalg.LinAlgError:
-            pass
-    tc.nav.Pa = Pa
 
 
 def update_lock_counters(tc, sat_list):
