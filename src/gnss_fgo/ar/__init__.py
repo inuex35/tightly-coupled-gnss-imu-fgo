@@ -47,7 +47,6 @@ def _resolve_native(tc, sat_list, amb_dict):
         # that bookkeeping and shifted the estimate from ep4794
         # (21.35 -> 23.72 AllRMS). The retry wrapper then reproduces
         # prev_ratio1/excsat exactly as cssrlib's failure path did.
-        nav_bridge.update_lock_counters(tc, sat_list)
         tc.ddidx(tc.nav, sat_list)
         tc._last_s0, tc._last_s1 = 0.0, 0.0
         tc.ar_diag.outcome = 'problem_unposed'
