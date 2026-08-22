@@ -39,7 +39,19 @@ def _resolve_native(tc, sat_list, amb_dict):
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
-        return None
+        # cssrlib-parity bookkeeping for unposable epochs — this was
+        # the retired dispatch's hidden, load-bearing value: a FAILED
+        # resamb_lambda still updated lock counters (a second time,
+        # on top of the retry's own update), marked ddidx fix flags,
+        # and zeroed the ratio stash. Returning bare None here starved
+        # that bookkeeping and shifted the estimate from ep4794
+        # (21.35 -> 23.72 AllRMS). The retry wrapper then reproduces
+        # prev_ratio1/excsat exactly as cssrlib's failure path did.
+        nav_bridge.update_lock_counters(tc, sat_list)
+        tc.ddidx(tc.nav, sat_list)
+        tc._last_s0, tc._last_s1 = 0.0, 0.0
+        tc.ar_diag.outcome = 'problem_unposed'
+        return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
@@ -91,9 +103,6 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
         native = (_resolve_native_retry(tc, sat_list, amb_dict)
                   if tc.cfg.rtklib_mode
                   else _resolve_native(tc, sat_list, amb_dict))
-        if native is None:
-            tc.ar_diag.outcome = 'problem_unposed'
-            return 0, None
         return native
     finally:
         if restore_state:
@@ -164,9 +173,6 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             native = (_resolve_native_retry(tc, sats, amb_dict)
                       if tc.cfg.rtklib_mode
                       else _resolve_native(tc, sats, amb_dict))
-            if native is None:
-                tc.ar_diag.outcome = 'problem_unposed'
-                return 0, None
             nb, xa = native
     except (Exception, SystemExit) as ex:
         # cssrlib mlambda raises SystemExit when Qah is not positive definite
