@@ -56,6 +56,7 @@ class ResolverResult:
     s0: float = 0.0
     s1: float = 0.0
     nfix: int = 0                     # integer-fixed count reported by mlambda
+    declined_partial: bool = False    # parmode-2 guard declined a partial fix
     ps: float = 0.0                   # success rate from partial AR
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
 
@@ -139,6 +140,14 @@ class AmbiguityResolver:
         for row, (ref, tgt) in enumerate(pairs):
             fixed.setdefault(ref, float_values[ref])
             fixed[tgt] = fixed[ref] - float(b[row, 0])
+        if self.parmode == 2 and int(nfix) < len(pairs):
+            # Partial AR fixed only nfix of the candidates; reporting
+            # nb = len(pairs) would hold NON-fixed ambiguities at
+            # made-up integers. Until the partial back-substitution is
+            # implemented, decline the fix (dormant at the default
+            # parmode=1).
+            result.declined_partial = True
+            return result
         result.nb = len(pairs)
         result.fixed = fixed
         return result

@@ -79,7 +79,13 @@ def try_subset_ar(tc, sat, el, amb_dict, attempt):
             ratio = ratio_from_last_lambda(tc)
             if nb < min_nb or xa is None:
                 continue
-            score = (float(ratio), int(nb), -k)  # smaller k preferred on ties
+            # Quantize the ratio so ULP noise cannot outrank the
+            # deliberate smaller-k tie-break: a no-op exclusion (a sat
+            # not even in the DD set) perturbs the native problem's
+            # summation order by one variable and shifted the ratio in
+            # the 13th digit — enough for (ratio, nb, -k) to prefer a
+            # 2-sat drop over the equal 1-sat drop (ep1539, run1).
+            score = (round(float(ratio), 6), int(nb), -k)
             if best is None or score > best['score']:
                 best = {
                     'drop_sats': drop_combo,
