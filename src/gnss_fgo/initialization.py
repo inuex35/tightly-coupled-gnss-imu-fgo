@@ -170,6 +170,8 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
         nb, xa = _tc_ar.run_ar(tc, 
             obs, rs, vs, dts, sat, el, iu, est,
             tc.Xp(ep), tc.amb_keys)
+        if nb > 0 and tc.nav.armode == 3:
+            _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.Xp(ep), tc.amb_keys, xa)
 
     sol = xa[0:3] if nb > 0 and tc.nav.smode == 4 else tc.nav.x[0:3]
     tag = 'FIX' if tc.nav.smode == 4 else 'FLT'

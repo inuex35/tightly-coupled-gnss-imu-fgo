@@ -14,7 +14,7 @@ This package root wires them into the epoch flow (:func:`run_ar`).
 import numpy as np
 
 from . import gates as ar_gates
-from . import hold as ar_hold
+from . import hold as ar_hold  # re-exported: callers apply fix-and-hold
 from . import nav_bridge
 from . import problem as ar_problem
 from . import retry as ar_retry
@@ -123,9 +123,7 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
     if not ar_gates.validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
                          estimate=estimate, key_pose=key_pose, graph=graph):
         return 0, None
-    if tc.nav.armode == 3:
-        if not ar_hold.apply_fix_and_hold(tc, key_pose, amb_dict, xa):
-            return 0, None
+    # fix-and-hold is the caller's move, after its remaining verdicts.
     tc.nav.smode = 4
     return nb, xa
 
