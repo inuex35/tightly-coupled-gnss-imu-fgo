@@ -48,7 +48,6 @@ def _resolve_native(tc, sat_list, amb_dict):
         # (21.35 -> 23.72 AllRMS). The retry wrapper then reproduces
         # prev_ratio1/excsat exactly as cssrlib's failure path did.
         tc.ddidx(tc.nav, sat_list)
-        tc._last_s0, tc._last_s1 = 0.0, 0.0
         tc.ar_diag.outcome = 'problem_unposed'
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
