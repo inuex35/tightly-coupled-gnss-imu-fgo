@@ -186,14 +186,6 @@ class TcConfig:
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
-                                   # Line-identical to cssrlib over the FIRST
-                                   # 3000 tokyo run2 epochs and shadow-equal
-                                   # per call, but the full 9151-epoch run
-                                   # measures 42.6 m / 5670 fix against
-                                   # 30.6 m / 5818 on the cssrlib path -- the
-                                   # equivalence does not yet cover the
-                                   # warm-reset-heavy tail, so the proven
-                                   # path stays default until it does.
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5

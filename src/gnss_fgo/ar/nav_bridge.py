@@ -10,11 +10,12 @@ knows what it is touching.
     field                    written by              read by
     -----                    ----------              -------
     nav.x[0:3]               stage/postfit           zdres/sdres/valpos, gates
-    nav.x[na:]               publish_marginals       resamb_lambda, ddidx
-    nav.P                    publish_marginals       resamb_lambda (Qb, Qab)
+    nav.x[na:]               publish_marginals       engine residual chain
+    nav.P                    publish_marginals       (no in-repo reader since
+                                                     the resolver reads ISAM2)
     nav.vsat                 publish_marginals       ddidx selection, retries
     nav.el                   qcedit (cssrlib)        ddidx mask, weights
-    nav.fix                  ddidx (both paths)      restamb, hold policy
+    nav.fix                  ddidx                   hold policy
     nav.xa, nav.Pa           accepted fix (both)     hold policy, output
     nav.lock                 retry, every call       next epoch's arfilter
     nav.excsat               retry outcome           next epoch's round-robin
