@@ -38,6 +38,9 @@ def _resolve(tc, sat_list, amb_dict):
         # (exclusion pass, excsat/prev-ratio writes) must still run on
         # unposable epochs — losing it measurably moved the estimate.
         tc.ar_diag.outcome = 'problem_unposed'
+        # No LAMBDA ran: zero the stash or the retry reads a stale ratio.
+        tc._last_s0 = 0.0
+        tc._last_s1 = 0.0
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
