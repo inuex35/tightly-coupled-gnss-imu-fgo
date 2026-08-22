@@ -77,27 +77,56 @@ def build(tc, sat_list, amb_dict):
     key_pose = tc._ar_key_pose
     if key_pose is None:
         return None
-    kv = gtsam.KeyVector()
-    kv.append(key_pose)
-    for sf in in_graph:
-        kv.append(key_of[sf])
-    try:
-        jm = isam2.jointMarginalCovariance(kv)
-    except (RuntimeError, IndexError):
-        return None
+
+    # One joint-marginal read per epoch: retry/subset attempts resolve
+    # over key subsets of the first attempt, so they slice its cached
+    # extraction instead of asking the smoother again (the failing
+    # epochs that retry hardest are exactly the ones that paid for
+    # dozens of reads).
+    cache = tc.current_epoch.ar_joint_cache
+    if (cache is not None and cache['key_pose'] == key_pose
+            and all(sf in cache['pos'] for sf in in_graph)):
+        idx = [cache['pos'][sf] for sf in in_graph]
+        cov_g = cache['cov'][np.ix_(idx, idx)]
+        cross_g = cache['cross'][:, idx]
+    else:
+        kv = gtsam.KeyVector()
+        kv.append(key_pose)
+        for sf in in_graph:
+            kv.append(key_of[sf])
+        try:
+            jm = isam2.jointMarginalCovariance(kv)
+        except (RuntimeError, IndexError):
+            return None
+        m = len(in_graph)
+        cov_g = np.empty((m, m))
+        cross_g = np.empty((3, m))
+        for i, a in enumerate(in_graph):
+            ka = key_of[a]
+            for j, b in enumerate(in_graph):
+                cov_g[i, j] = jm.at(ka, key_of[b])[0, 0]
+            cross_g[:, i] = jm.at(key_pose, ka)[3:6, 0]
+        if cache is None or len(in_graph) > len(cache['pos']):
+            tc.current_epoch.ar_joint_cache = {
+                'key_pose': key_pose,
+                'pos': {sf: i for i, sf in enumerate(in_graph)},
+                'cov': cov_g, 'cross': cross_g,
+            }
 
     n = len(keys)
     cov = np.zeros((n, n))
     cross = np.zeros((3, n))
-    graph_set = set(in_graph)
+    gpos = {sf: i for i, sf in enumerate(in_graph)}
     for i, a in enumerate(keys):
-        if a not in graph_set:
+        gi = gpos.get(a)
+        if gi is None:
             cov[i, i] = held_var.get(a, 0.0)
             continue
         for j, b in enumerate(keys):
-            if b in graph_set:
-                cov[i, j] = jm.at(key_of[a], key_of[b])[0, 0]
-        cross[:, i] = jm.at(key_pose, key_of[a])[3:6, 0]
+            gj = gpos.get(b)
+            if gj is not None:
+                cov[i, j] = cov_g[gi, gj]
+        cross[:, i] = cross_g[:, gi]
     for sf, var in held_var.items():
         cov[keys.index(sf)][keys.index(sf)] = var
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
