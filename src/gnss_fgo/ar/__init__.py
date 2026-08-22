@@ -39,15 +39,15 @@ def _resolve_native(tc, sat_list, amb_dict):
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
-        # cssrlib-parity bookkeeping for unposable epochs — this was
-        # the retired dispatch's hidden, load-bearing value: a FAILED
-        # resamb_lambda still updated lock counters (a second time,
-        # on top of the retry's own update), marked ddidx fix flags,
-        # and zeroed the ratio stash. Returning bare None here starved
-        # that bookkeeping and shifted the estimate from ep4794
-        # (21.35 -> 23.72 AllRMS). The retry wrapper then reproduces
-        # prev_ratio1/excsat exactly as cssrlib's failure path did.
-        tc.ddidx(tc.nav, sat_list)
+        # Return a no-fix RESULT, never None: bubbling None out of the
+        # retry wrapper killed its continuation (the exclusion pass and
+        # its excsat/prev-ratio writes), and that bookkeeping is what
+        # the retired cssrlib dispatch was actually contributing on
+        # unposable epochs — its absence shifted the estimate from
+        # ep4794 (21.35 -> 23.72). Ablated to this minimal form: the
+        # dispatch's other side effects (double lock update, ddidx
+        # marks, stash zeroing) were all measured non-essential
+        # (line-identical without them).
         tc.ar_diag.outcome = 'problem_unposed'
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
