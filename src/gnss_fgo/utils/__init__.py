@@ -1,3 +1,5 @@
+"""Shared helpers (geometry/rotations, IMU, env parsing), re-exported flat."""
+
 from .geometry import (
     compute_gdop,
     R_ENU2NED,

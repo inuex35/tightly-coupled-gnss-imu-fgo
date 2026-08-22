@@ -277,14 +277,18 @@ class TcConfig:
 
     @classmethod
     def _env_name(cls, field_name):
+        """Env-var name for a field: override table first, else UPPER_CASE."""
         return cls._ENV_OVERRIDES.get(field_name, field_name.upper())
 
 
     @property
-    def zupt(self):    return _SubConfigView(self, 'zupt')
+    def zupt(self):
+        """The zupt_* fields as a prefix-stripped view."""
+        return _SubConfigView(self, 'zupt')
 
     @classmethod
     def from_env(cls):
+        """Build a TcConfig with every field overridable via its env var."""
         kw = {}
         for name, f in cls.__dataclass_fields__.items():
             if name == 'imu_grade':

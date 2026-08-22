@@ -18,6 +18,7 @@ from ..utils import sorted_amb_items
 
 
 def ratio_from_last_lambda(tc):
+    """Ratio from the stashed s0/s1 of the last LAMBDA call (0 when unformed)."""
     s0 = float(tc._last_s0)
     s1 = float(tc._last_s1)
     if s0 <= 0.0:

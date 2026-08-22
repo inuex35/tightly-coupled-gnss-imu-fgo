@@ -9,7 +9,11 @@ _SENTINEL = object()
 
 
 class SatFieldView(MutableMapping):
-    """``MutableMapping`` view of one ``SatState`` field across all entries."""
+    """``MutableMapping`` view of one ``SatState`` field across all entries.
+
+    Entries whose field still equals the absent marker are invisible to
+    iteration/lookup, so the view behaves like a dict of set values only.
+    """
 
     __slots__ = ('_map', '_field', '_absent', '_list_default')
 
