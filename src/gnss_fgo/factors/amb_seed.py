@@ -36,11 +36,9 @@ Writes: ``values`` / ``graph`` (N inserts + priors), ``new_amb``,
 def seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
                        prev_amb_values, key_id):
     """Insert one N value + prior using the three-mode policy above."""
-    if prev_amb_values is not None and key_id in prev_amb_values:
-        n0 = prev_amb_values[key_id][1]
-        values.insert(key_n, n0)
-        graph.addPriorDouble(key_n, n0, tc._noise1(tc.cfg.sigma_cont))
-        return
+    # The pending seed outranks the continuing prior: a demotion
+    # (rejected fix, released hold) hands over an integer to trust
+    # tightly for one epoch, wherever the float currently sits.
     if (sat_st.release_seed_pending
             and sat_st.last_held_value is not None):
         n0 = sat_st.last_held_value
@@ -48,6 +46,11 @@ def seed_one_amb_prior(tc, graph, values, sat_st, key_n, n0_seed,
         graph.addPriorDouble(key_n, n0, tc._noise1(0.1))
         tc.current_epoch.seeded_amb_keys.add(key_id)
         sat_st.release_seed_pending = False
+        return
+    if prev_amb_values is not None and key_id in prev_amb_values:
+        n0 = prev_amb_values[key_id][1]
+        values.insert(key_n, n0)
+        graph.addPriorDouble(key_n, n0, tc._noise1(tc.cfg.sigma_cont))
         return
     sig = tc.cfg.sigma_amb0 if tc.phase == 2 else 3.0
     values.insert(key_n, n0_seed)

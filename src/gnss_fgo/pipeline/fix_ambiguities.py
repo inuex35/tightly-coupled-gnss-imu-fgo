@@ -10,6 +10,7 @@ diagnostics, and the starvation reset that clears a hopeless ambiguity set.
 from .. import ar as _tc_ar
 from ..pipeline import residuals as _tc_residuals
 from ..integrity import recovery as _tc_recovery
+from ..utils import sorted_amb_items
 
 
 _AR_OUTCOME_CODES = {
@@ -92,6 +93,18 @@ def _run_ar_with_marginals(tc, epoch):
                 info['ar_ddpr_xvalidate_delta'] = float(res_xa - res_pre)
             if res_xa > xv_thr:
                 info['ar_ddpr_xvalidate_reject'] = True
+                # Seed the rejected integers instead of holding them:
+                # a one-shot tight prior keeps the storm anchored
+                # without pinning a fix this gate just rejected.
+                n_seeded = 0
+                for (s_d, f_d), _k in sorted_amb_items(amb_snapshot):
+                    if tc.nav.fix[int(s_d) - 1, int(f_d)] == 2:
+                        st_d = tc._sat_states.get(int(s_d), int(f_d))
+                        st_d.last_held_value = float(
+                            epoch.xa[tc.IB(int(s_d), int(f_d), tc.nav.na)])
+                        st_d.release_seed_pending = True
+                        n_seeded += 1
+                info['xvalidate_soft_seeded'] = n_seeded
                 epoch.nb = 0
                 epoch.xa = None
                 tc.nav.smode = 5
