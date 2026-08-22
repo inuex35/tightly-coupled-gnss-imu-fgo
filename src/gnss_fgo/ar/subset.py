@@ -81,7 +81,7 @@ def try_subset_ar(tc, sat, el, amb_dict, attempt):
                 continue
             # Quantize the ratio so ULP noise cannot outrank the
             # deliberate smaller-k tie-break: a no-op exclusion (a sat
-            # not even in the DD set) perturbs the native problem's
+            # not even in the DD set) perturbs the problem's
             # summation order by one variable and shifted the ratio in
             # the 13th digit — enough for (ratio, nb, -k) to prefer a
             # 2-sat drop over the equal 1-sat drop (ep1539, run1).

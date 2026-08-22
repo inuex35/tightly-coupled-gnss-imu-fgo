@@ -26,9 +26,10 @@ and tunnels.
 - **Integrity & recovery** — three slip/multipath detectors, post-fit
   FDE, and an escalation ladder from CP-hold to warm reset
 - **Default-on vs. opt-in** — the results below use the defaults
-  (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA via the cssrlib
-  resolver). The native Python resolver is implemented but ships
-  disabled.
+  (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA). Ambiguity
+  resolution runs on the in-repo resolver, which reads the smoother's
+  joint marginals directly; cssrlib remains the RINEX/ephemeris
+  front-end and residual/validation engine.
 - **Contributed upstream** — the DD, Doppler and undifferenced GNSS
   factors are merged into
   [GTSAM](https://github.com/borglab/gtsam) itself; see the
@@ -46,9 +47,9 @@ end to end:
 
 | run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 21.35 m | 0.23 m  | 0.65 m  | 49.6 % | 55.4 % |
-| run2 |  9151 ep  |  6.34 m | 0.053 m | 0.35 m  | 67.6 % | 75.4 % |
-| run3 | 15301 ep  | 18.61 m | 0.051 m | 0.47 m  | 67.8 % | 71.5 % |
+| run1 | 11928 ep  | 23.39 m | 0.26 m  | 0.54 m  | 48.9 % | 55.2 % |
+| run2 |  9151 ep  |  6.23 m | 0.053 m | 0.38 m  | 67.2 % | 77.3 % |
+| run3 | 15301 ep  | 16.85 m | 0.047 m | 0.48 m  | 68.5 % | 75.7 % |
 
 run1 is the hardest route — a deep canyon plus a full tunnel blackout,
 bridged by IMU + SD Doppler dead reckoning.

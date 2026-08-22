@@ -42,11 +42,11 @@ def build(tc, sat_list, amb_dict):
 
     ``None`` means "no fix this epoch": a missing pose key, fewer than
     two candidates, a marginals failure, or non-finite covariance.
-    Phase 1 resolves through cssrlib (parity implementation) and never
-    reaches here.
     """
-    smoother = tc.isam2
-    if tc.phase != 2 or smoother is None:
+    # Phase 1 estimates on its own short-lag smoother (tc.isam); tc.isam2
+    # only exists from the Phase-2 transition on.
+    smoother = tc.isam2 if tc.phase == 2 else tc.isam
+    if smoother is None:
         return None
     isam2 = smoother.getISAM2()
     if isam2 is None:
