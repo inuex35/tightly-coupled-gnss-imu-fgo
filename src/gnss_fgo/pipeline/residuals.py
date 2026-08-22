@@ -137,6 +137,11 @@ def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
         tag = tag_map.get(i)
         if tag is not None:
             ref, j, _ = tag
+            # Attributing the pair MAX to the reference makes the ref
+            # the per_sat argmax on every epoch — deliberate by
+            # measurement, not an accident: it doubles as an
+            # any-bad-pair-swaps-the-ref policy, and the honest
+            # median attribution measured catastrophically worse.
             if res_m > per_sat.get(ref, 0.0):
                 per_sat[ref] = res_m
             if res_m > per_sat.get(j, 0.0):
