@@ -213,6 +213,10 @@ class CurrentEpochState:
     per-field wipes; object replacement makes the lifetime structural.
     """
 
+    # First AR attempt's joint-marginal extraction; same-epoch retry/
+    # subset attempts slice it instead of re-reading the smoother.
+    ar_joint_cache: Optional[dict] = None
+
     # sys_id -> reference sat. Written by the main DD build, read by
     # the later same-epoch DD solves (LS fallback, sanity anchor, FDE
     # re-solve) so their DD definitions stay comparable.
