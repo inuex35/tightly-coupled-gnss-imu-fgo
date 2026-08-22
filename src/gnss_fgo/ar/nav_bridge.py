@@ -18,7 +18,7 @@ knows what it is touching.
     nav.xa, nav.Pa           accepted fix (both)     hold policy, output
     nav.lock                 retry, every call       next epoch's arfilter
     nav.excsat               retry outcome           next epoch's round-robin
-    nav.prev_ratio1/2        retry outcome           next epoch's arfilter
+    nav.prev_ratio2          retry outcome           next epoch's arfilter
     tc._last_s0/_last_s1     every resolution        ratio gates, diagnostics
 
 """
@@ -78,15 +78,9 @@ def update_lock_counters(tc, sat_list):
 
 
 def publish_retry_success(tc, ratio):
-    """First-pass fix: both previous ratios follow it, the cursor resets."""
-    tc.nav.prev_ratio1 = ratio
+    """First-pass fix: prev_ratio2 follows it, the cursor resets."""
     tc.nav.prev_ratio2 = ratio
     tc.nav.excsat = 0
-
-
-def publish_retry_first_failure(tc, ratio):
-    """First pass failed: only prev_ratio1 tracks it."""
-    tc.nav.prev_ratio1 = ratio
 
 
 def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
