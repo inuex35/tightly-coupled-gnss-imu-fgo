@@ -42,9 +42,9 @@ end to end:
 
 | run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 23.39 m | 0.26 m  | 0.54 m  | 48.9 % | 55.2 % |
-| run2 |  9151 ep  |  6.23 m | 0.053 m | 0.38 m  | 67.2 % | 77.3 % |
-| run3 | 15301 ep  | 16.85 m | 0.047 m | 0.48 m  | 68.5 % | 75.7 % |
+| run1 | 11928 ep  | 21.31 m | 0.27 m  | 0.63 m  | 50.3 % | 57.3 % |
+| run2 |  9151 ep  |  6.11 m | 0.052 m | 0.38 m  | 67.5 % | 77.4 % |
+| run3 | 15301 ep  | 16.50 m | 0.047 m | 0.53 m  | 70.4 % | 76.5 % |
 
 run1 is the hardest route — a deep canyon plus a full tunnel blackout,
 bridged by IMU + SD Doppler dead reckoning.
