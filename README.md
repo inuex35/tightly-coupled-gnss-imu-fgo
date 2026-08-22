@@ -25,9 +25,6 @@ and tunnels.
   Doppler (clock-free), injected even on GDOP-skipped epochs
 - **Integrity & recovery** — three slip/multipath detectors, post-fit
   FDE, and an escalation ladder from CP-hold to warm reset
-- **Default-on, not opt-in** — the results below use the defaults
-  (DD + carrier + SD Doppler + NHC/ZUPT + LAMBDA AR); nothing is
-  hand-tuned per run.
 - **Contributed upstream** — the DD, Doppler and undifferenced GNSS
   factors are merged into
   [GTSAM](https://github.com/borglab/gtsam) itself; see the
