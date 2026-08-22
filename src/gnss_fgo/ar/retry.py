@@ -9,8 +9,8 @@ ratio just dropped below threshold relative to ``prev_ratio2``.
 
 All persistent state (lock counters, cursor, previous ratios) lives on
 ``nav`` through :mod:`nav_bridge` -- next epoch's decisions read it there,
-and keeping any of it on private attributes instead made the cssrlib and
-native runs choose different exclusions from ep127 of tokyo run2 onward.
+and keeping any of it on private attributes instead measurably changed
+which exclusions later epochs chose.
 """
 
 from . import nav_bridge
