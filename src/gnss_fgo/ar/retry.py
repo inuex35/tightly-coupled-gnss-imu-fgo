@@ -33,7 +33,6 @@ def run(tc, sat_list, solve):
     if nb > 0:
         nav_bridge.publish_retry_success(tc, ratio)
         return nb, xa
-    nav_bridge.publish_retry_first_failure(tc, ratio)
 
     if len(sat_list) < tc.nav.minfixsats:
         return 0, xa

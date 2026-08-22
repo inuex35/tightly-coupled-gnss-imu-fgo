@@ -82,7 +82,6 @@ class TcConfig:
     # Cycle slip / multipath
     thres_slip: float = 0.15       # GF slip threshold [m]
     cmc_thresh: float = 3.0        # Code-minus-carrier jump threshold [m]
-    cn0_min: float = 0.0           # C/N0 floor [dB-Hz], 0=off
 
 
     doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
