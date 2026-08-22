@@ -78,11 +78,8 @@ def build(tc, sat_list, amb_dict):
     if key_pose is None:
         return None
 
-    # One joint-marginal read per epoch: retry/subset attempts resolve
-    # over key subsets of the first attempt, so they slice its cached
-    # extraction instead of asking the smoother again (the failing
-    # epochs that retry hardest are exactly the ones that paid for
-    # dozens of reads).
+    # Retry/subset attempts resolve over key subsets of the first
+    # attempt: slice its cached extraction instead of re-reading.
     cache = tc.current_epoch.ar_joint_cache
     if (cache is not None and cache['key_pose'] == key_pose
             and all(sf in cache['pos'] for sf in in_graph)):
