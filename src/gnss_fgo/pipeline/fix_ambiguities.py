@@ -80,6 +80,12 @@ def _run_ar_with_marginals(tc, epoch):
         epoch.obs, epoch.rs, epoch.vs, epoch.dts,
         epoch.sat, epoch.el, epoch.iu, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
+    # This verdict runs AFTER run_ar applied fix-and-hold, so a
+    # rejected fix leaves its holds behind. That ordering is an
+    # accident, but a measured one: applying holds only after this
+    # gate was tried and lost on run3 — the rejected fix's holds act
+    # as anchors through the storm that follows. Reorder only with a
+    # fresh A/B.
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
