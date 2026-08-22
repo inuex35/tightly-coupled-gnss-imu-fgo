@@ -1,30 +1,8 @@
 """Integer ambiguity resolution over the graph's own float estimate.
 
-The pipeline reaches LAMBDA through cssrlib's EKF class: it writes the
-smoother's marginals into ``nav.x`` / ``nav.P``, sets ``nav.vsat`` / ``nav.fix``
-and calls ``resamb_lambda``, which reads them back out. The EKF itself never
-runs -- ``kfupdate`` and ``udstate`` are not called anywhere in Phase 2 -- so
-what the inheritance buys is four functions (``ddidx``, ``mlambda``,
-``restamb``, the ratio test) at the price of a state container that has to be
-kept in sync by hand, and of contracts that are invisible until they break
-(the ``_last_s0`` ratio stash was silently dropped in a cssrlib refactor and
-cost 0.85 m 3D RMS on tokyo run2 before anyone noticed).
-
-This resolver takes what the graph already has -- float ambiguities and their
-joint covariance -- and returns the fixed ones. No shared state, no index
-arithmetic against ``nav.na``, and the ratio comes back with the result
-instead of being left on the engine for the caller to find.
-
-Relation to cssrlib
--------------------
-cssrlib's ``resolve_ambiguities()`` (cssrlib-numba PR #10) is the nav-side
-counterpart: same LAMBDA, same demo5 retry, answer returned as an
-``ResolverResult`` -- but its inputs still live in ``nav.x`` / ``nav.P``. This
-class is the nav-free half: the problem arrives as arguments (built by
-:mod:`gnss_fgo.ar.problem` from the smoother) and nothing here reads or
-writes shared state. The two are verified equivalent -- shadowed in both
-directions over tokyo run2 (4361 + 2422 calls, identical nb and ratio) and
-line-identical over sequential 3000-epoch runs.
+Takes what the graph already has -- float ambiguities and their joint
+covariance -- and returns the fixed ones. No shared state, no index
+arithmetic against ``nav.na``; the ratio comes back with the result.
 
 The double-difference construction matches cssrlib's ``ddidx``: within each
 constellation and frequency, the lowest-numbered satellite above the
@@ -44,10 +22,9 @@ class ResolverResult:
     """Outcome of one resolution attempt.
 
     Deliberately NOT named ArResult: cssrlib's class of that name carries a
-    boolean ``fixed`` while this one carries the fixed (sat, freq) -> value
-    map, and ``if result.fixed:`` happens to behave identically on both --
-    the difference only surfaces as a TypeError on the first epoch that
-    actually fixes. Distinct names make a mix-up an ImportError instead.
+    boolean ``fixed`` where this one carries a dict, and the mix-up would
+    only surface at the first fixing epoch. Distinct names make it an
+    ImportError instead.
     """
 
     nb: int = 0                       # number of fixed DD ambiguities
@@ -125,15 +102,10 @@ class AmbiguityResolver:
         s0 = float(s[0]) if len(s) > 0 else 0.0
         s1 = float(s[1]) if len(s) > 1 else 0.0
         if s0 <= 1e-12 * max(s1, 1.0):
-            # Exact-fit best candidate (held ambiguities re-entering the
-            # search): s0 is numerical noise, and s1/s0 measures nothing.
-            # Without this floor the FP draw between an exact 0.0 and a
-            # denormal decides the recorded ratio (0 vs astronomical),
-            # and that garbage value persists in prev_ratio2 where it
-            # arms or disarms the demo5 exclusion retry for every
-            # following epoch. Normalize to the no-ratio-information
-            # case; the s0 <= 0 acceptance branch below still accepts
-            # the fix itself.
+            # Exact fit (held ambiguities re-entering the search): s0 is
+            # FP noise and s1/s0 measures nothing. Without this floor the
+            # draw between an exact 0.0 and a denormal decides the recorded
+            # ratio -- and, through prev_ratio2, the retry policy.
             s0 = 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
         result = ResolverResult(ratio=ratio, s0=s0, s1=s1, nfix=int(nfix),

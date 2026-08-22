@@ -186,14 +186,6 @@ class TcConfig:
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
-                                   # Line-identical to cssrlib over the FIRST
-                                   # 3000 tokyo run2 epochs and shadow-equal
-                                   # per call, but the full 9151-epoch run
-                                   # measures 42.6 m / 5670 fix against
-                                   # 30.6 m / 5818 on the cssrlib path -- the
-                                   # equivalence does not yet cover the
-                                   # warm-reset-heavy tail, so the proven
-                                   # path stays default until it does.
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5
@@ -277,14 +269,18 @@ class TcConfig:
 
     @classmethod
     def _env_name(cls, field_name):
+        """Env-var name for a field: override table first, else UPPER_CASE."""
         return cls._ENV_OVERRIDES.get(field_name, field_name.upper())
 
 
     @property
-    def zupt(self):    return _SubConfigView(self, 'zupt')
+    def zupt(self):
+        """The zupt_* fields as a prefix-stripped view."""
+        return _SubConfigView(self, 'zupt')
 
     @classmethod
     def from_env(cls):
+        """Build a TcConfig with every field overridable via its env var."""
         kw = {}
         for name, f in cls.__dataclass_fields__.items():
             if name == 'imu_grade':

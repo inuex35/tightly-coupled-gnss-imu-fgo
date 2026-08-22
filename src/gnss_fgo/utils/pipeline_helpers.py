@@ -1,11 +1,9 @@
 """Small helpers shared across the gnss_fgo pipeline.
 
-Previously each consumer kept its own private copy. The deterministic
-sort helpers in particular live in four places (factors / ar /
-optimize.stage / preprocess.gate) and produce identical iteration
-order — TBB / dict-hash determinism work upstream relies on these,
-so they have to stay byte-for-byte equivalent. Centralising removes
-the drift risk.
+The deterministic sort helpers exist so every consumer iterates
+satellites and ambiguities in one identical order — reproducibility
+work upstream relies on that, so all callers must share these
+byte-for-byte rather than keep private copies.
 """
 
 import numpy as np

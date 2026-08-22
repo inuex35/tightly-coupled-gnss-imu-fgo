@@ -9,11 +9,8 @@ drives up to three optional pseudo-measurements:
 
 Each is independently gated by its own σ knob in ``cfg.zupt.*``.
 ``add_zupt_factors`` is callable from any code path
-(optimize.py and the recovery outage paths). ``add_zupt_factors_for_stage`` is
-the optimize-stage epoch wrapper.
-
-Extracted from ``factors_support.py`` during the Phase 2 architectural
-refactor; behaviour unchanged.
+(the C1 factor stage and the recovery outage paths);
+``add_zupt_factors_for_stage`` is its epoch wrapper for Stage C1.
 """
 
 import numpy as np
@@ -23,6 +20,7 @@ from ..utils import compute_zupt_stats as _utils_compute_zupt_stats
 
 
 def _clear_zupt_anchor(rec):
+    """Drop the stored ZUPT anchor pose (stationary segment ended)."""
     if rec is not None:
         rec.zupt_anchor_pose = None
         rec.zupt_anchor_start_ep = None
@@ -73,6 +71,7 @@ def _zupt_should_fire(tc, n_imu, info, imu_idx_prev, vel_prev, gnss_available):
 
 
 def _add_zero_velocity_prior(tc, graph, key_idx, info, sigma):
+    """Prior v=0 on this epoch's velocity key."""
     if sigma <= 0:
         return False
     graph.add(gtsam.PriorFactorVector(
@@ -84,6 +83,7 @@ def _add_zero_velocity_prior(tc, graph, key_idx, info, sigma):
 
 
 def _add_zaru_factor(tc, graph, key_idx, info, sigma_rot):
+    """Zero-angular-rate Between on the pose pair (rotation tight, translation loose)."""
     if sigma_rot <= 0 or key_idx <= 0:
         return False
     sigmas_pose = np.array(
@@ -98,6 +98,7 @@ def _add_zaru_factor(tc, graph, key_idx, info, sigma_rot):
 
 def _maybe_capture_or_apply_anchor(tc, graph, key_idx, info, rec, pose_prev,
                                     sig_t, sig_r):
+    """First stationary epoch captures the anchor pose; later ones get a prior to it."""
     if rec is None or sig_t <= 0 or sig_r <= 0:
         return False
     if rec.zupt_anchor_pose is None:
@@ -120,8 +121,8 @@ def _maybe_capture_or_apply_anchor(tc, graph, key_idx, info, rec, pose_prev,
 def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
                              pose_prev=None, gnss_available=True,
                              vel_prev=None):
-    """GICI-style ZUPT, callable from optimize.py and the recovery
-    outage paths.
+    """GICI-style ZUPT, callable from the C1 factor stage and the
+    recovery outage paths.
 
     On a stationary detection (gates: acc_std / gyro_std / gyro_median
     against bias-init-subtracted residuals; gravity check optional;
