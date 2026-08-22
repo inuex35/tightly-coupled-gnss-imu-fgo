@@ -32,11 +32,12 @@ def _resolve(tc, sat_list, amb_dict):
     Three stages, one module each: :mod:`ar_problem` reads the smoother into
     a self-contained problem, :class:`AmbiguityResolver` fixes the integers,
     and :mod:`nav_bridge` publishes the side effects cssrlib's callers still
-    read. ``None`` means "fall back to the cssrlib path".
+    read. Always returns ``(nb, x)`` — a no-fix outcome is a result, not an
+    excuse to fall anywhere.
 
-    Equivalence with that path is measured, not assumed: shadowed in both
-    directions over tokyo run2 (4361 + 2422 calls) with identical nb and
-    ratio, and sequential 3000-epoch runs are line-identical.
+    Equivalence with the retired cssrlib dispatch was measured, not assumed:
+    shadowed in both directions over tokyo run2 (4361 + 2422 calls) with
+    identical nb and ratio, and sequential 3000-epoch runs line-identical.
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
@@ -170,8 +171,10 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
         nb, xa = (_resolve_with_retry(tc, sats, amb_dict)
                   if tc.cfg.rtklib_mode
                   else _resolve(tc, sats, amb_dict))
-    except (Exception, SystemExit) as ex:
-        # cssrlib mlambda raises SystemExit when Qah is not positive definite
+    except Exception as ex:
+        # mlambda raises LambdaError (a LinAlgError) when Qah is not
+        # positive definite — a live path in the degenerate held-fit
+        # regime, not a can't-happen guard.
         tc.ar_diag.outcome = 'lambda_exception'
         tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
         return 0, None
@@ -181,7 +184,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             and len(amb_dict) >= int(tc.cfg.subset_ar_min_nb) + 1):
         try:
             nb, xa = _try_subset_ar(tc, sat, el, amb_dict)
-        except (Exception, SystemExit) as ex:
+        except Exception as ex:
             tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
             nb, xa = 0, None
 
