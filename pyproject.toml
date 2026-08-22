@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gnss-fgo"
+version = "0.1.0"
+description = "Tightly coupled GNSS RTK + IMU on GTSAM factor graphs"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "inuex35" }]
+dependencies = [
+    "numpy",
+    # gtsam and cssrlib deliberately do NOT come from PyPI — the
+    # pipeline needs custom factors and a fork-only DD-only RTK core.
+    # See requirements.txt for the exact install commands and the pin.
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib"]
+
+[project.urls]
+Repository = "https://github.com/inuex35/tightly-coupled-gnss-imu-fgo"
+
+[tool.setuptools.packages.find]
+where = ["src"]
