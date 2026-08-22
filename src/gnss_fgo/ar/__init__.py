@@ -58,6 +58,14 @@ def _resolve_native(tc, sat_list, amb_dict):
                            problem.elevations)
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
+        if res.declined_partial:
+            # A candidate-stage verdict, not ratio starvation: mlambda
+            # produced integers and the partial-AR guard declined them.
+            # Classified apart from lambda_zero so the starvation
+            # counter freezes, exactly as it does when the cssrlib path
+            # over-reports the same candidate and a downstream fix gate
+            # rejects it.
+            tc.ar_diag.outcome = 'partial_declined'
         return 0, tc.nav.x.copy()
     xa, Qb, Qab = ar_problem.fixed_state(tc, problem, res)
     nav_bridge.publish_fix(tc, xa, Qb, Qab)
@@ -188,7 +196,8 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = 0, None
 
     if nb <= 0:
-        tc.ar_diag.outcome = 'lambda_zero'
+        if tc.ar_diag.outcome != 'partial_declined':
+            tc.ar_diag.outcome = 'lambda_zero'
         return 0, None
     return nb, xa
 
