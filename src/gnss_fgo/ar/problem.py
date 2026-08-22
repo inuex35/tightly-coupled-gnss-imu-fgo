@@ -37,12 +37,13 @@ class ArProblem:
     elevations: dict = field(default_factory=dict)   # sat -> el [rad]
 
 
-def build(tc, sat_list):
+def build(tc, sat_list, amb_dict):
     """Assemble the :class:`ArProblem`, or ``None`` when it cannot be posed.
 
-    ``None`` means "let the caller fall back": Phase 1 (its own smoother, its
-    own keys), a missing pose key, fewer than two candidates, a marginals
-    failure, or non-finite covariance.
+    ``None`` means "no fix this epoch": a missing pose key, fewer than
+    two candidates, a marginals failure, or non-finite covariance.
+    Phase 1 resolves through cssrlib (parity implementation) and never
+    reaches here.
     """
     smoother = tc.isam2
     if tc.phase != 2 or smoother is None:
@@ -53,7 +54,7 @@ def build(tc, sat_list):
     est = smoother.calculateEstimate()
 
     keys, values, held_var = [], {}, {}
-    key_of = dict(sorted_amb_items(tc._sat_states.amb_keys_dict()))
+    key_of = dict(sorted_amb_items(amb_dict))
     present = {int(s) for s in sat_list}
     for (s, f), value in tc._sat_states.held_items():
         sf = (int(s), int(f))

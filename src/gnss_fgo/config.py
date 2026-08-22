@@ -187,7 +187,6 @@ class TcConfig:
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
     rtklib_mode: int = 1
     ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
-    ar_native_resolver: int = 0    # 1 = AR off the smoother (gnss_fgo.ar).
                                    # Line-identical to cssrlib over the FIRST
                                    # 3000 tokyo run2 epochs and shadow-equal
                                    # per call, but the full 9151-epoch run

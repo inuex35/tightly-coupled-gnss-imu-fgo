@@ -139,6 +139,13 @@ class AmbiguityResolver:
         for row, (ref, tgt) in enumerate(pairs):
             fixed.setdefault(ref, float_values[ref])
             fixed[tgt] = fixed[ref] - float(b[row, 0])
+        if self.parmode == 2 and int(nfix) < len(pairs):
+            # Partial AR fixed only nfix of the candidates; reporting
+            # nb = len(pairs) would hold NON-fixed ambiguities at
+            # made-up integers. Until the partial back-substitution is
+            # implemented, decline the fix (dormant at the default
+            # parmode=1).
+            return result
         result.nb = len(pairs)
         result.fixed = fixed
         return result
