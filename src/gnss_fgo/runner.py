@@ -63,13 +63,8 @@ class ImuGnssTc:
     def valpos(self, *a, **k):
         return self.engine.valpos(*a, **k)
 
-    # Ambiguity resolution (the cssrlib path; ar/ is the native one):
-    def resamb_lambda(self, *a, **k):
-        return self.engine.resamb_lambda(*a, **k)
-
-    def resamb_lambda_rtklib(self, *a, **k):
-        return self.engine.resamb_lambda_rtklib(*a, **k)
-
+    # AR bookkeeping still delegated to the cssrlib engine (the resolver
+    # itself lives in ar/):
     def ddidx(self, *a, **k):
         return self.engine.ddidx(*a, **k)
 
@@ -79,8 +74,8 @@ class ImuGnssTc:
     def IB(self, *a, **k):
         return self.engine.IB(*a, **k)
 
-    # The ratio stash lives on the engine (resamb_lambda writes it there);
-    # forwarding keeps one source of truth for both AR paths.
+    # The ratio stash lives on the engine; forwarding keeps one source of
+    # truth for the engine-side bookkeeping that still reads it.
     @property
     def _last_s0(self):
         return self.engine._last_s0
@@ -227,7 +222,7 @@ class ImuGnssTc:
         self._tc_fresh_amb_epochs = 0
         # Phase-1 last solution (used by velocity estimator)
         self._last_sol_ecef = None
-        # AR ratio stash (resamb_lambda writes s0/s1 here)
+        # AR ratio stash (nav_bridge.publish_attempt writes s0/s1 here)
         self._last_s0 = 0.0
         self._last_s1 = 0.0
 

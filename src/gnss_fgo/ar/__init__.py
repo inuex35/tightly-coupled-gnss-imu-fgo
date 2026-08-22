@@ -10,7 +10,7 @@
 
 This package root wires them into the epoch flow (:func:`run_ar`) and keeps
 the monolith-era names importable -- callers and long-lived probes address
-``ar._resolve_native`` and friends unchanged.
+``ar._resolve`` and friends unchanged.
 """
 
 import numpy as np
@@ -25,17 +25,19 @@ from .ambiguity_resolver import AmbiguityResolver
 
 
 
-def _resolve_native(tc, sat_list, amb_dict):
-    """AR straight off the smoother, without the cssrlib nav round-trip.
+def _resolve(tc, sat_list, amb_dict):
+    """AR straight off the smoother (the only resolver since the cssrlib
+    resamb dispatch was retired).
 
     Three stages, one module each: :mod:`ar_problem` reads the smoother into
     a self-contained problem, :class:`AmbiguityResolver` fixes the integers,
     and :mod:`nav_bridge` publishes the side effects cssrlib's callers still
-    read. ``None`` means "fall back to the cssrlib path".
+    read. Always returns ``(nb, x)`` — a no-fix outcome is a result, not an
+    excuse to fall anywhere.
 
-    Equivalence with that path is measured, not assumed: shadowed in both
-    directions over tokyo run2 (4361 + 2422 calls) with identical nb and
-    ratio, and sequential 3000-epoch runs are line-identical.
+    Equivalence with the retired cssrlib dispatch was measured, not assumed:
+    shadowed in both directions over tokyo run2 (4361 + 2422 calls) with
+    identical nb and ratio, and sequential 3000-epoch runs line-identical.
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
@@ -83,10 +85,10 @@ def _resolve_native(tc, sat_list, amb_dict):
     return res.nb, xa
 
 
-def _resolve_native_retry(tc, sat_list, amb_dict):
-    """The demo5 retry policy around the native resolver (see ar_retry)."""
+def _resolve_with_retry(tc, sat_list, amb_dict):
+    """The demo5 retry policy around the resolver (see ar_retry)."""
     return ar_retry.run(
-        tc, sat_list, lambda t, sl: _resolve_native(t, sl, amb_dict))
+        tc, sat_list, lambda t, sl: _resolve(t, sl, amb_dict))
 
 
 def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
@@ -105,22 +107,9 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
                 if 1 <= s <= tc.nav.vsat.shape[0]:
                     tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
-        if tc.phase != 2:
-            # Phase 1 resolves through cssrlib's resamb as the PARITY
-            # implementation, not a fallback: the native construction
-            # agrees to ~9 digits from the first attempt (probed), but
-            # the shared-key bootstrap problem is ULP-chaotic — the
-            # assembly-order difference alone forks the decision stream
-            # and was measured at 21.35 -> 35.49 AllRMS. Bit-parity
-            # requires cssrlib's exact arithmetic, which is this call.
-            if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
-                return tc.resamb_lambda_rtklib(sat_list)
-            return tc.resamb_lambda(sat_list, tc.nav.parmode,
-                                    tc.nav.par_P0)
-        native = (_resolve_native_retry(tc, sat_list, amb_dict)
-                  if tc.cfg.rtklib_mode
-                  else _resolve_native(tc, sat_list, amb_dict))
-        return native
+        return (_resolve_with_retry(tc, sat_list, amb_dict)
+                if tc.cfg.rtklib_mode
+                else _resolve(tc, sat_list, amb_dict))
     finally:
         if restore_state:
             tc.nav.vsat[:, :] = vsat_snapshot
@@ -173,26 +162,19 @@ def _record_amb_diagnostics(tc, sat, amb_dict):
 
 
 def _run_lambda_attempts(tc, sat, el, amb_dict):
-    """Phase B — call resamb_lambda (rtklib subset / rtklib / vanilla) with optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
+    """Phase B — run the resolver (with the demo5 retry under rtklib_mode) plus optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
     tc.ar_diag.resamb_raw_nb = -1
     try:
-        # Phase 2: native only (no fallback — problem-unposed epochs
-        # simply do not fix). Phase 1: cssrlib as the parity
-        # implementation, see _run_single_ar_attempt.
-        if tc.phase != 2:
-            if tc.cfg.rtklib_mode and hasattr(tc, 'resamb_lambda_rtklib'):
-                nb, xa = tc.resamb_lambda_rtklib(sat)
-            else:
-                nb, xa = tc.resamb_lambda(sat, tc.nav.parmode,
-                                          tc.nav.par_P0)
-        else:
-            sats = [int(x) for x in sat]
-            native = (_resolve_native_retry(tc, sats, amb_dict)
-                      if tc.cfg.rtklib_mode
-                      else _resolve_native(tc, sats, amb_dict))
-            nb, xa = native
-    except (Exception, SystemExit) as ex:
-        # cssrlib mlambda raises SystemExit when Qah is not positive definite
+        # One resolver, both phases (no fallback — problem-unposed
+        # epochs simply do not fix).
+        sats = [int(x) for x in sat]
+        nb, xa = (_resolve_with_retry(tc, sats, amb_dict)
+                  if tc.cfg.rtklib_mode
+                  else _resolve(tc, sats, amb_dict))
+    except Exception as ex:
+        # mlambda raises LambdaError (a LinAlgError) when Qah is not
+        # positive definite — a live path in the degenerate held-fit
+        # regime, not a can't-happen guard.
         tc.ar_diag.outcome = 'lambda_exception'
         tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
         return 0, None
@@ -202,7 +184,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             and len(amb_dict) >= int(tc.cfg.subset_ar_min_nb) + 1):
         try:
             nb, xa = _try_subset_ar(tc, sat, el, amb_dict)
-        except (Exception, SystemExit) as ex:
+        except Exception as ex:
             tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
             nb, xa = 0, None
 

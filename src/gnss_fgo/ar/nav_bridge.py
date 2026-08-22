@@ -78,15 +78,23 @@ def update_lock_counters(tc, sat_list):
 
 
 def publish_retry_success(tc, ratio):
-    """First-pass fix: prev_ratio2 follows it, the cursor resets."""
-    tc.nav.prev_ratio2 = ratio
+    """First-pass fix: prev_ratio2 follows it, the cursor resets.
+
+    A degenerate exact-fit success (ratio normalized to 0 by the
+    resolver's noise floor) measured nothing: keep the last real ratio
+    instead of overwriting the retry heuristic's memory with a
+    non-measurement.
+    """
+    if ratio > 0.0:
+        tc.nav.prev_ratio2 = ratio
     tc.nav.excsat = 0
 
 
 def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
     """Second pass done: remember the exclusion only when it worked."""
     if fixed:
-        tc.nav.prev_ratio2 = ratio
+        if ratio > 0.0:
+            tc.nav.prev_ratio2 = ratio
         tc.nav.excsat = excluded_sat
     else:
         tc.nav.excsat = 0
@@ -94,7 +102,7 @@ def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
 
 def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
     """Write GTSAM Marginals to nav.P with ENU->ECEF rotation."""
-    # The native resolver reads the same marginals straight from ISAM2 and
+    # The resolver reads the same marginals straight from ISAM2 and
     # needs the very pose these were taken against, not tc.tc_epoch, which
     # still points at the previous epoch while AR runs.
     tc._ar_key_pose = key_pose
