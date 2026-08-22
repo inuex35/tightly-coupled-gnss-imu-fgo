@@ -9,9 +9,6 @@ Owns:
     per-epoch ``BetweenFactorConstantBias``.
   * Bias σ helpers (``bias_between_noise`` / ``bias_prior_noise`` /
     ``bias_prior_anchor``).
-
-Extracted from ``factors_support.py`` during the Phase 2 architectural
-refactor; behaviour unchanged.
 """
 
 import numpy as np

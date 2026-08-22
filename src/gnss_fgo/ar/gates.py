@@ -1,4 +1,4 @@
-"""Gates around a LAMBDA answer: when not to ask, and when not to believe.
+"""Gates around a LAMBDA answer: when not to believe it.
 
 Two related judgements, both reading the same context (post-fit DDPR
 residuals, CP-hold and ddpr-bad streaks):
@@ -53,7 +53,7 @@ def context_reject(tc, nb):
 
 def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
                   estimate=None, key_pose=None, graph=None):
-    """Phase C — RTKLIB-style post-fit valpos + project-specific ar_context_reject. Returns True when the fix is accepted, False when either gate trips."""
+    """Phase C — valpos, then the fix_dres objective-delta gate, then ar_context_reject. True iff the fix survives all three."""
     # xa[0:3] is already antenna position (nav.x[0:3] was set to antenna pos)
     fix_antenna = xa[0:3]
 

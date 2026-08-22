@@ -1,6 +1,6 @@
 """Cross-cutting helpers shared between the DD factor builder and the
 DDCP build policy. The substantial factor builders live in their own
-modules (``imu_preintegration.py``, ``nhc.py``, ``doppler.py``,
+modules (``imu_preintegration.py``, ``nhc.py``, ``doppler_sd.py``,
 ``zupt.py``) and are imported directly by their consumers.
 """
 

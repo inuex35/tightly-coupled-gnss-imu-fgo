@@ -1,10 +1,7 @@
 """IMU preintegration helpers (pure — no ImuGnssTc self-refs).
 
-Sensor convention is fixed at FLU: the launcher / loader is expected to
-hand back IMU samples already expressed in the body FLU frame. The old
-``IMU_SENSOR_FRAME`` / ``GYRO_FLIP_*`` / ``PIM_GYRO_FLIP_*`` /
-``INIT_GYRO_FLIP_*`` env knobs were dataset-survey scaffolding and have
-been removed now that the convention is settled.
+Sensor convention is fixed at FLU: the loader hands back IMU samples
+already expressed in the body FLU frame.
 """
 
 from __future__ import annotations

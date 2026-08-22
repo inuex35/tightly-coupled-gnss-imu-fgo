@@ -3,9 +3,6 @@
 Operates between input preprocessing and graph optimization to keep
 multipath-contaminated satellites out of the LAMBDA tree and to
 expose Doppler velocity as a coarse pre-check signal.
-
-Future hooks: Mahalanobis χ² per-sat gate, two-stage
-Doppler×IMU velocity outlier test (see refactor_plan.md).
 """
 
 import numpy as np

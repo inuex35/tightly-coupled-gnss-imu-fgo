@@ -35,7 +35,7 @@ class ImuGnssTc:
 
     The estimator is the factor graph; cssrlib is a library it calls, not a
     base class it is. The complete surface this pipeline uses from cssrlib's
-    engine is the delegation block below -- ten methods and the ratio stash
+    engine is the delegation block below -- seven methods and the ratio stash
     -- everything else (EKF time/measurement updates, the engine's own
     process loop) is deliberately out of reach.
     """

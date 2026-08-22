@@ -1,12 +1,11 @@
 """Subset AR: retry LAMBDA with the likeliest bad satellites removed.
 
 This is the project's own fallback (distinct from the demo5 single-satellite
-round-robin in :mod:`ar_retry`): rank satellites by post-fit residual, CP/PR
-rejection count and low elevation, then try dropping combinations of up to
-``subset_ar_max_drop`` of them, keeping the best ratio. Two gates keep it
-away from hopeless epochs -- a post-fit-RMS ceiling and a cap on how many
-satellites already look dirty (a spread-out residual field means the pose,
-not one satellite, is the problem).
+round-robin in :mod:`ar_retry`): rank satellites by post-fit residual, then
+low elevation, and try dropping combinations of up to ``subset_ar_max_drop``
+of them, keeping the best ratio. A dirty-satellite cap keeps it away from
+hopeless epochs (a spread-out residual field means the pose, not one
+satellite, is the problem).
 
 The actual attempt is injected (``attempt(tc, sat, sat_exclude=...)``) so
 this policy is indifferent to which resolver runs underneath.
@@ -81,11 +80,9 @@ def try_subset_ar(tc, sat, el, amb_dict, attempt):
             if nb < min_nb or xa is None:
                 continue
             # Quantize the ratio so ULP noise cannot outrank the
-            # deliberate smaller-k tie-break: a no-op exclusion (a sat
-            # not even in the DD set) perturbs the problem's
-            # summation order by one variable and shifted the ratio in
-            # the 13th digit — enough for (ratio, nb, -k) to prefer a
-            # 2-sat drop over the equal 1-sat drop (ep1539, run1).
+            # deliberate smaller-k tie-break: a no-op exclusion perturbs
+            # the summation order enough to shift the ratio in its last
+            # digits and prefer a 2-sat drop over the equal 1-sat drop.
             score = (round(float(ratio), 6), int(nb), -k)
             if best is None or score > best['score']:
                 best = {

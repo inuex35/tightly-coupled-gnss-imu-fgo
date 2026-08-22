@@ -9,11 +9,8 @@ drives up to three optional pseudo-measurements:
 
 Each is independently gated by its own σ knob in ``cfg.zupt.*``.
 ``add_zupt_factors`` is callable from any code path
-(optimize.py and the recovery outage paths). ``add_zupt_factors_for_stage`` is
-the optimize-stage epoch wrapper.
-
-Extracted from ``factors_support.py`` during the Phase 2 architectural
-refactor; behaviour unchanged.
+(the C1 factor stage and the recovery outage paths);
+``add_zupt_factors_for_stage`` is its epoch wrapper for Stage C1.
 """
 
 import numpy as np
@@ -124,8 +121,8 @@ def _maybe_capture_or_apply_anchor(tc, graph, key_idx, info, rec, pose_prev,
 def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
                              pose_prev=None, gnss_available=True,
                              vel_prev=None):
-    """GICI-style ZUPT, callable from optimize.py and the recovery
-    outage paths.
+    """GICI-style ZUPT, callable from the C1 factor stage and the
+    recovery outage paths.
 
     On a stationary detection (gates: acc_std / gyro_std / gyro_median
     against bias-init-subtracted residuals; gravity check optional;
