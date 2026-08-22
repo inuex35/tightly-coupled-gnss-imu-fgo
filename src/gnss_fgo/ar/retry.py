@@ -17,18 +17,14 @@ from . import nav_bridge
 
 
 def run(tc, sat_list, solve):
-    """Apply the retry policy around ``solve(tc, sat_list) -> (nb, xa)|None``.
+    """Apply the retry policy around ``solve(tc, sat_list) -> (nb, xa)``.
 
     Mirrors ``resamb_lambda_rtklib`` line for line, including the order of
-    every ``nav`` write. Returns ``None`` when ``solve`` declines (the caller
-    falls back to the cssrlib path), else ``(nb, xa)``.
+    every ``nav`` write.
     """
     nav_bridge.update_lock_counters(tc, sat_list)
 
-    out = solve(tc, sat_list)
-    if out is None:
-        return None
-    nb, xa = out
+    nb, xa = solve(tc, sat_list)
     ratio = 0.0 if tc._last_s0 <= 0.0 else tc._last_s1 / tc._last_s0
     if nb > 0:
         nav_bridge.publish_retry_success(tc, ratio)
@@ -66,12 +62,9 @@ def run(tc, sat_list, solve):
     vsat_row = tc.nav.vsat[exc - 1, :].copy()
     tc.nav.vsat[exc - 1, :] = 0
     try:
-        out2 = solve(tc, [s for s in sat_list if s != exc])
+        nb2, xa2 = solve(tc, [s for s in sat_list if s != exc])
     finally:
         tc.nav.vsat[exc - 1, :] = vsat_row
-    if out2 is None:
-        return 0, xa
-    nb2, xa2 = out2
 
     ratio2 = 0.0 if tc._last_s0 <= 0.0 else tc._last_s1 / tc._last_s0
     nav_bridge.publish_retry_outcome(tc, nb2 > 0, ratio2, exc)

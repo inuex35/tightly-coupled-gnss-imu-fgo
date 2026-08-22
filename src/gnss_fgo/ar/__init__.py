@@ -8,9 +8,7 @@
     hold         fix-and-hold
     nav_bridge   every nav write, and the table of who reads each field
 
-This package root wires them into the epoch flow (:func:`run_ar`) and keeps
-the monolith-era names importable -- callers and long-lived probes address
-``ar._resolve`` and friends unchanged.
+This package root wires them into the epoch flow (:func:`run_ar`).
 """
 
 import numpy as np
@@ -32,24 +30,13 @@ def _resolve(tc, sat_list, amb_dict):
     Three stages, one module each: :mod:`ar_problem` reads the smoother into
     a self-contained problem, :class:`AmbiguityResolver` fixes the integers,
     and :mod:`nav_bridge` publishes the side effects cssrlib's callers still
-    read. Always returns ``(nb, x)`` — a no-fix outcome is a result, not an
-    excuse to fall anywhere.
-
-    Equivalence with the retired cssrlib dispatch was measured, not assumed:
-    shadowed in both directions over tokyo run2 (4361 + 2422 calls) with
-    identical nb and ratio, and sequential 3000-epoch runs line-identical.
+    read. Always returns ``(nb, x)``.
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
-        # Return a no-fix RESULT, never None: bubbling None out of the
-        # retry wrapper killed its continuation (the exclusion pass and
-        # its excsat/prev-ratio writes), and that bookkeeping is what
-        # the retired cssrlib dispatch was actually contributing on
-        # unposable epochs — its absence shifted the estimate from
-        # ep4794 (21.35 -> 23.72). Ablated to this minimal form: the
-        # dispatch's other side effects (double lock update, ddidx
-        # marks, stash zeroing) were all measured non-essential
-        # (line-identical without them).
+        # A no-fix RESULT, never None: the retry wrapper's continuation
+        # (exclusion pass, excsat/prev-ratio writes) must still run on
+        # unposable epochs — losing it measurably moved the estimate.
         tc.ar_diag.outcome = 'problem_unposed'
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
@@ -61,23 +48,14 @@ def _resolve(tc, sat_list, amb_dict):
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         if 0 < len(res.pairs) < resolver.min_pairs:
-            # The resolver declines a problem with a lone DD pair; the
-            # cssrlib path instead manufactures a degenerate candidate
-            # from it (exact-fit residual, no ratio) and lets a fix
-            # gate kill it downstream — which freezes the starvation
-            # counter. The decline must freeze it the same way, or the
-            # counter drifts one count per lone-pair epoch and every
-            # later starvation purge fires early. Zero-pair declines
-            # keep counting: the cssrlib path is empty-handed there
-            # too and counts them as starvation.
+            # A lone-pair decline is a candidate-stage verdict, not
+            # ratio starvation: it must freeze the starvation counter
+            # (like fix_dres) or every later purge fires early.
+            # Zero-pair declines keep counting as starvation.
             tc.ar_diag.outcome = 'min_pairs_declined'
         elif res.declined_partial:
-            # A candidate-stage verdict, not ratio starvation: mlambda
-            # produced integers and the partial-AR guard declined them.
-            # Classified apart from lambda_zero so the starvation
-            # counter freezes, exactly as it does when the cssrlib path
-            # over-reports the same candidate and a downstream fix gate
-            # rejects it.
+            # Same freeze class: mlambda produced integers and the
+            # partial-AR guard declined them.
             tc.ar_diag.outcome = 'partial_declined'
         return 0, tc.nav.x.copy()
     xa, Qb, Qab = ar_problem.fixed_state(tc, problem, res)

@@ -12,11 +12,9 @@ The five stages run in sequence:
     preprocess  →  gate  →  optimize  →  postprocess  →  output
 
 Each stage reads a subset of the fields populated by previous stages and
-writes its own outputs onto the shared ``EpochData``.  Field types
-were tightened from ``Any`` to the concrete GTSAM / numpy types during
-the Phase 3 contract refactor — see each stage module's
-``STAGE_READS`` / ``STAGE_WRITES`` tuples for the formal data-flow
-declaration that's checked by ``stage_contract.validate_pipeline()``.
+writes its own outputs onto the shared ``EpochData``. The formal
+data-flow declaration is each stage module's ``STAGE_READS`` /
+``STAGE_WRITES`` tuples, checked by ``stage_contract.validate_pipeline()``.
 """
 
 from __future__ import annotations

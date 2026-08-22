@@ -9,10 +9,12 @@ from cssrlib.gnss import sat2prn, ecef2pos
 
 
 def env_f(name: str, default) -> float:
+    """Float env var with a default."""
     return float(os.environ.get(name, str(default)))
 
 
 def env_i(name: str, default) -> int:
+    """Int env var with a default."""
     return int(os.environ.get(name, str(default)))
 
 

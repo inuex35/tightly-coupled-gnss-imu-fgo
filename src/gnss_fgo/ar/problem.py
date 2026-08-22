@@ -14,7 +14,7 @@ Selection contract (measured, not designed -- both halves are load-bearing):
   before this line was written the way it is.
 * a **held** ambiguity contributes its pinned value with ``varholdamb``
   variance on the diagonal, and keeps the graph's off-diagonal terms --
-  the same content ``write_marginals`` leaves in ``nav.P``.
+  the same content ``publish_marginals`` leaves in ``nav.P``.
 """
 
 from dataclasses import dataclass, field

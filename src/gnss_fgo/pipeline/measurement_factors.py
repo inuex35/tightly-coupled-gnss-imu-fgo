@@ -2,9 +2,9 @@
 
 DD code/phase factors, the BetweenFactor chain on continuing ambiguities,
 the propagate-prior fallback when the DD set is too thin to solve, and the
-optional measurement families (Doppler raw/SD, undifferenced clock PR,
-TDCP, NHC, ZUPT, bootstrap DDPR prior). Everything lands in ``epoch.graph`` /
-``epoch.values``; nothing here talks to the smoother.
+optional measurement families (SD Doppler, NHC, ZUPT, bootstrap DDPR
+prior). Everything lands in ``epoch.graph`` / ``epoch.values``; nothing
+here talks to the smoother.
 """
 
 
@@ -39,8 +39,6 @@ def _build_factor_block(tc, epoch, prev_smode):
 
     # Between-satellite differenced Doppler (clock-free; cfg.doppler_sd_sigma)
     _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
-
-    # TDCP relative-displacement constraints (rover-only carrier deltas)
 
     if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
                               _horizontal_speed(tc, epoch),

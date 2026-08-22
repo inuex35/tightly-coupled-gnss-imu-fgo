@@ -4,7 +4,7 @@ RTKLIB's armode==3, adapted to the two-smoother layout: Phase 1 holds each
 ambiguity with a PriorDouble at sigma = sqrt(varholdamb). Phase 2 adds no
 graph factors at all — the held integers live on the per-satellite hold
 state and ``nav.x`` (the value re-enters AR as a pinned input via
-ar_problem, write_marginals mirrors it into ``nav.P``, and the DDCP
+ar_problem, publish_marginals mirrors it into ``nav.P``, and the DDCP
 builder folds it into the factor offset).
 
 Entry point: :func:`apply_fix_and_hold`.

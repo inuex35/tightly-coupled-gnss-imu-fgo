@@ -53,6 +53,7 @@ _DEFAULT_ORDER = (
 
 
 def _stage_modules(order=_DEFAULT_ORDER):
+    """Import the stage modules in pipeline order."""
     return [(name, importlib.import_module(path, package='gnss_fgo'))
             for name, path in order]
 
@@ -93,6 +94,7 @@ def validate_pipeline(order=_DEFAULT_ORDER):
 
 
 def _maybe_check_at_import():
+    """Run the contract check at import when ENABLE_STAGE_CONTRACT_CHECK=1."""
     if os.environ.get('ENABLE_STAGE_CONTRACT_CHECK', '0') != '1':
         return
     errors, _ = validate_pipeline()

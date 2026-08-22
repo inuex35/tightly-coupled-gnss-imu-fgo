@@ -55,7 +55,7 @@ def _ar_eligibility(tc, epoch):
 
 
 def _run_ar_with_marginals(tc, epoch):
-    """Pre-check, write_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
+    """Pre-check, publish_marginals + per_sat gate + run_ar; populate epoch.nb, epoch.xa, info[ar_skipped*]."""
     info = epoch.info
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
@@ -131,7 +131,7 @@ def _ar_starvation_reset(tc, epoch):
     """Purge cold-biased float arcs after prolonged ratio starvation.
 
     A float that settled into a biased-but-smooth basin (e.g. after a
-    mass hold loss under TDCP-class constraints) keeps every residual
+    mass hold loss under strong relative constraints) keeps every residual
     small and every AR attempt ratio-starved: none of the existing
     alarms (innovation, residual spike) can fire. Detect it as N
     consecutive lambda_zero outcomes while the DDPR residual stays
@@ -160,7 +160,7 @@ def _ar_starvation_reset(tc, epoch):
 
 
 def _run_lambda_ar(tc, epoch):
-    """Stage C4 — pre-AR gate + write_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
+    """Stage C4 — pre-AR gate + publish_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
     tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5

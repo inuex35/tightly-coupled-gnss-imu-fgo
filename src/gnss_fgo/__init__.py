@@ -1,3 +1,5 @@
+"""Tightly coupled GNSS/IMU factor-graph RTK: public package surface."""
+
 from .config import IMU_PRESETS, TcConfig
 from .runner import ImuGnssTc
 from .utils import euler_to_R_body2enu, load_imu_csv

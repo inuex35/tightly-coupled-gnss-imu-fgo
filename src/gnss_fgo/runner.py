@@ -35,7 +35,7 @@ class ImuGnssTc:
 
     The estimator is the factor graph; cssrlib is a library it calls, not a
     base class it is. The complete surface this pipeline uses from cssrlib's
-    engine is the delegation block below -- ten methods and the ratio stash
+    engine is the delegation block below -- seven methods and the ratio stash
     -- everything else (EKF time/measurement updates, the engine's own
     process loop) is deliberately out of reach.
     """
@@ -96,6 +96,7 @@ class ImuGnssTc:
 
     @staticmethod
     def _noise1(sigma):
+        """Cached 1-D isotropic noise model for ``sigma``."""
         sigma_f = float(sigma)
         nm = ImuGnssTc._NOISE1_CACHE.get(sigma_f)
         if nm is None:
@@ -255,6 +256,7 @@ class ImuGnssTc:
         self.amb_gen = {}
 
     def _assign_view(self, view: SatFieldView, value):
+        """Assignment semantics for view-backed attributes: replace contents."""
         if value is view:
             return
         view.clear()
@@ -345,6 +347,7 @@ class ImuGnssTc:
         return _utils_build_pim_from_samples(self.imu_params, bias, imu_samples)
 
     def _heading_from_vel(self, vel, fallback, disp_enu=None):
+        """Thin adapter — see utils.heading_from_vel."""
         return _utils_heading_from_vel(vel, fallback, disp_enu)
 
     def _ddpr_only_position(self, obs, obsb, obs_sd, rs, rsb,
@@ -399,6 +402,8 @@ class ImuGnssTc:
 
 
 def _install_forwarders(cls):
+    """Class decorator: property-forward legacy attribute names onto the
+    grouped state objects (_VIEW_FORWARDS / _FIELD_FORWARDS)."""
     for name, view_attr in cls._VIEW_FORWARDS.items():
         def getter(self, _v=view_attr):
             return getattr(self, _v)
