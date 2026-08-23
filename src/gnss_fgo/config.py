@@ -76,8 +76,6 @@ class TcConfig:
     sanity_pose_replace_thresh: float = 5.0
     varholdamb: float = 0.001
     pim_break_trans_sigma: float = 1.0
-    # cssrlib valpos chi-square threshold in σ units.
-    valpos_thres: float = 4.0
 
     # Cycle slip / multipath
     thres_slip: float = 0.15       # GF slip threshold [m]
