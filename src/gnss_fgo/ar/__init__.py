@@ -56,7 +56,7 @@ def _resolve(tc, sat_list, amb_dict):
         if 0 < len(res.pairs) < resolver.min_pairs:
             # A lone-pair decline is a candidate-stage verdict, not
             # ratio starvation: it must freeze the starvation counter
-            # (like fix_dres) or every later purge fires early.
+            # or every later purge fires early.
             # Zero-pair declines keep counting as starvation.
             tc.ar_diag.outcome = 'min_pairs_declined'
         elif res.declined_partial:
