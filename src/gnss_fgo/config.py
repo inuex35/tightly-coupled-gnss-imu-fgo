@@ -118,10 +118,8 @@ class TcConfig:
 
     # CP-hold triggers
     recov_cp_hold: int = 5         # hold DDCP for N epochs after any trigger
-    ddcp_res_weight_stale_max_epochs: int = 2
     sanity_max_median_ratio: float = 5.0
     sanity_max_median_min_sats: int = 6
-    imu_integ_cov_max: float = 0.5
 
     main_ddpr_res_thresh: float = 3.0   # elevation-normalized pseudo-m (see residuals.main_ddpr_residuals)
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
