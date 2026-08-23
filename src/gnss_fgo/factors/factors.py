@@ -11,16 +11,6 @@ from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 from ..utils import sorted_sys_ids
 
 
-def _dd_noise(tc, sigma):
-    """DD measurement noise; Huber-wrapped when cfg.dd_huber > 0."""
-    noise = tc._noise1(sigma)
-    k = float(tc.cfg.dd_huber)
-    if k > 0:
-        noise = gtsam.noiseModel.Robust.Create(
-            gtsam.noiseModel.mEstimator.Huber.Create(k), noise)
-    return noise
-
-
 def _add_ddpr_factor(tc, graph, key_pose, lever,
                       pr_obs, sat_pts, pair_id,
                       pair_sigma_base):
@@ -28,7 +18,7 @@ def _add_ddpr_factor(tc, graph, key_pose, lever,
     pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
     ref_sat, j_sat, freq = pair_id
-    pr_noise = _dd_noise(tc, pair_sigma_base)
+    pr_noise = tc._noise1(pair_sigma_base)
     tc._last_ddpr_sat_tags.append(
         (graph.size(), ref_sat, j_sat, freq))
     graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
@@ -320,7 +310,7 @@ class DdFactorBuilder:
         if self.skip_cp:
             return 0
         cp_sigma = self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx])
-        cp_noise = _dd_noise(tc, cp_sigma)
+        cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
         return _add_ddcp_factor(
             tc, self.graph, self.key_pose, cp_noise, dd_obs_cp, lam,

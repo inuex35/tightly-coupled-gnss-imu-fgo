@@ -100,8 +100,6 @@ class TcConfig:
                                    # Load-bearing: bounds the NLOS
                                    # feedback loop in the SD screen (see
                                    # buildfactor/doppler_sd.py).
-    dd_huber: float = 0.0          # whitened robust width for DDPR/DDCP,
-                                   # 0 = plain L2
 
     # GNSS quality gate
     gdop_max: float = 10.0

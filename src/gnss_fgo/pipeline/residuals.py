@@ -132,8 +132,7 @@ def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
         err = _ddpr_factor_error(fac, estimate)
         if err is None:
             continue
-        res_m = float(np.sqrt(2.0 * _deprobust_err(tc, max(err, 0.0)))
-                      * sigma_pr_m)
+        res_m = float(np.sqrt(2.0 * max(err, 0.0)) * sigma_pr_m)
         res_sq.append(res_m * res_m)
         tag = tag_map.get(i)
         if tag is not None:
@@ -160,17 +159,6 @@ def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
     return rms_all, per_sat
 
 
-def _deprobust_err(tc, err):
-    """Invert the Huber rho so mres/FDE thresholds keep cutting on the
-    plain residual (GICI judges rejection on de-normalized residuals).
-    Exact: rho(x) = x^2/2 below k, k(x - k/2) above."""
-    k = float(tc.cfg.dd_huber)
-    if k <= 0 or err <= k * k / 2.0:
-        return err
-    x = err / k + k / 2.0
-    return x * x / 2.0
-
-
 def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
     """Helper: collect (fi, residual_in_meters) for current-epoch DD factors."""
     pr_entries = []
@@ -190,12 +178,10 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
             continue
         if 'Pseudorange' in fname:
             pr_entries.append(
-                (fi, np.sqrt(2.0 * _deprobust_err(tc, err))
-                 * tc.cfg.sigma_pr * np.sqrt(2)))
+                (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_pr * np.sqrt(2)))
         elif 'CarrierPhase' in fname or is_custom_cp:
             cp_entries.append(
-                (fi, np.sqrt(2.0 * _deprobust_err(tc, err))
-                 * tc.cfg.sigma_cp * np.sqrt(2)))
+                (fi, np.sqrt(2.0 * err) * tc.cfg.sigma_cp * np.sqrt(2)))
     return pr_entries, cp_entries
 
 
