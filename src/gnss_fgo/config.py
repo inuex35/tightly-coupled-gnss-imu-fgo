@@ -124,7 +124,6 @@ class TcConfig:
     main_ddpr_res_thresh: float = 3.0   # elevation-normalized pseudo-m (see residuals.main_ddpr_residuals)
     ddpr_sanity_persist: int = 3      # 3 consecutive bad → DDPR-LS anchor
     ddpr_max_res: float = 2.0
-    diag_sanity_anchor: int = 1   # sanity reset: also LS-solve a DDPR anchor for forensics
     main_ddpr_res_catastrophic: float = 15.0   # fast-path sanity trigger
     ar_ddpr_xvalidate_thresh: float = 10.0
     ddpr_fast_worst_sat_min: float = 30.0
