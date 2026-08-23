@@ -28,13 +28,6 @@ def context_reject(tc, nb):
     ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
 
     burst_like = False
-    if (bool(tc.cfg.ar_context_reject_during_cp_hold)
-            and cp_hold_active):
-        burst_like = True
-    if (bool(tc.cfg.ar_context_reject_during_ddpr_bad)
-            and ddpr_bad_active):
-        burst_like = True
-
     if main_res > float(tc.cfg.ar_context_main_ddpr_max):
         burst_like = True
     if worst_res > float(tc.cfg.ar_context_worst_sat_max):

@@ -196,8 +196,6 @@ class TcConfig:
     ar_context_main_ddpr_max: float = 1.2
     ar_context_worst_sat_max: float = 4.0
     ar_context_nb_max: int = 6
-    ar_context_reject_during_cp_hold: int = 1
-    ar_context_reject_during_ddpr_bad: int = 1
     low_nb_fix_reject_nb_max: int = 6
     low_nb_fix_only_after_flt: int = 1
     low_nb_fix_reject_max_prev_fix_streak: int = 2
