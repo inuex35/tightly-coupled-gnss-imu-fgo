@@ -1,7 +1,7 @@
 """DDPR sanity escalation ladder — the wrong-basin recovery policy.
 
 Stateful escalation over consecutive epochs (trigger -> persist ->
-diagnostic anchor -> reset). Lives next to recovery.py because
+reset). Lives next to recovery.py because
 every rung ends in a recovery action; validation/residuals.py stays a
 pure residual-computation library.
 """
@@ -35,7 +35,7 @@ def _ddpr_multipath_dominated(tc, info):
     return False
 
 
-def run_ddpr_sanity(tc, graph, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
+def run_ddpr_sanity(tc, graph, pose_tc, pred, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map, key_idx, info, nb=0):
     """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
     main_res = info.get('main_ddpr_res', 0.0)
@@ -50,9 +50,6 @@ def run_ddpr_sanity(tc, graph, pose_tc, ecef_tc, pred, obs, obsb, obs_sd,
         return fast
     if not _ddpr_sanity_persist(tc, main_res, info):
         return None
-    _ddpr_sanity_anchor_diagnostics(
-        tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        pose_tc, ecef_tc, pred, info)
     return _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs)
 
 
@@ -147,31 +144,3 @@ def _ddpr_sanity_persist(tc, main_res, info):
     info['ddpr_bad'] = tc._ddpr_bad_count
     _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
     return tc._ddpr_bad_count >= tc.cfg.ddpr_sanity_persist
-
-
-def _ddpr_sanity_anchor_diagnostics(tc, obs, obsb, obs_sd, rs, rsb, sat, el,
-                                    iu, ir_map, pose_tc, ecef_tc, pred, info):
-    """Forensics for the reset that is about to happen (no decision).
-
-    The original ladder ran this DDPR-only LS anchor as escalation
-    steps 3-5, but every rung ended in the same _apply_sanity_reset —
-    the anchor result never steered the action, in any public revision.
-    It is now explicitly diagnostics-only: the anchor position, its
-    innovation against the TC pose, and its gap to the IMU prediction
-    land in info for post-run analysis. diag_sanity_anchor=0 skips the
-    extra solve.
-    """
-    if not tc.cfg.diag_sanity_anchor:
-        return
-    ecef_ddpr, n_ddpr, res_rms = tc._ddpr_only_position(
-        obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_tc)
-    info['ddpr_nv'] = n_ddpr
-    info['ddpr_res'] = res_rms
-    if ecef_ddpr is not None:
-        info['ecef_ddpr'] = ecef_ddpr
-        info['ddpr_innov'] = float(np.linalg.norm(ecef_tc - ecef_ddpr))
-        ecef_pred = (tc.R_enu2ecef @ np.array(pred.pose().translation())
-                     + tc.base_ecef)
-        info['anchor_imu_gap'] = float(np.linalg.norm(ecef_ddpr - ecef_pred))
-    if ecef_ddpr is None or res_rms > tc.cfg.ddpr_max_res:
-        info['ddpr_anchor_untrusted'] = res_rms

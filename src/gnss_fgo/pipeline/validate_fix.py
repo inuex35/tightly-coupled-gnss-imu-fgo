@@ -85,7 +85,7 @@ def _maybe_run_ddpr_sanity(tc, epoch):
     if not tc.cfg.ddpr_sanity_enable:
         return None
     return _tc_sanity.run_ddpr_sanity(tc,
-        epoch.graph, epoch.pose_tc, epoch.ecef_tc, epoch.pred_nav,
+        epoch.graph, epoch.pose_tc, epoch.pred_nav,
         epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
         epoch.sat, epoch.el, epoch.iu, epoch.ir_map, epoch.key_idx, info,
         nb=epoch.nb)
