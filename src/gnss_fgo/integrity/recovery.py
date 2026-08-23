@@ -11,7 +11,6 @@ from ..factors.epoch_context import make_epoch_diagnostics
 from ..factors.nhc import add_nhc_factor as _add_nhc_factor
 from ..factors.zupt import add_zupt_factors as _add_zupt_factor_inplace
 from ..factors import imu_preintegration as _tc_pim
-from ..factors import doppler_sd as _tc_doppler_sd
 from ..pipeline import update_smoother as _tc_isam
 
 
@@ -209,55 +208,6 @@ def _outage_solve_and_adopt(tc, graph, values, key_idx,
         if record_error:
             info['error'] = str(ex)
         return tc.nav.x[0:3]
-
-
-def process_gdop_skip(tc, obs, key_idx, graph, values, R_enu2ecef, info,
-                      imu_idx_prev=None, gyro_mean=None, vel_prev=None,
-                      epoch=None):
-    """Bad GNSS geometry: IMU-only epoch. Advances state + keeps amb keys alive.
-
-    When ``epoch`` is passed and doppler_skip_aid is on, SD Doppler factors
-    are injected first — the epoch's only velocity observation (the
-    canyon drift is mostly vertical, which NHC leaves free).
-    """
-    if (epoch is not None and tc.cfg.doppler_skip_aid
-            and tc.cfg.doppler_sd_sigma > 0):
-        _tc_doppler_sd.add_sd_doppler_factors(tc, epoch, in_outage=True)
-    _outage_advance_skip_count(tc, info, source='gdop')
-    _outage_tick_sat_outc(tc, info)
-    _outage_anchor_bias_prior(tc, graph, key_idx)
-    try:
-        est_now = tc.isam2.calculateEstimate()
-        gdop_pose_prev = est_now.atPose3(tc.Xpose(key_idx - 1))
-        gdop_vel_prev = np.array(est_now.atVector(tc.Vel(key_idx - 1)))
-    except (RuntimeError, IndexError, ValueError):
-        gdop_pose_prev = None
-        gdop_vel_prev = vel_prev
-    _outage_add_pseudo_measurements(
-        tc, graph, key_idx, info, imu_idx_prev,
-        gdop_pose_prev, gdop_vel_prev, gyro_mean)
-    # Gauge anchor: with GNSS skipped the epoch graph is relative-only
-    # (IMU between + NHC + bias prior) and consecutive skips leave the
-    # pose gauge numerically unconstrained — measured divergence x3-7
-    # per epoch up to 1591 km over a 16-epoch skip streak. Pin the
-    # PREVIOUS pose/vel at their current estimates with the same
-    # propagate sigmas the thin-epoch path uses; the IMU factor then
-    # moves the new epoch freely on a bounded leash.
-    if gdop_pose_prev is not None:
-        graph.addPriorPose3(
-            tc.Xpose(key_idx - 1), gdop_pose_prev,
-            gtsam.noiseModel.Isotropic.Sigma(
-                6, tc.cfg.propagate_pose_sigma))
-    if gdop_vel_prev is not None:
-        graph.addPriorVector(
-            tc.Vel(key_idx - 1), np.asarray(gdop_vel_prev, dtype=float),
-            gtsam.noiseModel.Isotropic.Sigma(
-                3, tc.cfg.propagate_vel_sigma))
-    _outage_solve_and_adopt(tc, graph, values, key_idx, R_enu2ecef, info)
-    tc.nav.smode = 5
-    info['bias_acc'] = tc.tc_bias.accelerometer()
-    info['bias_gyro'] = tc.tc_bias.gyroscope()
-    return advance_epoch_and_pack(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
 
 
 def process_imu_only(tc, obs):

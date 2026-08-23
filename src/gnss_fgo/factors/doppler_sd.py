@@ -106,25 +106,18 @@ def screen_rows(tc, epoch, rows):
     return keep, scale
 
 
-def add_sd_doppler_factors(tc, epoch, in_outage=False):
-    """Add one SD Doppler factor per satellite, against the epoch reference.
-
-    ``in_outage=True`` is the GDOP-skip path: no DD set exists by
-    definition, so the require_dd/gdop gates don't apply — Doppler is
-    the only velocity observation the epoch has, exactly where it's
-    worth the most (the canyon drift is what it bounds).
-    """
+def add_sd_doppler_factors(tc, epoch):
+    """Add one SD Doppler factor per satellite, against the epoch reference."""
     sigma = float(tc.cfg.doppler_sd_sigma)
     if sigma <= 0 or epoch.key_idx is None:
         return
-    if not in_outage:
-        gdop_max = float(tc.cfg.doppler_gdop_max)
-        if gdop_max > 0 and float(epoch.info.get('gdop', 0.0) or 0.0) > gdop_max:
-            epoch.info['doppler_sd_skipped'] = 'gdop'
-            return
-        if tc.cfg.doppler_require_dd and epoch.nv < tc.cfg.min_dd_for_solve:
-            epoch.info['doppler_sd_skipped'] = int(epoch.nv)
-            return
+    gdop_max = float(tc.cfg.doppler_gdop_max)
+    if gdop_max > 0 and float(epoch.info.get('gdop', 0.0) or 0.0) > gdop_max:
+        epoch.info['doppler_sd_skipped'] = 'gdop'
+        return
+    if tc.cfg.doppler_require_dd and epoch.nv < tc.cfg.min_dd_for_solve:
+        epoch.info['doppler_sd_skipped'] = int(epoch.nv)
+        return
 
     rows, scale = screen_rows(tc, epoch, _doppler_rows(tc, epoch))
     if len(rows) < 2:
