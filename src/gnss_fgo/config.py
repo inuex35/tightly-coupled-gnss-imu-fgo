@@ -132,7 +132,6 @@ class TcConfig:
 
     # IMU noise (select via imu_grade or override individual σ)
     imu_grade: str = 'tactical'    # 'tactical'|'consumer'|'industrial'|'nav_grade'
-    imu_scale: float = 1.0         # multiplier on accel/gyro noise +
     imu_integ_cov: float = 1e-3    # position integration noise [m²/s]
     accel_noise: float = 2.84e-3   # [m/s²/√Hz]   (spec ×10)
     gyro_noise: float = 4.01e-3    # [rad/s/√Hz]  (spec ×100)
