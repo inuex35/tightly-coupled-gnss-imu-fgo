@@ -372,6 +372,4 @@ def effective_cp_hold_epochs(tc) -> int:
     floating with no DDCP/AR pull-back channel, so suppress it until the
     bootstrap-DDPR countdown expires.
     """
-    if int(tc._tc_bootstrap_ddpr_epochs or 0) > 0:
-        return 0
     return int(tc.cfg.recov_cp_hold)
