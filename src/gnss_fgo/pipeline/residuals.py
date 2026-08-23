@@ -85,9 +85,7 @@ def _ddpr_factor_error(fac, estimate):
 def ddpr_res_at_fixed_pose(tc, graph, estimate, key_pose, xa):
     """Main-graph DDPR RMS with the pose moved to the LAMBDA-fixed
     antenna position ``xa[0:3]`` (rotation kept from ``estimate``).
-    Returns None when the evaluation is impossible. Shared by the
-    absolute (ar_ddpr_xvalidate_thresh) and delta (ar_fix_dres_max)
-    gates, which used to carry two copies of these five steps (r6 #6).
+    Returns None when the evaluation is impossible.
     """
     try:
         cur_pose = estimate.atPose3(key_pose)
