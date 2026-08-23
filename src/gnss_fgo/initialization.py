@@ -221,8 +221,17 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
         })
         info['n_collected'] = len(tc.collected_fixes)
 
-        # Check if we have enough
-        if len(tc.collected_fixes) >= tc.cfg.n_collect:
+        # Check if we have enough — and that the batch spans real
+        # motion: the heading seed is the direction of the collected
+        # displacement, and centimeter GNSS noise gives a coin-flip
+        # heading that NHC (fore-aft symmetric) can never correct.
+        # Slide the window until the vehicle has actually moved.
+        if len(tc.collected_fixes) > tc.cfg.n_collect:
+            tc.collected_fixes.pop(0)
+        disp = np.linalg.norm(tc.collected_fixes[-1]['ecef']
+                              - tc.collected_fixes[0]['ecef']) \
+            if len(tc.collected_fixes) >= 2 else 0.0
+        if len(tc.collected_fixes) >= tc.cfg.n_collect and disp > 2.0:
             p, r, h, ba0, bg0 = transition_to_tc(tc, tc.collected_fixes)
             info['transition'] = True
             info['pitch'] = np.degrees(p)
