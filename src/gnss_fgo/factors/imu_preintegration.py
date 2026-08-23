@@ -1,9 +1,7 @@
 """IMU preintegration + IMU chain factors.
 
 Owns:
-  * PIM construction (``build_pim`` / ``build_pim_from_idx``) with the
-    per-epoch integration-covariance override that scales σ_pos by
-    last-epoch DDPR residual when configured.
+  * PIM construction (``build_pim`` / ``build_pim_from_idx``).
   * IMU chain wiring (``add_imu_chain``) that adds the
     ``CombinedImuFactor`` between consecutive epochs and the
     per-epoch ``BetweenFactorConstantBias``.
@@ -47,28 +45,6 @@ def bias_prior_anchor(tc, bias_prev):
     return tc.tc_bias_init
 
 
-def _apply_mres_integ_cov_override(tc):
-    """Per-epoch ``integ_eff = min(imu_integ_cov_max, max(imu_integ_cov, mres²/dt))``."""
-    last_mres = float(tc._mres_signals.last_res)
-    last_ep = int(tc._mres_signals.epoch)
-    stale_max = int(tc.cfg.ddcp_res_weight_stale_max_epochs)
-    is_stale = stale_max > 0 and (tc.epoch - last_ep) > stale_max
-    default_cov = float(tc.cfg.imu_integ_cov)
-    # Smooth inflation per epoch: integ_eff = max(default, mres²/dt),
-    # capped by imu_integ_cov_max. No threshold / window cliffs — small
-    # mres degrades naturally to default via the max(). Stale signals
-    # (no recent DDPR) are skipped so a long IMU-only outage doesn't
-    # carry old inflation.
-    if is_stale:
-        integ_eff = default_cov
-    else:
-        integ_eff = max(default_cov, last_mres ** 2 / max(tc._epoch_dt, 1e-3))
-        cap = float(tc.cfg.imu_integ_cov_max)
-        if cap > 0:
-            integ_eff = min(integ_eff, cap)
-    tc.imu_params.setIntegrationCovariance(integ_eff * np.eye(3))
-
-
 def build_pim(tc, bias, target_tow=None):
     """Thin adapter — see utils.imu.build_pim. Advances tc.imu_idx."""
     pim, n, gyro_mean, tc.imu_idx = build_pim_from_idx(
@@ -78,7 +54,6 @@ def build_pim(tc, bias, target_tow=None):
 
 def build_pim_from_idx(tc, bias, imu_idx, target_tow=None):
     """Build a PIM from an explicit IMU cursor without mutating tc state."""
-    _apply_mres_integ_cov_override(tc)
     return _utils_build_pim(
         tc.imu_params, bias, tc.imu_data, imu_idx,
         target_tow=target_tow)

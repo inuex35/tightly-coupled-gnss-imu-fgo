@@ -14,12 +14,15 @@ This package root wires them into the epoch flow (:func:`run_ar`).
 import numpy as np
 
 from . import gates as ar_gates
-from . import hold as ar_hold  # re-exported: callers apply fix-and-hold
+from . import hold as ar_hold
 from . import nav_bridge
 from . import problem as ar_problem
 from . import retry as ar_retry
 from . import subset as ar_subset
 from .ambiguity_resolver import AmbiguityResolver
+
+__all__ = ['ar_gates', 'ar_hold', 'nav_bridge', 'ar_problem',
+           'ar_retry', 'ar_subset', 'AmbiguityResolver', 'run_ar']
 
 
 

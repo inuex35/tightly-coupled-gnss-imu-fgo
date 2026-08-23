@@ -287,7 +287,6 @@ class ImuGnssTc:
             gyro_noise=self.gyro_noise,
             accel_bias_sigma=self.accel_bias_sigma,
             gyro_bias_sigma=self.gyro_bias_sigma,
-            scale=self.cfg.imu_scale,
             integ_cov=self.cfg.imu_integ_cov)
 
     def _antenna_ecef(self, pose, ecef_body):

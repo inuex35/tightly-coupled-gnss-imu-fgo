@@ -186,7 +186,8 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
 
 
 def _fde_pick_rejects_iterative(tc, pr_entries, cp_entries):
-    """Iterative FDE: pick the SINGLE largest outlier across PR and CP."""
+    """Iterative FDE: pick the SINGLE largest outlier across PR and CP.
+    No centering — sign-less magnitudes made it measured-worse."""
     best_d = 0.0
     best_fi = None
     for fi, res in pr_entries:
@@ -254,13 +255,22 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info):
     for _it in range(max_iter):
         factors_all = tc.isam2.getFactors()
         nf_total = factors_all.size()
-        fi_start = 0 if iterative else max(0, nf_total - graph.size())
+        # Current epoch's factors only: rejecting history
+        # un-anchors the trajectory (measured km-scale divergence).
+        fi_start = max(0, nf_total - graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
             tc, factors_all, fi_start, nf_total, estimate)
         # GICI-style median subtract removes pose-common-mode bias.
         if iterative:
             reject_fi = _fde_pick_rejects_iterative(tc, pr_entries, cp_entries)
             if not reject_fi:
+                break
+            # Same over-rejection safeguard as single-pass.
+            if total_rejected + 1 > tc.cfg.fde_max_frac * max(1, nv):
+                info['fde_skipped'] = total_rejected + 1
+                _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
+                                     value=info['fde_skipped'],
+                                     skip_if_active=True)
                 break
         else:
             reject_fi = _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries)
