@@ -221,11 +221,8 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
         })
         info['n_collected'] = len(tc.collected_fixes)
 
-        # Check if we have enough — and that the batch spans real
-        # motion: the heading seed is the direction of the collected
-        # displacement, and centimeter GNSS noise gives a coin-flip
-        # heading that NHC (fore-aft symmetric) can never correct.
-        # Slide the window until the vehicle has actually moved.
+        # The heading seed is the collected displacement's direction;
+        # cm GNSS noise coin-flips it. Wait for real motion.
         if len(tc.collected_fixes) > tc.cfg.n_collect:
             tc.collected_fixes.pop(0)
         disp = np.linalg.norm(tc.collected_fixes[-1]['ecef']

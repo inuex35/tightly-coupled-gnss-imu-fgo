@@ -187,9 +187,7 @@ def _fde_collect_residuals(tc, factors_all, fi_start, nf_total, estimate):
 
 def _fde_pick_rejects_iterative(tc, pr_entries, cp_entries):
     """Iterative FDE: pick the SINGLE largest outlier across PR and CP.
-
-    No median centering: factor.error() is sign-less, and centering
-    magnitudes stops rejection during pose drift — measured worse."""
+    No centering — sign-less magnitudes made it measured-worse."""
     best_d = 0.0
     best_fi = None
     for fi, res in pr_entries:
