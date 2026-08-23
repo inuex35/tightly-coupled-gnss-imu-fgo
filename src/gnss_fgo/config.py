@@ -30,8 +30,8 @@ class _SubConfigView:
 
 IMU_PRESETS = {
     # 'tactical' == the class defaults below (accel/gyro noise carry the
-    # measured x100/x1000 inflation); listed so the table tells the truth.
-    'tactical':   dict(accel_noise=2.84e-2, gyro_noise=4.01e-2,
+    # measured x10/x100 inflation); listed so the table tells the truth.
+    'tactical':   dict(accel_noise=2.84e-3, gyro_noise=4.01e-3,
                        accel_bias_sigma=3.14e-4, gyro_bias_sigma=9.70e-6),
     'consumer':   dict(accel_noise=2.0e-3,  gyro_noise=4.0e-4,
                        accel_bias_sigma=1.0e-3,  gyro_bias_sigma=5.0e-5),
@@ -134,8 +134,8 @@ class TcConfig:
     imu_grade: str = 'tactical'    # 'tactical'|'consumer'|'industrial'|'nav_grade'
     imu_scale: float = 1.0         # multiplier on accel/gyro noise +
     imu_integ_cov: float = 1e-3    # position integration noise [m²/s]
-    accel_noise: float = 2.84e-2   # [m/s²/√Hz]   (spec ×100)
-    gyro_noise: float = 4.01e-2    # [rad/s/√Hz]  (spec ×1000) — looser
+    accel_noise: float = 2.84e-3   # [m/s²/√Hz]   (spec ×10)
+    gyro_noise: float = 4.01e-3    # [rad/s/√Hz]  (spec ×100)
     accel_bias_sigma: float = 3.14e-4
     gyro_bias_sigma: float = 9.70e-6
 
