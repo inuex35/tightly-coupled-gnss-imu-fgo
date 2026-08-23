@@ -3,7 +3,7 @@
 Two related judgements, both reading the same context (post-fit DDPR
 residuals, CP-hold and ddpr-bad streaks):
 
-* :func:`validate_fix` -- RTKLIB valpos on the fixed solution, then the
+* :func:`validate_fix` -- the
   graph-objective delta test, then :func:`context_reject`;
 * :func:`context_reject` -- a fix that is small (nb <= ar_context_nb_max)
   in a burst-like context is more likely wrong than lucky.
@@ -44,19 +44,8 @@ def context_reject(tc, nb):
     return False, None
 
 
-def validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
-                  estimate=None, key_pose=None, graph=None):
-    """Phase C — valpos, then the fix_dres objective-delta gate, then ar_context_reject. True iff the fix survives all three."""
-    # xa[0:3] is already antenna position (nav.x[0:3] was set to antenna pos)
-    fix_antenna = xa[0:3]
-
-    yu, eu, _ = tc.zdres(obs, None, None, rs, vs, dts, fix_antenna)
-    v_fix, _, R_fix = tc.sdres(obs, xa, yu[iu], eu[iu], sat, el)
-
-    if not tc.valpos(v_fix, R_fix):
-        tc.ar_diag.outcome = 'valpos_failed'
-        return False
-
+def validate_fix(tc, xa, nb, estimate=None, key_pose=None, graph=None):
+    """Phase C — the fix_dres objective-delta gate, then ar_context_reject."""
     # Likelihood-ratio gate in the graph's OWN objective (pre-hold):
     # Δres = DDPR RMS with the pose moved to the fixed solution xa,
     # minus the same RMS at the float solution. A wrong-integer basin

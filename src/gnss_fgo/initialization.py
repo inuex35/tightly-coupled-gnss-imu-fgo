@@ -167,8 +167,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
     nb = 0
     xa = None
     if ep >= 5:
-        nb, xa = _tc_ar.run_ar(tc, 
-            obs, rs, vs, dts, sat, el, iu, est,
+        nb, xa = _tc_ar.run_ar(tc, sat, el, est,
             tc.Xp(ep), tc.amb_keys)
         if nb > 0 and tc.nav.armode == 3:
             _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.Xp(ep), tc.amb_keys, xa)

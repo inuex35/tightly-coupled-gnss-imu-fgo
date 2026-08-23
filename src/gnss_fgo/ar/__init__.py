@@ -111,8 +111,7 @@ def _try_subset_ar(tc, sat, el, amb_dict):
     return ar_subset.try_subset_ar(tc, sat, el, amb_dict, attempt=attempt)
 
 
-def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
-              key_pose, amb_dict, graph=None):
+def run_ar(tc, sat, el, estimate, key_pose, amb_dict, graph=None):
     """LAMBDA AR with validation."""
     tc._ar_subset_debug = None
     tc.ar_diag.outcome = 'not_called'
@@ -123,7 +122,7 @@ def run_ar(tc, obs, rs, vs, dts, sat, el, iu, estimate,
     nb, xa = _run_lambda_attempts(tc, sat, el, amb_dict)
     if nb <= 0:
         return 0, None
-    if not ar_gates.validate_fix(tc, obs, rs, vs, dts, sat, el, iu, xa, nb,
+    if not ar_gates.validate_fix(tc, xa, nb,
                          estimate=estimate, key_pose=key_pose, graph=graph):
         return 0, None
     # fix-and-hold is the caller's move, after its remaining verdicts.

@@ -16,7 +16,7 @@ from ..utils import sorted_amb_items
 _AR_OUTCOME_CODES = {
     'not_called': 0, 'armode_off': 1, 'entered': 2,
     'lambda_exception': 3, 'lambda_zero': 4, 'min_nb_gate': 5,
-    'valpos_failed': 6, 'ar_context_reject': 7, 'success': 8,
+    'ar_context_reject': 7, 'success': 8,
     'fix_dres': 11, 'gdop_gate': 12, 'problem_unposed': 13,
     'partial_declined': 14, 'min_pairs_declined': 15,
 }
@@ -78,8 +78,7 @@ def _run_ar_with_marginals(tc, epoch):
         tc.ar_diag.outcome = 'gdop_gate'
         return
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
-        epoch.obs, epoch.rs, epoch.vs, epoch.dts,
-        epoch.sat, epoch.el, epoch.iu, epoch.estimate,
+        epoch.sat, epoch.el, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
