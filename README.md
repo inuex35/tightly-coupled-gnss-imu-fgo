@@ -33,21 +33,37 @@ and tunnels.
 
 ## Results
 
-![tokyo_defaults](docs/tokyo_defaults.png)
-
 Everything is measured on open data
-([PPC-Dataset](https://github.com/taroz/PPC-Dataset), three full
-urban-Tokyo drives) with all-default settings, and is reproducible
-end to end:
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset)) with all-default
+settings, and is reproducible end to end. Two cities, six full urban
+drives, one configuration.
+
+### Tokyo
+
+![tokyo_defaults](docs/tokyo_defaults.png)
 
 | run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 21.32 m | 0.21 m  | 0.55 m  | 51.2 % | 58.7 % |
-| run2 |  9151 ep  |  6.11 m | 0.052 m | 0.38 m  | 67.5 % | 77.4 % |
-| run3 | 15301 ep  | 16.82 m | 0.047 m | 0.53 m  | 70.4 % | 76.5 % |
+| run1 | 11928 ep  | 26.84 m | 0.27 m  | 0.61 m  | 46.6 % | 56.6 % |
+| run2 |  9151 ep  |  3.86 m | 0.054 m | 0.43 m  | 61.5 % | 72.4 % |
+| run3 | 15301 ep  | 10.61 m | 0.049 m | 0.52 m  | 63.8 % | 68.9 % |
 
 run1 is the hardest route — a deep canyon plus a full tunnel blackout,
 bridged by IMU + SD Doppler dead reckoning.
+
+### Nagoya (generalization — same defaults, only the lever arm changes)
+
+![nagoya_defaults](docs/nagoya_defaults.png)
+
+| run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
+|------|-----------|---------|---------|---------|--------|--------|
+| run1 |  7602 ep  | 34.80 m | 0.41 m  | 0.23 m  | 45.2 % | 53.6 % |
+| run2 |  9451 ep  | 27.26 m | 0.56 m  | 0.27 m  | 48.1 % | 49.9 % |
+| run3 |  5201 ep  | 15.99 m | 2.11 m  | 0.96 m  | 29.6 % | 28.9 % |
+
+The nagoya routes run under elevated expressways with repeated full
+outages; the tuning was NOT fitted to them — the same defaults carry
+over, only `LEVER_ARM` follows the dataset README.
 
 ## Quick start
 
@@ -68,10 +84,16 @@ pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@24ec6450e9a9d1
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
-`data/PPC-Dataset/tokyo/run{1,2,3}/`):
+`data/PPC-Dataset/{tokyo,nagoya}/run{1,2,3}/`):
 
 ```bash
+# tokyo
 LEVER_ARM=0.31,0,0.55 \
+python examples/run_imu_gnss_tc.py \
+  rover.obs base.obs base.nav imu.csv reference.csv
+
+# nagoya (lever arm from the dataset README, FRD converted to FLU)
+LEVER_ARM=0.593,0.670,1.216 \
 python examples/run_imu_gnss_tc.py \
   rover.obs base.obs base.nav imu.csv reference.csv
 ```
