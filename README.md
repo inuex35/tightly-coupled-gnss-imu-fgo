@@ -47,9 +47,7 @@ end to end:
 | run3 | 15301 ep  | 10.61 m | 0.049 m | 0.52 m  | 63.8 % | 68.9 % |
 
 run1 is the hardest route — a deep canyon plus a full tunnel blackout,
-bridged by IMU + SD Doppler dead reckoning. The same defaults also
-generalize to the nagoya drives of the dataset — see
-[docs/nagoya.md](docs/nagoya.md).
+bridged by IMU + SD Doppler dead reckoning.
 
 ## Quick start
 
