@@ -90,9 +90,6 @@ class TcConfig:
     doppler_gdop_max: float = 0.0  # skip Doppler above this GDOP (0 = off)
     doppler_require_dd: int = 1    # only add Doppler where the epoch has a
                                    # usable DD set (see buildfactor/doppler_sd)
-    doppler_skip_aid: int = 1      # SD Doppler also on GDOP-skipped epochs
-                                   # (outage velocity aid; bypasses the
-                                   # require_dd/gdop gates there)
     doppler_sd_sigma: float = 0.5  # [m/s] 0 = off — between-satellite
                                    # difference, no clock states. 0.5 is
                                    # the measured full-length optimum.
@@ -102,8 +99,6 @@ class TcConfig:
                                    # buildfactor/doppler_sd.py).
 
     # GNSS quality gate
-    gdop_max: float = 10.0
-    nsat_min: int = 6
     min_dd_for_solve: int = 4      # min DD FACTOR count (PR+CP; a
                                    # 3-band pair alone contributes up
                                    # to 6) below which the epoch gets

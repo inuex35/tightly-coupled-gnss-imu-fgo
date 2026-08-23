@@ -4,7 +4,6 @@ import numpy as np
 
 from ..integrity import slip_detect as _tc_slip_detect
 from ..utils import sorted_amb_items
-from ..integrity import recovery as _tc_recovery
 
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
@@ -25,9 +24,7 @@ STAGE_WRITES = (
 def run(tc, epoch):
     """Stage B: quality gating + slip / CP-hold decisions."""
     info = epoch.info
-    early = _gdop_gate_and_skip(tc, epoch)
-    if early is not None:
-        return early
+    _record_geometry(tc, epoch)
     tc.skip_count = 0
 
     fresh_amb_bootstrap = int(
@@ -43,21 +40,19 @@ def run(tc, epoch):
     return None
 
 
-def _gdop_gate_and_skip(tc, epoch):
-    """Step 1 — GDOP / nsat gate; on failure PROCESSES the epoch via recovery.process_gdop_skip and returns its tuple (else None)."""
-    info = epoch.info
-    gdop_val = tc._compute_gdop(epoch.pred_nav, epoch.ns, epoch.rs, epoch.iu, epoch.R_enu2ecef)
-    info['gdop'] = gdop_val
-    info['nsat'] = epoch.ns
-    if not (gdop_val < tc.cfg.gdop_max
-            and epoch.ns >= tc.cfg.nsat_min):
-        epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
-        return _tc_recovery.process_gdop_skip(tc,
-            epoch.obs, epoch.key_idx, epoch.graph, epoch.values, epoch.R_enu2ecef, info,
-            imu_idx_prev=epoch.imu_idx_prev,
-            gyro_mean=epoch.gyro_mean,
-            vel_prev=epoch.vel_prev, epoch=epoch)
+def _record_geometry(tc, epoch):
+    """Step 1 — record GDOP / nsat for the AR gates and diagnostics.
 
+    Every epoch gets solved: the old GDOP/nsat gate that skipped GNSS
+    wholesale measured −12.6% total AllRMS when opened — the degraded
+    epochs carry real steering information (deep canyons, the static
+    basin), and per-observation weighting plus the AR gates own the
+    quality question now.
+    """
+    info = epoch.info
+    info['gdop'] = tc._compute_gdop(
+        epoch.pred_nav, epoch.ns, epoch.rs, epoch.iu, epoch.R_enu2ecef)
+    info['nsat'] = epoch.ns
 
 
 def _collect_telemetry_and_tick_holds(tc, epoch):
