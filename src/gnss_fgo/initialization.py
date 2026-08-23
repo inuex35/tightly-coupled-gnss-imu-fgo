@@ -433,8 +433,5 @@ def transition_to_tc(tc, collected_fixes):
     tc.tc_epoch = n - 1
     tc.phase = 2
     tc._tc_fresh_amb_epochs = 0
-    boot_ddpr_epochs = int(
-        tc.cfg.boot_ddpr_epochs)
-    tc._tc_bootstrap_ddpr_epochs = max(0, boot_ddpr_epochs)
 
     return pitch_rad, roll_rad, heading_rad, bias_acc, bias_gyro

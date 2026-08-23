@@ -216,7 +216,6 @@ class ImuGnssTc:
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # Phase-2 init bootstrap counters (filled by transition_to_tc)
-        self._tc_bootstrap_ddpr_epochs = 0
         self._tc_fresh_amb_epochs = 0
         # Phase-1 last solution (used by velocity estimator)
         self._last_sol_ecef = None

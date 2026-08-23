@@ -47,31 +47,6 @@ def _build_factor_block(tc, epoch, prev_smode):
 
     _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
 
-    bootstrap_ddpr_epochs = int(
-        tc._tc_bootstrap_ddpr_epochs or 0)
-    if bootstrap_ddpr_epochs > 0:
-        try:
-            ecef_ls, n_ls, res_ls = tc._ddpr_only_position(
-                epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
-                epoch.sat, epoch.el, epoch.iu, epoch.ir_map, epoch.pred_nav.pose())
-            if ecef_ls is not None and n_ls >= 4:
-                body_enu_ls = epoch.R_enu2ecef.T @ (np.asarray(ecef_ls) - tc.base_ecef)
-                pose_ls = gtsam.Pose3(
-                    epoch.pred_nav.pose().rotation(),
-                    gtsam.Point3(*body_enu_ls))
-                boot_sigma = float(tc.cfg.boot_ddpr_sigma)
-                sigmas = np.array([1e6, 1e6, 1e6,
-                                   boot_sigma, boot_sigma, boot_sigma])
-                epoch.graph.addPriorPose3(
-                    tc.Xpose(epoch.key_idx), pose_ls,
-                    gtsam.noiseModel.Diagonal.Sigmas(sigmas))
-                info['bootstrap_ddpr_prior_nv'] = int(n_ls)
-                info['bootstrap_ddpr_prior_res'] = float(res_ls)
-                info['bootstrap_ddpr_prior_sigma'] = float(boot_sigma)
-        except (RuntimeError, ValueError):
-            pass
-        tc._tc_bootstrap_ddpr_epochs = max(0, bootstrap_ddpr_epochs - 1)
-
     # ────────────────────────────────────────────────────────────────
 
 def _add_between_n_chain(tc, epoch, prev_smode):
