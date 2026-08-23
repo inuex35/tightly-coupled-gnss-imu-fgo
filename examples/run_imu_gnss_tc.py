@@ -328,13 +328,6 @@ def main():
                 extra += f" FDE={fde}"
             if info.get('gnss_skip'):
                 extra += f" SKIP(gdop={info.get('gdop',0):.1f},ns={info.get('nsat',0)})"
-            if 'ddpr_innov' in info:
-                extra += f" ddpr={info['ddpr_innov']:.2f}"
-                if 'ecef_ddpr' in info:
-                    ddpr_err = np.linalg.norm(info['ecef_ddpr'] - ref_ecef)
-                    extra += f"(truth={ddpr_err:.2f})"
-                if 'ddpr_res' in info:
-                    extra += f" res={info['ddpr_res']:.2f}"
             if info.get('nhc'):
                 extra += " NHC"
             if 'lambda_correction' in info:
