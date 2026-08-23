@@ -12,7 +12,6 @@ These are policy, not resolution: nothing here touches LAMBDA's inputs.
 """
 
 
-from ..pipeline import residuals as _tc_residuals
 
 
 def context_reject(tc, nb):
@@ -45,27 +44,7 @@ def context_reject(tc, nb):
 
 
 def validate_fix(tc, xa, nb, estimate=None, key_pose=None, graph=None):
-    """Phase C — the fix_dres objective-delta gate, then ar_context_reject."""
-    # Likelihood-ratio gate in the graph's OWN objective (pre-hold):
-    # Δres = DDPR RMS with the pose moved to the fixed solution xa,
-    # minus the same RMS at the float solution. A wrong-integer basin
-    # is phase-self-consistent but the epoch's code factors protest —
-    # the DELTA isolates that protest from the NLOS noise floor that
-    # defeats absolute thresholds. Evaluated BEFORE fix-and-hold, so a
-    # wrong basin is rejected before holds can lock it (once holds drag
-    # the float into the basin the delta vanishes — timing matters).
-    dres_thr = float(tc.cfg.ar_fix_dres_max)
-    if dres_thr > 0.0 and graph is not None and estimate is not None \
-            and key_pose is not None:
-        res_pre = tc._cached_ddpr_res_pre
-        res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
-            tc, graph, estimate, key_pose, xa)
-        if res_pre is not None and res_xa is not None:
-            fix_dres = float(res_xa) - float(res_pre)
-            if fix_dres > dres_thr:
-                tc.ar_diag.outcome = 'fix_dres'
-                return False
-
+    """Phase C — ar_context_reject on the accepted integers."""
     reject_ctx, reject_detail = context_reject(tc, nb)
     if reject_ctx:
         tc._ar_context_reject = reject_detail
