@@ -60,9 +60,6 @@ class ImuGnssTc:
     def sdres(self, *a, **k):
         return self.engine.sdres(*a, **k)
 
-    def valpos(self, *a, **k):
-        return self.engine.valpos(*a, **k)
-
     # AR bookkeeping still delegated to the cssrlib engine (the resolver
     # itself lives in ar/):
     def ddidx(self, *a, **k):
@@ -150,7 +147,6 @@ class ImuGnssTc:
         self.nav.rtklib_mode = bool(self.cfg.rtklib_mode)
         self.nav.arfilter = bool(self.cfg.ar_arfilter)
         self.nav.minfixsats = self.cfg.ar_minfixsats
-        self.nav.valpos_thres = float(self.cfg.valpos_thres)
 
     def _init_runtime_state(self):
         """Initialize mutable per-run state for both pipeline phases."""
