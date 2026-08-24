@@ -81,6 +81,10 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
     vsat_snapshot = tc.nav.vsat.copy()
     fix_snapshot = tc.nav.fix.copy()
     lock_snapshot = tc.nav.lock.copy()
+    # Cross-generation retry state (nav_bridge table: next epoch's
+    # round-robin / arfilter read these) — probes must not trample it.
+    excsat_snapshot = tc.nav.excsat
+    prev_ratio2_snapshot = tc.nav.prev_ratio2
     try:
         if sat_exclude is not None:
             if isinstance(sat_exclude, (int, np.integer)):
@@ -99,6 +103,8 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
             tc.nav.fix[:, :] = fix_snapshot
             # Probing attempts must not age the lock counters.
             tc.nav.lock[:, :] = lock_snapshot
+            tc.nav.excsat = excsat_snapshot
+            tc.nav.prev_ratio2 = prev_ratio2_snapshot
 
 
 def _try_subset_ar(tc, sat, el, amb_dict):
