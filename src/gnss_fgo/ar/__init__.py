@@ -88,8 +88,7 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
             else:
                 excl = {int(x) for x in sat_exclude}
             for s in excl:
-                if 1 <= s <= tc.nav.vsat.shape[0]:
-                    tc.nav.vsat[s - 1, :] = 0
+                tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
         return (_resolve_with_retry(tc, sat_list, amb_dict)
                 if tc.cfg.rtklib_mode

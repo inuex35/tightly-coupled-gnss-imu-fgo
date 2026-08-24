@@ -40,8 +40,9 @@ def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
         ts_h1[amb_dict[sf]] = t_p1
     try:
         isam.update(hg, gtsam.Values(), ts_h1)
-    except (RuntimeError, IndexError):
-        pass
+    except (RuntimeError, IndexError) as ex:
+        # nav.fix already claims held — record the graph/nav mismatch.
+        tc.ar_diag.exception = f'hold_prior: {type(ex).__name__}: {ex}'
 
 
 def _activate_phase2_hold_states(tc, hold_keys, xa):
