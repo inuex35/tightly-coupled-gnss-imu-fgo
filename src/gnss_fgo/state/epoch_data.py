@@ -67,6 +67,7 @@ class EpochData:
 
     # ── Filled by `optimize` ──────────────────────────────────────
     nv: int = 0                        # # DD factors built
+    nf_before: int = 0                 # smoother factor count before this epoch's insert
     pose_tc:  Any = None               # smoother Pose3 (key_idx)
     ecef_tc:  np.ndarray | None = None # antenna ECEF (3,) at key_idx
     nb: int = 0                        # # accepted DDs after FDE

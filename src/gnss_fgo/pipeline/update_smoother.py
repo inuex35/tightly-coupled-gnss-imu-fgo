@@ -22,6 +22,9 @@ def _solve_isam2(tc, epoch):
         for sf, (k_old, _) in sorted_amb_items(epoch.prev_amb_values):
             if tc._sat_states.at(*sf).amb_key is not None:
                 extra.append(k_old)
+        # This epoch's factors land at [nf_before, nf_before + G); the
+        # marginal containers the same update appends come after them.
+        epoch.nf_before = tc.isam2.getFactors().size()
         fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
                    keep_keys=extra)
         epoch.estimate = tc.isam2.calculateEstimate()

@@ -245,8 +245,14 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
         # Held integers were already handed over as seeds above.
 
 
-def apply_fde(tc, graph, key_idx, nv, estimate, info):
-    """GICI-style Fault Detection and Exclusion."""
+def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
+    """GICI-style Fault Detection and Exclusion.
+
+    ``fi_start`` is the smoother's factor count before this epoch's
+    insert: the epoch's factors occupy [fi_start, fi_start + G). The
+    old ``nf_total - G`` derivation skipped the first M factors of the
+    epoch whenever the same update appended M marginal containers.
+    """
     max_iter = max(1, tc.cfg.fde_max_iter)
     iterative = max_iter > 1
     total_rejected = 0
@@ -255,9 +261,12 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info):
         nf_total = factors_all.size()
         # Current epoch's factors only: rejecting history
         # un-anchors the trajectory (measured km-scale divergence).
-        fi_start = max(0, nf_total - graph.size())
+        if fi_start is None:
+            fi_start = max(0, nf_total - graph.size())
+        info['fde_slot_shift'] = (nf_total - graph.size()) - fi_start
+        fi_end = min(nf_total, fi_start + graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
-            tc, factors_all, fi_start, nf_total, estimate)
+            tc, factors_all, fi_start, fi_end, estimate)
         if iterative:
             reject_fi = _fde_pick_rejects_iterative(tc, pr_entries, cp_entries)
             if not reject_fi:
