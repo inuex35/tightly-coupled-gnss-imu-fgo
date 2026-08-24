@@ -103,6 +103,10 @@ def build(tc, sat_list, amb_dict):
             for j, b in enumerate(in_graph):
                 cov_g[i, j] = jm.at(ka, key_of[b])[0, 0]
             cross_g[:, i] = jm.at(key_pose, ka)[3:6, 0]
+        # Pose3 marginals live in the BODY tangent frame (right
+        # retract); rotate the position rows into the nav frame.
+        # Identity in Phase 1, so only Phase-2 fixes move.
+        cross_g = est.atPose3(key_pose).rotation().matrix() @ cross_g
         if cache is None or len(in_graph) > len(cache['pos']):
             tc.current_epoch.ar_joint_cache = {
                 'key_pose': key_pose,
