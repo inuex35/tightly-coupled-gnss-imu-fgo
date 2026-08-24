@@ -15,7 +15,7 @@ from ..utils import sorted_amb_items
 
 _AR_OUTCOME_CODES = {
     'not_called': 0, 'armode_off': 1, 'entered': 2,
-    'lambda_exception': 3, 'lambda_zero': 4, 'min_nb_gate': 5,
+    'lambda_exception': 3, 'lambda_zero': 4,
     'ar_context_reject': 7, 'success': 8,
     'gdop_gate': 12, 'problem_unposed': 13,
     'partial_declined': 14, 'min_pairs_declined': 15,
@@ -33,6 +33,7 @@ _AR_DIAG_ATTRS = (
     ('held_not_in_obs', 'held_not_in_obs'),
     ('sat_in_obs_size', 'sat_in_obs_size'),
     ('resamb_raw_nb', 'resamb_raw_nb'),
+    ('exact_fit_accept', 'ar_exact_fit_accept'),
     ('amb_el_min_deg', 'amb_el_min_deg'),
     ('amb_el_median_deg', 'amb_el_median_deg'),
     ('amb_el_above15', 'amb_el_above15'),

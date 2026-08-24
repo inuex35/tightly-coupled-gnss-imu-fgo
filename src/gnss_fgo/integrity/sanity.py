@@ -11,7 +11,6 @@ import gtsam
 
 from . import recovery as _tc_recovery
 from ..pipeline import residuals as _tc_residuals
-from . import recovery as _tc_state
 
 
 def _ddpr_multipath_dominated(tc, info):
@@ -143,5 +142,5 @@ def _ddpr_sanity_persist(tc, main_res, info):
     each, and greenlight the reset after ddpr_sanity_persist of them."""
     tc._ddpr_bad_count = tc._ddpr_bad_count + 1
     info['ddpr_bad'] = tc._ddpr_bad_count
-    _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
+    _tc_recovery.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)
     return tc._ddpr_bad_count >= tc.cfg.ddpr_sanity_persist

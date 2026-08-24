@@ -15,10 +15,10 @@ def all_factor_residuals(tc, graph, estimate):
         'BetweenBias':[0.0, 0],
         'BetweenN':   [0.0, 0],   # BetweenFactorDouble (N chain)
         'PriorBias':  [0.0, 0],
-        'PriorVel':   [0.0, 0],
+        'PriorVel':   [0.0, 0],   # PriorFactorVector on Vel (incl. ZUPT zero-velocity)
         'PriorPose':  [0.0, 0],
         'PriorN':     [0.0, 0],   # PriorFactorDouble (ambiguity priors)
-        'NHC':        [0.0, 0],   # via PriorFactorVector on Vel — distinguished by key
+        'NHC':        [0.0, 0],   # C++ NhcFactor
         'Other':      [0.0, 0],
     }
     custom_cp_local = set(tc._last_custom_ddcp_local)
@@ -43,6 +43,8 @@ def all_factor_residuals(tc, graph, estimate):
             tag = 'BetweenN'
         elif 'PriorFactorConstantBias' in tname:
             tag = 'PriorBias'
+        elif 'Nhc' in tname:
+            tag = 'NHC'
         elif 'PriorFactorVector' in tname:
             tag = 'PriorVel'
         elif 'PriorFactorPose3' in tname:
@@ -212,16 +214,10 @@ def _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries):
 
 
 def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
-    """Purge the arcs behind every rejected CP factor: release holds
-    (as seeds) and discard the float arcs so the next epoch re-seeds.
-
-    NOT slip handling, despite the treatment being the same — one bad
-    residual says nothing about integer continuity (the slip detectors
-    own that call). The arc discard earns its keep differently: the
-    float value is an accumulation of the same measurements FDE just
-    distrusted, and keeping such arcs alive was measured well worse
-    on the AR-heavy run. The purge is history hygiene, not a verdict
-    on the integer."""
+    """Release the holds behind every rejected CP factor (handing the
+    integers over as seeds). The float arcs stay: one bad residual is
+    evidence about THIS epoch's measurement, not about the integer's
+    continuity — the slip detectors own that call."""
     custom_cp_meta = tc._last_custom_ddcp_global or {}
     for fi in reject_fi:
         fac = factors_all.at(fi)

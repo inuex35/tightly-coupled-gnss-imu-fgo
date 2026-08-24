@@ -61,7 +61,7 @@ def build(tc, sat_list, amb_dict):
             continue
         keys.append(sf)
         values[sf] = float(value)
-        held_var[sf] = max(float(tc.cfg.varholdamb), 1e-9)
+        held_var[sf] = max(float(tc.cfg.varholdamb), 1e-6)
     for (s, f), k in sorted_amb_items(key_of):
         sf = (int(s), int(f))
         if sf in values:

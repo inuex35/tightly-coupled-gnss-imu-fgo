@@ -10,12 +10,20 @@ from cssrlib.gnss import sat2prn, ecef2pos
 
 def env_f(name: str, default) -> float:
     """Float env var with a default."""
-    return float(os.environ.get(name, str(default)))
+    raw = os.environ.get(name, str(default))
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f'{name}={raw!r} is not a float') from None
 
 
 def env_i(name: str, default) -> int:
     """Int env var with a default."""
-    return int(os.environ.get(name, str(default)))
+    raw = os.environ.get(name, str(default))
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f'{name}={raw!r} is not an int') from None
 
 
 R_ENU2NED = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]])

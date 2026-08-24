@@ -147,7 +147,7 @@ print(f"truth_enu range  E [{truth_enu[:,0].min():.1f}, {truth_enu[:,0].max():.1
       f"  N [{truth_enu[:,1].min():.1f}, {truth_enu[:,1].max():.1f}]")
 print(f"sol_enu   range  E [{sol_enu[:,0].min():.1f}, {sol_enu[:,0].max():.1f}]"
       f"  N [{sol_enu[:,1].min():.1f}, {sol_enu[:,1].max():.1f}]")
-print(f"\nTop-5 bad-run starts:")
+print("\nTop-5 bad-run starts:")
 for s, e, n in top_segs:
     print(f"  ep {s:4d}..{e:4d}  start ENU=({sol_enu[s,0]:7.1f}, {sol_enu[s,1]:7.1f})"
           f"  truth=({truth_enu[s,0]:7.1f}, {truth_enu[s,1]:7.1f})"
