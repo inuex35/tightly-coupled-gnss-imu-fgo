@@ -135,12 +135,7 @@ def _update_streaks_and_post_hooks(tc, epoch):
     info = epoch.info
     if epoch.tag == 'FIX':
         for (s, f), _ in tc._sat_states.amb_items():
-            try:
-                held = (1 <= s <= tc.nav.fix.shape[0]
-                        and 0 <= f < tc.nav.fix.shape[1]
-                        and int(tc.nav.fix[s - 1, f]) == 3)
-            except (ValueError, TypeError, IndexError):
-                held = False
+            held = int(tc.nav.fix[s - 1, f]) == 3
             sat_st = tc._sat_states.get(s, f)
             sat_st.fix_streak = sat_st.fix_streak + 1 if held else 0
     else:
