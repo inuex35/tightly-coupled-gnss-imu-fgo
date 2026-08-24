@@ -29,7 +29,7 @@ def _build_factor_block(tc, epoch, prev_smode):
         tc.amb_keys_tc,
         dd_epoch=epoch.key_idx,
         prev_amb_values=epoch.prev_amb_values,
-        skip_cp=epoch.skip_cp_now, slip_keys=epoch.slip_keys)
+        skip_cp=epoch.skip_cp_now)
     epoch.nv = nv
     n_between = _add_between_n_chain(tc, epoch, prev_smode)
     info['n_dd'] = epoch.nv

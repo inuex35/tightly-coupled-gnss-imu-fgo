@@ -5,10 +5,10 @@
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R_enu2ecef', 'bias_prev', 'dts', 'ecef_tc', 'el', 'estimate', 'graph', 'gyro_mean',
+    'R_enu2ecef', 'bias_prev', 'ecef_tc', 'el', 'estimate', 'graph', 'gyro_mean',
     'info', 'ir_map', 'iu', 'key_idx', 'nb', 'ns', 'nv', 'obs', 'obs_sd',
     'obsb', 'pose_tc', 'pred_ecef', 'pred_nav', 'prev_amb_values',
-    'rs', 'rsb', 'sat', 'skip_cp_now', 'slip_keys',
+    'rs', 'rsb', 'sat', 'skip_cp_now',
     'values', 'vs',
 )
 STAGE_WRITES = (

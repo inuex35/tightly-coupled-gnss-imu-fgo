@@ -29,12 +29,9 @@ class ResolverResult:
 
     nb: int = 0                       # number of fixed DD ambiguities
     fixed: dict = field(default_factory=dict)   # (sat, freq) -> fixed SD value
-    ratio: float = 0.0                # s[1]/s[0], 0 when unavailable
     s0: float = 0.0
     s1: float = 0.0
-    nfix: int = 0                     # integer-fixed count reported by mlambda
     declined_partial: bool = False    # parmode-2 guard declined a partial fix
-    ps: float = 0.0                   # success rate from partial AR
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
 
 
@@ -108,8 +105,7 @@ class AmbiguityResolver:
             # ratio -- and, through prev_ratio2, the retry policy.
             s0 = 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
-        result = ResolverResult(ratio=ratio, s0=s0, s1=s1, nfix=int(nfix),
-                          ps=float(ps), pairs=pairs)
+        result = ResolverResult(s0=s0, s1=s1, pairs=pairs)
         if nfix <= 0:
             return result
         # s0 <= 0 means mlambda could not form a ratio; partial AR (parmode 2)

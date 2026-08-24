@@ -1,31 +1,9 @@
-"""TcConfig — tunables for ImuGnssTc. Access is flat (`cfg.zupt_max_acc_std`); the `cfg.zupt.*` namespaced view exists for the zupt group only."""
+"""TcConfig — tunables for ImuGnssTc. Access is flat (`cfg.zupt_max_acc_std`)."""
 
 import os
 from dataclasses import dataclass
 
 from .utils import env_f, env_i
-
-
-class _SubConfigView:
-    """Prefix-stripped namespace proxy for a group of TcConfig fields."""
-    __slots__ = ('_cfg', '_prefix')
-
-    def __init__(self, cfg, prefix):
-        object.__setattr__(self, '_cfg', cfg)
-        object.__setattr__(self, '_prefix', prefix)
-
-    def __getattr__(self, name):
-        return getattr(self._cfg, f'{self._prefix}_{name}')
-
-    def __setattr__(self, name, value):
-        setattr(self._cfg, f'{self._prefix}_{name}', value)
-
-    def __repr__(self):
-        keys = [k[len(self._prefix) + 1:] for k in dir(self._cfg)
-                if k.startswith(self._prefix + '_')
-                and not k.startswith('_')]
-        kv = ', '.join(f'{k}={getattr(self, k)!r}' for k in sorted(keys))
-        return f'{self._prefix}Config({kv})'
 
 
 IMU_PRESETS = {
@@ -40,7 +18,6 @@ IMU_PRESETS = {
     'nav_grade':  dict(accel_noise=5.7e-5,  gyro_noise=3.5e-6,
                        accel_bias_sigma=2.0e-5,  gyro_bias_sigma=5.0e-7),
 }
-
 
 
 @dataclass
@@ -133,7 +110,6 @@ class TcConfig:
     init_pitch_deg:          float = float('nan')
     # AR
     ar_mode: int = 3               # 0=none, 1=cont, 3=fix-and-hold
-    ar_max_frac: float = 1.0       # skip AR if max DD float fraction > this [cyc]
     parmode: int = 1
     par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
     ar_starve_reset: int = 50      # epochs of consecutive lambda_zero
@@ -244,11 +220,6 @@ class TcConfig:
         """Env-var name for a field: override table first, else UPPER_CASE."""
         return cls._ENV_OVERRIDES.get(field_name, field_name.upper())
 
-
-    @property
-    def zupt(self):
-        """The zupt_* fields as a prefix-stripped view."""
-        return _SubConfigView(self, 'zupt')
 
     @classmethod
     def from_env(cls):
