@@ -78,7 +78,7 @@ def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
         tc.nav.excsat = 0
 
 
-def publish_marginals(tc, factors, estimate, key_pose, amb_dict):
+def publish_marginals(tc, estimate, key_pose, amb_dict):
     """Publish the AR-selection state: float/held ambiguities, vsat, key_pose.
 
     The covariance readback that used to fill nav.P from joint marginals

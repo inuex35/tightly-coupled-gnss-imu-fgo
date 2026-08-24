@@ -86,9 +86,7 @@ def _maybe_run_ddpr_sanity(tc, epoch):
         return None
     return _tc_sanity.run_ddpr_sanity(tc,
         epoch.graph, epoch.pose_tc, epoch.pred_nav,
-        epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
-        epoch.sat, epoch.el, epoch.iu, epoch.ir_map, epoch.key_idx, info,
-        nb=epoch.nb)
+        epoch.obs, epoch.key_idx, info, nb=epoch.nb)
 
 
 def _decide_fix_or_flt(tc, epoch):

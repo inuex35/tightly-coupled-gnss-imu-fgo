@@ -5,9 +5,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-_SENTINEL = object()
-
-
 class SatFieldView(MutableMapping):
     """``MutableMapping`` view of one ``SatState`` field across all entries.
 
@@ -15,22 +12,18 @@ class SatFieldView(MutableMapping):
     iteration/lookup, so the view behaves like a dict of set values only.
     """
 
-    __slots__ = ('_map', '_field', '_absent', '_list_default')
+    __slots__ = ('_map', '_field', '_absent')
 
     def __init__(self, sat_map, field_name, absent=None):
         self._map = sat_map
         self._field = field_name
         self._absent = absent
-        # mutable defaults must be created fresh, not shared
-        self._list_default = isinstance(absent, list)
 
     def _is_set(self, v):
-        if self._list_default:
-            return bool(v)
         return v != self._absent
 
     def _reset(self, st):
-        setattr(st, self._field, [] if self._list_default else self._absent)
+        setattr(st, self._field, self._absent)
 
     def __getitem__(self, key):
         st = self._map.track.get(key)
@@ -46,10 +39,7 @@ class SatFieldView(MutableMapping):
         setattr(self._map.get(s, f), self._field, value)
 
     def __delitem__(self, key):
-        st = self._map.track.get(key)
-        if st is None or not self._is_set(getattr(st, self._field)):
-            raise KeyError(key)
-        self._reset(st)
+        raise TypeError('SatFieldView entries are reset via clear()')
 
     def __iter__(self):
         for k, st in self._map.track.items():
@@ -80,24 +70,6 @@ class SatFieldView(MutableMapping):
 
     def keys(self):
         return list(iter(self))
-
-    def pop(self, key, default=_SENTINEL):
-        st = self._map.track.get(key)
-        if st is None or not self._is_set(getattr(st, self._field)):
-            if default is _SENTINEL:
-                raise KeyError(key)
-            return default
-        v = getattr(st, self._field)
-        self._reset(st)
-        return v
-
-    def setdefault(self, key, default):
-        st = self._map.track.get(key)
-        if st is not None and self._is_set(getattr(st, self._field)):
-            return getattr(st, self._field)
-        s, f = key
-        setattr(self._map.get(s, f), self._field, default)
-        return default
 
     def clear(self):
         for st in self._map.track.values():

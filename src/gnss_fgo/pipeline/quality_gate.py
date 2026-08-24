@@ -10,14 +10,13 @@ from ..utils import sorted_amb_items
 STAGE_READS = (
     'R_enu2ecef', 'el', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'info',
     'ir_map', 'iu',
-    'key_idx', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_enu', 'pred_nav',
+    'key_idx', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_nav',
     'prev_amb_values', 'rs', 'sat', 'skip_cp_now', 'vel_prev',
-    'slip_keys', 'values',
+    'values',
 )
 STAGE_WRITES = (
-    'el[*]', 'iu[*]', 'pred_ecef', 'pred_enu', 'prev_amb_values',
+    'el[*]', 'iu[*]', 'pred_ecef', 'prev_amb_values',
     'prev_amb_values[*]', 'sat[*]', 'skip_cp_now',
-    'slip_keys',
 )
 
 
@@ -25,11 +24,10 @@ def run(tc, epoch):
     """Stage B: quality gating + slip / CP-hold decisions."""
     _record_geometry(tc, epoch)
 
-    epoch.slip_keys, epoch.skip_cp_now = \
-        _collect_telemetry_and_tick_holds(tc, epoch)
+    epoch.skip_cp_now = _collect_telemetry_and_tick_holds(tc, epoch)
 
     epoch.prev_amb_values = _carry_prev_amb_and_rotate_keys(tc, epoch)
-    epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
+    epoch.pred_ecef = _predict_antenna_position(tc, epoch)
     return None
 
 
@@ -52,7 +50,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
     """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), and the global CP-hold countdown/release decision."""
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
-    n_reset, slip_keys = \
+    n_reset, _slip_keys = \
         _tc_slip_detect.detect_slips_and_reset_ambiguities(tc,
             epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu)
     info['n_slip'] = n_reset
@@ -78,7 +76,7 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
             info['sat_snr_dbhz'] = sat_snr
     if skip_cp_now:
         tc._recovery.tick_cp_hold(info)
-    return slip_keys, skip_cp_now
+    return skip_cp_now
 
 
 
@@ -101,9 +99,9 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch):
 
 
 def _predict_antenna_position(tc, epoch):
-    """Step 6 — (pred_enu, pred_ecef) from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
+    """Step 6 — pred_ecef from the IMU-predicted pose and the antenna lever arm. Pure; the caller applies."""
     pred_enu = np.array(epoch.pred_nav.pose().translation())
     pred_body_ecef = epoch.R_enu2ecef @ pred_enu + tc.base_ecef
-    return pred_enu, tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)
+    return tc._antenna_ecef(epoch.pred_nav.pose(), pred_body_ecef)
 
 

@@ -33,7 +33,6 @@ class ArProblem:
     values: dict                     # (sat, freq) -> float ambiguity [cycles]
     cov: np.ndarray                  # joint covariance over ``keys``
     cross: np.ndarray                # cov(position ENU, ambiguity), 3 x n
-    held: dict = field(default_factory=dict)   # (sat, freq) -> pinned variance
     elevations: dict = field(default_factory=dict)   # sat -> el [rad]
 
 
@@ -129,7 +128,7 @@ def build(tc, sat_list, amb_dict):
 
     el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
     return ArProblem(keys=keys, values=values, cov=cov, cross=cross,
-                     held=held_var, elevations=el)
+                     elevations=el)
 
 
 def fixed_state(tc, problem, result):

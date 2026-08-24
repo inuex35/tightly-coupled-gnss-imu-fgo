@@ -11,7 +11,7 @@ from .integrity import recovery as _tc_recovery
 from .factors import factors as _tc_factors
 
 
-def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
+def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                     obs_sd, ir_map, info, init_ecef, R):
     """Phase 1: GNSS-only Pose3 RTK on shared ambiguity keys."""
     est = _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb,
@@ -22,9 +22,8 @@ def run_init_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
         # of crashing on the None estimate (r6 #1).
         return _tc_recovery.advance_epoch_and_pack(
             tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
-    sol, tag, nb, _xa = _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts,
-                                            sat, el, iu, R)
-    _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
+    sol, tag, nb, _xa = _p1_emit_and_run_ar(tc, est, sat, el, R)
+    _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
                                        rsb, sat, el, iu, ir_map,
                                        sol, info, R)
     tc._last_sol_ecef = np.array(sol)
@@ -161,14 +160,14 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     return est
 
 
-def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
+def _p1_emit_and_run_ar(tc, est, sat, el, R):
     """Phase 1B — write nav.x from the Phase-1 estimate, populate marginals, run LAMBDA AR (only after the warm-up window), and emit the (sol, tag, nb, xa) tuple."""
     ep = tc.epoch
     enu_e = np.array(est.atPose3(tc.Xp(ep)).translation())
     tc.nav.x[0:3] = R @ enu_e + tc.base_ecef
 
-    _tc_ar.nav_bridge.publish_marginals(tc, 
-        tc.isam.getFactors(), est, tc.Xp(ep), tc.amb_keys)
+    _tc_ar.nav_bridge.publish_marginals(tc,
+        est, tc.Xp(ep), tc.amb_keys)
 
     tc.nav.smode = 5
     nb = 0
@@ -176,7 +175,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
     if ep >= 5:
         nb, xa = _tc_ar.run_ar(tc, sat, el, tc.amb_keys)
         if nb > 0 and tc.nav.armode == 3:
-            _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.Xp(ep), tc.amb_keys, xa)
+            _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.amb_keys, xa)
 
     sol = xa[0:3] if nb > 0 and tc.nav.smode == 4 else tc.nav.x[0:3]
     tag = 'FIX' if tc.nav.smode == 4 else 'FLT'
@@ -184,7 +183,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
     return sol, tag, nb, xa
 
 
-def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
+def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
                                        rsb, sat, el, iu, ir_map,
                                        sol, info, R):
     """Phase 1C — collect IMU samples + estimate velocity from a 1.5-second sliding Fix-position window, accumulate fixes once we are moving, and trigger Phase-2 init when ``n_collect`` fixes are in hand."""
@@ -218,7 +217,7 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs, vs, dts,
             'imu': imu_samples,
             'gnss': {
                 'obs': obs, 'obsb': obsb, 'obs_sd': obs_sd,
-                'rs': rs.copy(), 'vs': vs.copy(), 'dts': dts.copy(),
+                'rs': rs.copy(),
                 'rsb': rsb.copy(),
                 'sat': sat.copy(), 'el': el.copy(),
                 'iu': iu.copy(), 'ir_map': dict(ir_map),
@@ -423,8 +422,7 @@ def transition_to_tc(tc, collected_fixes):
         est_init = tc.isam2.calculateEstimate()
 
         # Write marginals for LAMBDA
-        _tc_ar.nav_bridge.publish_marginals(tc, 
-            tc.isam2.getFactors(), est_init,
+        _tc_ar.nav_bridge.publish_marginals(tc, est_init,
             tc.Xpose(n - 1), tc._sat_states.amb_keys_dict())
 
         # Write antenna position to nav.x

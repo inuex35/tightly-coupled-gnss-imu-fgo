@@ -54,8 +54,7 @@ def _run_ar_with_marginals(tc, epoch):
     info = epoch.info
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
-    _tc_ar.nav_bridge.publish_marginals(tc,
-        tc.isam2.getFactors(), epoch.estimate,
+    _tc_ar.nav_bridge.publish_marginals(tc, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot)
     # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
     # the geometry cannot support an integer decision, do not attempt
@@ -105,8 +104,7 @@ def _run_ar_with_marginals(tc, epoch):
     # storm, and losing that accident costs AllRMS there — accepted
     # in favor of the coherent ordering.
     if epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3:
-        _tc_ar.ar_hold.apply_fix_and_hold(
-            tc, tc.Xpose(epoch.key_idx), amb_snapshot, epoch.xa)
+        _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa)
 
 
 def _record_ar_diagnostics(tc, info):

@@ -169,8 +169,6 @@ class ImuGnssTc:
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
         self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
-        self._fix_streak_view = SatFieldView(
-            self._sat_states, 'fix_streak', absent=0)
 
         # Phase 2 (initialized at transition)
         self.isam2 = None
@@ -260,7 +258,6 @@ class ImuGnssTc:
     _VIEW_FORWARDS = {
         'amb_keys_tc': '_amb_key_view',
         'amb_gen': '_amb_gen_view',
-        '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
         '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
@@ -333,10 +330,10 @@ class ImuGnssTc:
             np.array(pred.pose().translation()), ns, rs, iu,
             R_enu2ecef, self.base_ecef)
 
-    def process(self, obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd,
+    def process(self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd,
                 ir_map):
         """Process one epoch. Returns (sol_ecef, tag, nb, info_dict)."""
-        R, ns, init_ecef = prepare_process_epoch(self, obs, sat, obs_sd)
+        R, ns, init_ecef = prepare_process_epoch(self, obs, sat)
         info = make_epoch_diagnostics(self)
 
         # Phase 1 ns<4: cannot form DD, just advance time
@@ -345,10 +342,10 @@ class ImuGnssTc:
 
         if self.phase == 1:
             return self._run_init_epoch(
-                obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
+                obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
                 info, init_ecef, R)
         return self._run_tc_epoch(
-            obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
+            obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
 
 
