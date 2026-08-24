@@ -69,26 +69,27 @@ def _compute_res_at_pred(tc, graph, pred, key_idx, info):
         return float('inf')
 
 
-def _sanity_report_translation(tc, pose_tc, pred, pred_res, info):
-    """Pose translation to report when sanity recovery fires."""
+def _sanity_report_pose(tc, pose_tc, pred, pred_res, info):
+    """Pose to report when sanity recovery fires (TC or IMU-predicted)."""
     tc_t = np.array(pose_tc.translation())
     thr = float(tc.cfg.sanity_pose_replace_thresh)
     if thr <= 0 or pred is None:
-        return tc_t
+        return pose_tc
     if pred_res is None or pred_res > thr:
         info['sanity_pose_replace_pred_dirty'] = (
             pred_res if pred_res is not None else -1.0)
-        return tc_t
+        return pose_tc
     try:
-        pred_t = np.array(pred.pose().translation())
+        pred_pose = pred.pose()
+        pred_t = np.array(pred_pose.translation())
     except (RuntimeError, AttributeError):
-        return tc_t
+        return pose_tc
     gap = float(np.linalg.norm(tc_t - pred_t))
     info['sanity_pose_gap'] = gap
     if gap > thr:
         info['sanity_pose_replaced'] = 1
-        return pred_t
-    return tc_t
+        return pred_pose
+    return pose_tc
 
 
 def _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs):
@@ -100,9 +101,10 @@ def _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs):
     tc._ddpr_bad_count = 0
     if int(tc.cfg.sanity_break_pim):
         tc._pim_discontinuity = True
-    report_t = _sanity_report_translation(tc, pose_tc, pred, pred_res, info)
-    ecef_tc_now = tc.R_enu2ecef @ report_t + tc.base_ecef
-    return _tc_recovery.advance_epoch_and_pack(tc, ecef_tc_now, 'FLT', 0, info, obs)
+    pose = _sanity_report_pose(tc, pose_tc, pred, pred_res, info)
+    ecef_body = tc.R_enu2ecef @ np.array(pose.translation()) + tc.base_ecef
+    sol = tc._antenna_ecef(pose, ecef_body)
+    return _tc_recovery.advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
 
 
 def _ddpr_sanity_fast_path(tc, main_res, pose_tc, pred, pred_res, obs, info, nb=0):
