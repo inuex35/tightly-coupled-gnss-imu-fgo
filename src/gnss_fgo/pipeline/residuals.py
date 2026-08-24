@@ -263,6 +263,7 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
         # un-anchors the trajectory (measured km-scale divergence).
         if fi_start is None:
             fi_start = max(0, nf_total - graph.size())
+        info['fde_slot_shift'] = (nf_total - graph.size()) - fi_start
         fi_end = min(nf_total, fi_start + graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
             tc, factors_all, fi_start, fi_end, estimate)
