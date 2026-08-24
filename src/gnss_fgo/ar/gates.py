@@ -20,9 +20,6 @@ def context_reject(tc, nb):
                      or tc._mres_signals.last_res or 0.0)
     per_sat = tc._mres_signals.per_sat or {}
     worst_res = float(max(per_sat.values())) if per_sat else 0.0
-    cp_hold_active = int(tc._recov_cp_hold or 0) > 0
-    ddpr_bad_active = int(tc._ddpr_bad_count or 0) > 0
-
     burst_like = False
     if main_res > float(tc.cfg.ar_context_main_ddpr_max):
         burst_like = True
@@ -34,8 +31,6 @@ def context_reject(tc, nb):
             'nb': nb,
             'main_ddpr_res': main_res,
             'worst_sat_res': worst_res,
-            'cp_hold_active': cp_hold_active,
-            'ddpr_bad_active': ddpr_bad_active,
         }
     return False, None
 

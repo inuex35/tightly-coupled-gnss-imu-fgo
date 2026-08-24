@@ -155,7 +155,6 @@ class TcConfig:
     low_nb_fix_only_after_flt: int = 1
     low_nb_fix_reject_max_prev_fix_streak: int = 2
     lambda_corr_hard_max: float = 1.0
-    diag_main_ddpr_res: int = 1
     # Per-bucket factor RMS dump (info['fres_*'] / info['fcnt_*']). Default
     # off because evaluating every Python CustomFactor per epoch costs ~10%
     # of wall time on the tokyo run; turn on only for offline diagnostics.

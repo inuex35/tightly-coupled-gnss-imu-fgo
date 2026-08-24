@@ -245,6 +245,7 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
         # Lost Fix during collection — reset
         tc.collecting = False
         tc.collected_fixes = []
+        tc.collecting = False
 
 
 # ── Phase-1 → Phase-2 handoff ────────────────────────────────────
