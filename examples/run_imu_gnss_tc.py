@@ -88,7 +88,7 @@ def main():
 
     # Auto-detect signals from rover/base RINEX headers. max_freq=3 picks
     # the lowest 3 bands by priority (L1/L2/L5 family); systems missing a
-    # band are dropped (strict_freq).
+    # band are kept (strict_freq=False).
     nav_nf = 3
     dec = rn.rnxdec()
     decb = rn.rnxdec()
@@ -235,6 +235,8 @@ def main():
             results.append({'ne': ne, 'tag': tag, 'phase': tc.phase,
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
+                            'roll_deg': np.nan, 'pitch_deg': np.nan,
+                            'heading_deg': np.nan,
                             'sol_xyz': np.array(sol, copy=True),
                             'truth_xyz': np.asarray(ref_ecef)})
             continue
@@ -485,8 +487,8 @@ def main():
                          'sat_snr_dbhz': sat_snr_dump,
                          'pair_main': pair_main_dump,
                          'ref_sats': ref_sats_dump,
-                          'err3d': out.get('err3d'),
-                          'smode': out.get('smode') if 'smode' in out else None}, f)
+                          'err3d': [r['err'] for r in results],
+                          'smode': [r.get('smode') for r in results]}, f)
         print(f"Saved per-sat residuals to {persatfile}")
 
 

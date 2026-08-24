@@ -8,15 +8,11 @@ from ..utils import sorted_amb_items
 
 # ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
 STAGE_READS = (
-    'R_enu2ecef', 'el', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev', 'info',
-    'ir_map', 'iu',
-    'key_idx', 'ns', 'obs', 'obs_sd', 'obsb', 'pred_nav',
-    'prev_amb_values', 'rs', 'sat', 'skip_cp_now', 'vel_prev',
-    'values',
+    'R_enu2ecef', 'el', 'estimate', 'info', 'iu', 'ns', 'obs', 'obs_sd', 'pred_nav',
+    'prev_amb_values', 'rs', 'sat', 'skip_cp_now',
 )
 STAGE_WRITES = (
-    'el[*]', 'iu[*]', 'pred_ecef', 'prev_amb_values',
-    'prev_amb_values[*]', 'sat[*]', 'skip_cp_now',
+    'pred_ecef', 'prev_amb_values', 'skip_cp_now',
 )
 
 

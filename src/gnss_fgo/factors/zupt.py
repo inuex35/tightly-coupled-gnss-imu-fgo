@@ -133,9 +133,11 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info,
       * ``BetweenFactorPose3(X(key_idx-1), X(key_idx), I, σ)`` — ZARU (off by
         default; pins inter-pose rotation)
       * ``PriorFactorPose3(X(key_idx), anchor, σ)`` — first-epoch capture
-        + reuse for the rest of a contiguous stationary streak. Only
-        active when ``gnss_available`` is False so DD-having epochs
-        keep their direct pose constraint untouched.
+        + reuse for the rest of a contiguous stationary streak. Gated
+        by ``gnss_available=False``, which also disables the
+        smoother-velocity speed gate; the Stage-C1 wrapper passes False
+        on every epoch on purpose (measured: the anchor is the stoplight
+        NLOS defence), so the anchor fires on every stationary streak.
 
     Each component is independently gated by its σ knob so the suite
     can be turned on / off piece-by-piece via env. Always writes the

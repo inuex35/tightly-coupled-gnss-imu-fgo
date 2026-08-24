@@ -15,22 +15,18 @@ from ..pipeline import residuals as _tc_residuals
 def _compute_postfit_diagnostics(tc, epoch):
     """Stage C3 — main DDPR + factor-residual diagnostics, post-fit FDE re-solve, and pose snapshot."""
     info = epoch.info
-    if tc.cfg.diag_main_ddpr_res:
-        main_res_pre_fde, per_sat_res, pair_rows = _tc_residuals.main_ddpr_residuals(tc, 
-            epoch.graph, epoch.estimate, with_pairs=True)
-        info['main_ddpr_res'] = main_res_pre_fde
-        info['main_ddpr_per_sat'] = per_sat_res
-        info['main_ddpr_pairs'] = pair_rows
-        info['ref_sats'] = dict(tc.current_epoch.ref_sats)
-        tc._cached_ddpr_res_pre = main_res_pre_fde
-        tc._mres_signals.update(
-            last_res=main_res_pre_fde,
-            per_sat=dict(per_sat_res) if per_sat_res else {})
-    else:
-        main_res_pre_fde = 0.0
-        per_sat_res = {}
-        tc._cached_ddpr_res_pre = None
-        tc._mres_signals.reset()
+    # main_ddpr_res feeds the sanity ladder, context_reject, the subset
+    # ranking and the ref-sat pick — never optional.
+    main_res_pre_fde, per_sat_res, pair_rows = _tc_residuals.main_ddpr_residuals(tc,
+        epoch.graph, epoch.estimate, with_pairs=True)
+    info['main_ddpr_res'] = main_res_pre_fde
+    info['main_ddpr_per_sat'] = per_sat_res
+    info['main_ddpr_pairs'] = pair_rows
+    info['ref_sats'] = dict(tc.current_epoch.ref_sats)
+    tc._cached_ddpr_res_pre = main_res_pre_fde
+    tc._mres_signals.update(
+        last_res=main_res_pre_fde,
+        per_sat=dict(per_sat_res) if per_sat_res else {})
     if tc.cfg.diag_factor_residuals:
         all_res = _tc_residuals.all_factor_residuals(tc, epoch.graph, epoch.estimate)
         for tag, (rms, n) in all_res.items():

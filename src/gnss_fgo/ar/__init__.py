@@ -64,6 +64,10 @@ def _resolve(tc, sat_list, amb_dict):
             # partial-AR guard declined them.
             tc.ar_diag.outcome = 'partial_declined'
         return 0, tc.nav.x.copy()
+    if res.s0 <= 0.0:
+        # Exact fit: the ratio test could not run (held integers
+        # re-entering the search); the fix rides on xvalidate/context.
+        tc.ar_diag.exact_fit_accept = 1
     xa = ar_problem.fixed_state(tc, problem, res)
     return res.nb, xa
 
@@ -149,7 +153,7 @@ def _record_amb_diagnostics(tc, sat, amb_dict):
 
 
 def _run_lambda_attempts(tc, sat, el, amb_dict):
-    """Phase B — run the resolver (with the demo5 retry under rtklib_mode) plus optional subset retry, then guard with lambda_zero / min_nb_gate. Returns (nb, xa) or (0, None) on any rejection."""
+    """Phase B — run the resolver (with the demo5 retry under rtklib_mode) plus optional subset retry, then guard with lambda_zero. Returns (nb, xa) or (0, None) on any rejection."""
     tc.ar_diag.resamb_raw_nb = -1
     try:
         # One resolver, both phases (no fallback — problem-unposed

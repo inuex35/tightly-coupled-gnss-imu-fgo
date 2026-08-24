@@ -214,6 +214,7 @@ class ArDiagnostics:
     held_not_in_obs: Optional[int] = None
     sat_in_obs_size: Optional[int] = None
     resamb_raw_nb: Optional[int] = None
+    exact_fit_accept: Optional[int] = None   # fix accepted with s0<=0 (ratio undefined)
     amb_el_min_deg: Optional[int] = None
     amb_el_median_deg: Optional[int] = None
     amb_el_above15: Optional[int] = None

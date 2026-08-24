@@ -12,7 +12,7 @@ STAGE_READS = (
     'sat', 'tag', 'xa',
 )
 STAGE_WRITES = (
-    'nb', 'sol', 'tag', 'xa[*]',
+    'nb', 'sol', 'tag',
 )
 
 
