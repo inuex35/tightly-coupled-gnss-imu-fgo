@@ -6,14 +6,7 @@ from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
     """LLI + GF slip detection plus the outage expiry, then reset
-    every flagged ambiguity. Returns (n_reset, slip_keys).
-
-    Two detectors, not three: each of CMC and GF measured
-    bit-identical off ALONE, but both off together regresses — they
-    were mutual understudies over what LLI misses. GF keeps the
-    wiring (dual-band, no base needed); CMC stays as a dormant
-    library function below.
-    """
+    every flagged ambiguity. Returns (n_reset, slip_keys)."""
     nf = tc.nav.nf
     ns = len(sat)
     reset_keys = set()
@@ -62,14 +55,8 @@ def reset_slipped_ambiguities(tc, reset_keys):
 
 
 def detslp_cmc(sat_state, obs, obsb, row, brow, f, lam, thresh):
-    """Code-minus-carrier jump detector (dormant).
-
-    Not wired: on the PPC hardware (mosaic-X5) the receiver's LLI
-    flags every slip this could find — measured bit-identical off.
-    Kept for receivers with poorer LLI; caller supplies the threshold
-    and keeps per-sat state in ``sat_state.cmc``. Returns True on a
-    jump.
-    """
+    """Code-minus-carrier jump detector. Not wired — kept for
+    receivers with poorer LLI. Returns True on a jump."""
     pr_rov = obs.P[row, f]
     cp_rov = obs.L[row, f]
     pr_bas = obsb.P[brow, f]
