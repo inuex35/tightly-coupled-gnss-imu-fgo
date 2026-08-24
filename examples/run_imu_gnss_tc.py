@@ -320,9 +320,6 @@ def main():
             extra += f" frac={mf:.2f}"
             if slip > 0:
                 extra += f" slip={slip}"
-            cp_slip = info.get('cp_slip', 0)
-            if cp_slip > 0:
-                extra += f" cp_slip={cp_slip}"
             fde = info.get('fde_reject', 0)
             if fde > 0:
                 extra += f" FDE={fde}"

@@ -59,13 +59,10 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
     """Steps 2-4 — slip detection, per-sat telemetry (el / SNR / cppr), and the global CP-hold countdown/release decision."""
     info = epoch.info
     # Cycle slip detection + CMC multipath detection
-    n_reset, n_cmc, slip_keys = \
+    n_reset, slip_keys = \
         _tc_slip_detect.detect_slips_and_reset_ambiguities(tc,
-            epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu,
-            obsb=epoch.obsb, ir_map=epoch.ir_map)
+            epoch.obs, epoch.obs_sd, epoch.sat, epoch.iu)
     info['n_slip'] = n_reset
-    if n_cmc > 0:
-        info['cp_slip'] = n_cmc
 
     # skip_cp_now reflects active global CP-hold (any trigger source).
     skip_cp_now = tc._recov_cp_hold > 0
