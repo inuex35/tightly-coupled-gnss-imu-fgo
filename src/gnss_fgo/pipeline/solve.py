@@ -12,7 +12,7 @@ STAGE_READS = (
     'values', 'vs',
 )
 STAGE_WRITES = (
-    'ecef_tc', 'estimate', 'nb', 'nv', 'pose_tc', 'prev_amb_values[*]', 'xa',
+    'ecef_tc', 'estimate', 'nb', 'nf_before', 'nv', 'pose_tc', 'prev_amb_values[*]', 'xa',
 )
 
 

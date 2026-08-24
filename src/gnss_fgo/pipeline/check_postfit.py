@@ -42,8 +42,9 @@ def _compute_postfit_diagnostics(tc, epoch):
         info['main_ddpr_sat_worst'] = (worst_sat,
                                          per_sat_res[worst_sat])
     if tc.cfg.fde_enable:
-        epoch.estimate = _tc_residuals.apply_fde(tc, 
-            epoch.graph, epoch.key_idx, epoch.nv, epoch.estimate, info)
+        epoch.estimate = _tc_residuals.apply_fde(tc,
+            epoch.graph, epoch.key_idx, epoch.nv, epoch.estimate, info,
+            fi_start=epoch.nf_before)
 
     # Pose after FDE re-solve
     epoch.pose_tc = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
