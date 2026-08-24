@@ -110,7 +110,7 @@ def reset_ambiguities_with_cp_hold(tc):
             tc.isam2.update(gtsam.NonlinearFactorGraph(),
                              gtsam.Values(), ts, remove_safe)
         except (RuntimeError, IndexError, ValueError):
-            pass
+            return 0    # nothing actually left the graph
     return len(remove_safe)
 
 
@@ -291,8 +291,8 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
             gtsam.noiseModel.Isotropic.Sigma(6, 0.1))
         _tc_isam.fls_update(tc, g_fb, v_fb, key_idx)
         tc.tc_bias = bias_prev
-    except (RuntimeError, IndexError, ValueError):
-        pass
+    except (RuntimeError, IndexError, ValueError) as ex:
+        info['fallback_error'] = f'{type(ex).__name__}: {ex}'
     return advance_epoch_and_pack(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
 
 

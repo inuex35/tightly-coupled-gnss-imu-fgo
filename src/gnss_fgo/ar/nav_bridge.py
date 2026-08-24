@@ -21,6 +21,9 @@ knows what it is touching.
     nav.prev_ratio2          retry outcome           next epoch's arfilter
     tc._last_s0/_last_s1     every resolution        ratio gates, diagnostics
 
+Contract: satellite ids are 1..MAXSAT (cssrlib guarantees the range),
+so ``nav.*[s - 1, f]`` indexing is unguarded everywhere by design.
+
 """
 
 

@@ -164,7 +164,7 @@ def fixed_state(tc, problem, result):
     Qb = D @ cov @ D.T
     Qab = problem.cross @ D.T
     try:
-        gain = Qab @ np.linalg.inv(Qb)
+        gain = np.linalg.solve(Qb.T, Qab.T).T
     except np.linalg.LinAlgError:
         return xa
     d_enu = gain @ (D @ (x_float - x_fixed))
