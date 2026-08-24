@@ -109,7 +109,6 @@ class SatState:
     """All bookkeeping for a single (sat, freq) pair."""
 
     # Slip-detector memory
-    cmc: Optional[float] = None              # CMC observation [m]
     outc: int = 0                            # epochs since last seen
     # Ambiguity bookkeeping
     amb_key: Optional[int] = None            # GTSAM symbol for N
