@@ -1,5 +1,4 @@
 numpy
-matplotlib
 
 # NOTE — two dependencies deliberately do NOT come from PyPI:
 #

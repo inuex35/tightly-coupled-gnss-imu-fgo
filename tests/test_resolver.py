@@ -23,7 +23,7 @@ def test_noisy_float_is_not_blindly_fixed():
     floats = {k: TRUTH[k] + rng.normal(0, 0.45) for k in KEYS}
     r = AmbiguityResolver(thresar=3.0).resolve(
         floats, np.eye(4) * 0.45 ** 2, KEYS, EL)
-    assert r.nb == 0 or r.ratio >= 3.0
+    assert r.nb == 0 or (r.s0 > 0 and r.s1 / r.s0 >= 3.0)
 
 
 def test_reference_is_shared_within_group():

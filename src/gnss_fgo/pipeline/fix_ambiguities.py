@@ -46,12 +46,6 @@ def _ar_eligibility(tc, epoch):
         return False
     if tc._recov_cp_hold > 0:
         return False
-    if tc.ar_max_frac < 0.5:
-        max_frac = tc._compute_max_dd_frac(
-            epoch.estimate, epoch.obs_sd, epoch.sat, epoch.ns)
-        epoch.info['max_frac'] = max_frac
-        if max_frac > tc.ar_max_frac:
-            return False
     return True
 
 
@@ -60,8 +54,7 @@ def _run_ar_with_marginals(tc, epoch):
     info = epoch.info
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
     amb_snapshot = tc._sat_states.amb_keys_dict()
-    _tc_ar.nav_bridge.publish_marginals(tc,
-        tc.isam2.getFactors(), epoch.estimate,
+    _tc_ar.nav_bridge.publish_marginals(tc, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot)
     # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
     # the geometry cannot support an integer decision, do not attempt
@@ -78,8 +71,7 @@ def _run_ar_with_marginals(tc, epoch):
         tc.ar_diag.outcome = 'gdop_gate'
         return
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
-        epoch.sat, epoch.el, epoch.estimate,
-        tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
+        epoch.sat, epoch.el, amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
@@ -112,8 +104,7 @@ def _run_ar_with_marginals(tc, epoch):
     # storm, and losing that accident costs AllRMS there — accepted
     # in favor of the coherent ordering.
     if epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3:
-        _tc_ar.ar_hold.apply_fix_and_hold(
-            tc, tc.Xpose(epoch.key_idx), amb_snapshot, epoch.xa)
+        _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa)
 
 
 def _record_ar_diagnostics(tc, info):
@@ -181,7 +172,6 @@ def _ar_starvation_reset(tc, epoch):
 def _run_lambda_ar(tc, epoch):
     """Stage C4 — pre-AR gate + publish_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
-    tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None

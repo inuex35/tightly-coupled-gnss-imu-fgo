@@ -3,7 +3,7 @@
 from ..state.epoch_data import EpochData
 
 
-def prepare_process_epoch(tc, obs, sat, obs_sd):
+def prepare_process_epoch(tc, obs, sat):
     """Refresh per-epoch runner state and return common process inputs."""
     tc._update_epoch_dt(obs)
     tc._reset_current_epoch()
@@ -23,11 +23,11 @@ def make_epoch_diagnostics(tc, **extra):
 
 
 def make_epoch_data(
-        obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
+        obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
         info, ns, init_ecef, R_enu2ecef):
     """Construct the per-epoch mutable context consumed by Phase 2 stages."""
     return EpochData(
-        obs=obs, obsb=obsb, rs=rs, vs=vs, dts=dts, rsb=rsb,
+        obs=obs, obsb=obsb, rs=rs, vs=vs, rsb=rsb,
         sat=sat, el=el, iu=iu, obs_sd=obs_sd, ir_map=ir_map,
         info=info, ns=ns, init_ecef=init_ecef,
         R_enu2ecef=R_enu2ecef)

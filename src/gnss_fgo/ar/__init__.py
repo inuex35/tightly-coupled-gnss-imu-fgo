@@ -48,7 +48,7 @@ def _resolve(tc, sat_list, amb_dict):
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
-        el_mask=float(tc.nav.elmaskar))
+        el_mask=float(tc.nav.elmaskar))  # 20 deg, from cssrlib estimation config
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations)
     nav_bridge.publish_attempt(tc, sat_list, res)
@@ -111,7 +111,7 @@ def _try_subset_ar(tc, sat, el, amb_dict):
     return ar_subset.try_subset_ar(tc, sat, el, amb_dict, attempt=attempt)
 
 
-def run_ar(tc, sat, el, estimate, key_pose, amb_dict, graph=None):
+def run_ar(tc, sat, el, amb_dict):
     """LAMBDA AR with validation."""
     tc._ar_subset_debug = None
     tc.ar_diag.outcome = 'not_called'
@@ -122,8 +122,7 @@ def run_ar(tc, sat, el, estimate, key_pose, amb_dict, graph=None):
     nb, xa = _run_lambda_attempts(tc, sat, el, amb_dict)
     if nb <= 0:
         return 0, None
-    if not ar_gates.validate_fix(tc, xa, nb,
-                         estimate=estimate, key_pose=key_pose, graph=graph):
+    if not ar_gates.validate_fix(tc, nb):
         return 0, None
     # fix-and-hold is the caller's move, after its remaining verdicts.
     tc.nav.smode = 4

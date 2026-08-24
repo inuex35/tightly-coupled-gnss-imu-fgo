@@ -167,7 +167,7 @@ class DdFactorBuilder:
                  rs, rsb, sat, el, iu, ir_map,
                  key_pose, lever, amb_dict,
                  dd_epoch=0, prev_amb_values=None,
-                 skip_cp=False, slip_keys=None):
+                 skip_cp=False):
         # Inputs
         self.tc = tc
         self.graph = graph
@@ -187,7 +187,6 @@ class DdFactorBuilder:
         self.dd_epoch = dd_epoch
         self.prev_amb_values = prev_amb_values
         self.skip_cp = skip_cp
-        self.slip_keys = slip_keys
 
         # Derived constants
         self.nf = tc.nav.nf
@@ -213,8 +212,7 @@ class DdFactorBuilder:
 
     # --- closures-as-methods ---
 
-    def _select_ref_for_system(self, sys_id, idx_sys, sat, el,
-                                amb_dict, slip_keys):
+    def _select_ref_for_system(self, sys_id, idx_sys, sat, el):
         """Pick the reference sat for one system and record it in
         the epoch scratch for the later same-epoch DD solves (see
         prefit.pick_ref_sat_idx)."""
@@ -257,7 +255,7 @@ class DdFactorBuilder:
             sat_pts=sat_pts,
             pair_id=(ref_sat, j_sat, f),
             pair_sigma_base=self.pair_sigma(
-                1, f, self.el[ref_idx], self.el[j_idx]),
+                1, self.el[ref_idx], self.el[j_idx]),
             )
         return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
 
@@ -309,7 +307,7 @@ class DdFactorBuilder:
 
         if self.skip_cp:
             return 0
-        cp_sigma = self.pair_sigma(0, f, self.el[ref_idx], self.el[j_idx])
+        cp_sigma = self.pair_sigma(0, self.el[ref_idx], self.el[j_idx])
         cp_noise = tc._noise1(cp_sigma)
         dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
         return _add_ddcp_factor(
@@ -335,7 +333,7 @@ class DdFactorBuilder:
                       if j_sat in ir_map else j_xyz)
         return j_pt, j_base_pt, j_xyz, j_base_xyz
 
-    def pair_sigma(self, code, freq, el_ref_rad, el_j_rad):
+    def pair_sigma(self, code, el_ref_rad, el_j_rad):
         """DD σ for the (code, freq, ref/j) pair — RTKLIB-demo5 ``varerr`` when use_varerr, else the flat sigma_pr/sigma_cp base × √2."""
         if self.use_varerr:
             el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
@@ -364,8 +362,7 @@ class DdFactorBuilder:
         """All DD pairs of one constellation against its reference sat."""
         tc = self.tc
         ref_idx, ref_sat = self._select_ref_for_system(
-            sys_id, idx_sys, self.sat, self.el, self.amb_dict,
-            self.slip_keys)
+            sys_id, idx_sys, self.sat, self.el)
         lams = get_wavelengths(tc, self.obs_sd, ref_sat)
         ref_geom = self._compute_ref_geometry(ref_idx, ref_sat)
         skip_bds_geo = bool(tc.cfg.exclude_bds_geo)
@@ -409,10 +406,10 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                           rs, rsb, sat, el, iu, ir_map,
                           key_pose, lever, amb_dict,
                           dd_epoch=0, prev_amb_values=None,
-                          skip_cp=False, slip_keys=None):
+                          skip_cp=False):
     """Build DD pseudorange + carrier phase factors (Arm version)."""
     builder = DdFactorBuilder(
         tc, graph, values, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ir_map, key_pose, lever, amb_dict,
-        dd_epoch, prev_amb_values, skip_cp, slip_keys)
+        dd_epoch, prev_amb_values, skip_cp)
     return builder.run()

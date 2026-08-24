@@ -258,7 +258,6 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info):
         fi_start = max(0, nf_total - graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
             tc, factors_all, fi_start, nf_total, estimate)
-        # GICI-style median subtract removes pose-common-mode bias.
         if iterative:
             reject_fi = _fde_pick_rejects_iterative(tc, pr_entries, cp_entries)
             if not reject_fi:

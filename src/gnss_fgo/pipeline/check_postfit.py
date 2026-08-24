@@ -25,8 +25,7 @@ def _compute_postfit_diagnostics(tc, epoch):
         tc._cached_ddpr_res_pre = main_res_pre_fde
         tc._mres_signals.update(
             last_res=main_res_pre_fde,
-            per_sat=dict(per_sat_res) if per_sat_res else {},
-            epoch=int(tc.epoch))
+            per_sat=dict(per_sat_res) if per_sat_res else {})
     else:
         main_res_pre_fde = 0.0
         per_sat_res = {}

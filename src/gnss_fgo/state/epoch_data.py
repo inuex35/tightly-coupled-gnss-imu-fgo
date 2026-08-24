@@ -34,7 +34,6 @@ class EpochData:
     obsb: Any                      # cssrlib base Obs
     rs:  np.ndarray                # rover sat ECEF (n_sat, 3+)
     vs:  np.ndarray                # rover sat velocity ECEF (n_sat, 3)
-    dts: np.ndarray                # rover sat clock bias (n_sat,)
     rsb: np.ndarray                # base sat ECEF (n_sat, 3+)
     sat: np.ndarray                # sat-id list (n_sat,)
     el:  np.ndarray                # elevation rad (n_sat,)
@@ -62,9 +61,7 @@ class EpochData:
     pred_nav: Any = None               # gtsam.NavState (predicted)
 
     # ── Filled by `gate` ──────────────────────────────────────────
-    slip_keys: set = field(default_factory=set)
     skip_cp_now: bool = False
-    pred_enu:  np.ndarray | None = None  # IMU-pred antenna ENU (3,)
     pred_ecef: np.ndarray | None = None  # IMU-pred antenna ECEF (3,)
     prev_amb_values: dict = field(default_factory=dict)
 

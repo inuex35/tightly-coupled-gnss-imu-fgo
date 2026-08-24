@@ -241,7 +241,6 @@ def main():
 
         rs = prep['rs']
         vs = prep['vs']
-        dts = prep['dts']
         rsb = prep['rsb']
         sat = prep['sat']
         el = prep['el']
@@ -257,7 +256,7 @@ def main():
         ref_ecef = ref[ri_ref]['ecef']
 
         sol, tag, nb, info = tc.process(
-            obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map)
+            obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map)
         roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
         axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
 
@@ -316,8 +315,6 @@ def main():
             extra += f" ERR[{e_msg[:200]}]"
         if info['phase'] == 2 and 'bias_acc' in info:
             slip = info.get('n_slip', 0)
-            mf = info.get('max_frac', 0)
-            extra += f" frac={mf:.2f}"
             if slip > 0:
                 extra += f" slip={slip}"
             fde = info.get('fde_reject', 0)

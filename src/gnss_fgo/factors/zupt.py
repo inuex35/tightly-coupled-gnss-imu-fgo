@@ -7,7 +7,7 @@ drives up to three optional pseudo-measurements:
   * ``BetweenFactorPose3(X(key_idx-1), X(key_idx), I, σ_rot)``       — ZARU
   * ``PriorFactorPose3(X(key_idx), captured_pose, [σ_rot,σ_t])`` — streak anchor
 
-Each is independently gated by its own σ knob in ``cfg.zupt.*``.
+Each is independently gated by its own σ knob (``cfg.zupt_*``).
 ``add_zupt_factors`` is callable from any code path
 (the C1 factor stage and the recovery outage paths);
 ``add_zupt_factors_for_stage`` is its epoch wrapper for Stage C1.

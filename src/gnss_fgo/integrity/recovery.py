@@ -23,16 +23,16 @@ def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
 
 
 
-def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
-                      break_pim=True):
-    """In-place Phase 2 reset at a new ECEF position (from DDPR)."""
+def warm_reset_phase2(tc, ecef_seed, rot_seed, break_pim=True):
+    """In-place Phase 2 reset at a new ECEF position (from DDPR).
+
+    The velocity restarts at zero: with ``break_pim`` (every current
+    caller) a carried velocity seed belongs to the broken chain.
+    """
     R = tc.R_enu2ecef
     enu_seed = R.T @ (ecef_seed - tc.base_ecef)
     pose_seed = gtsam.Pose3(rot_seed, gtsam.Point3(*enu_seed))
-    if vel_seed is None:
-        vel_seed = np.zeros(3)
-    if break_pim:
-        vel_seed = np.zeros(3)
+    vel_seed = np.zeros(3)
 
     tc.isam2 = tc._make_isam2(tc.fls_lag,
                                 tc.cfg.isam2_relinearize_skip,
@@ -74,7 +74,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None,
 
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
     tc.nav.x[0:3] = ecef_seed.copy()
-    tc.skip_count = 0
     # Conditionally break IMU preintegration chain. See docstring.
     tc._pim_discontinuity = bool(break_pim)
 
@@ -116,7 +115,7 @@ def reset_ambiguities_with_cp_hold(tc):
 
 
 def try_ddpr_reset(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-                    pose_init, rot_seed, vel_seed, info, reason):
+                    pose_init, rot_seed, info, reason):
     """Try DDPR-only solve + warm Phase 2 reset. Returns (ecef_ddpr, ok)."""
     ecef_ddpr, _, res_rms = tc._ddpr_only_position(
         obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_init)
@@ -126,16 +125,15 @@ def try_ddpr_reset(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
         info[reason + '_untrusted'] = res_rms
         return None, False
     info[reason] = True
-    warm_reset_phase2(tc, ecef_ddpr, rot_seed, vel_seed)
+    warm_reset_phase2(tc, ecef_ddpr, rot_seed)
     tc._ddpr_bad_count = 0
     return ecef_ddpr, True
 
 
-def _outage_advance_skip_count(tc, info, source):
-    """Increment the unified outage skip counter and emit ``gnss_skip``."""
+def _outage_mark_skip(tc, info, source):
+    """Emit the ``gnss_skip`` / ``outage_source`` telemetry."""
     info['gnss_skip'] = True
     info['outage_source'] = source
-    tc.skip_count += 1
 
 
 def _outage_drain_imu(tc, tow_obs):
@@ -147,7 +145,8 @@ def _outage_drain_imu(tc, tow_obs):
 
 
 def _outage_tick_sat_outc(tc, info):
-    """Tick sat_outc on every currently-tracked ambiguity key and expire"""
+    """Tick sat_outc on every currently-tracked ambiguity key and
+    expire arcs past maxout (release holds, drop keys)."""
     n_skip_reset = 0
     maxout = tc._sat_states.maxout
     for st in tc._sat_states.values():
@@ -224,7 +223,7 @@ def process_imu_only(tc, obs):
         return advance_epoch_and_pack(
             tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
 
-    _outage_advance_skip_count(tc, info, source='imu_only')
+    _outage_mark_skip(tc, info, source='imu_only')
 
     # Phase 2: advance graph with IMU factor only
     tc.tc_epoch += 1
@@ -274,7 +273,7 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
     info['error'] = str(ex)
     ecef_ddpr_fb, ok = try_ddpr_reset(
         tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        pred.pose(), pred.pose().rotation(), pred.velocity(),
+        pred.pose(), pred.pose().rotation(),
         info, 'ddpr_exception_recover')
     if ok:
         return advance_epoch_and_pack(tc, ecef_ddpr_fb, 'FLT', 0, info, obs)
@@ -314,12 +313,5 @@ def trigger_cp_hold(tc, reason, info, value=None, skip_if_active=False):
 
 
 def effective_cp_hold_epochs(tc) -> int:
-    """Configured cp-hold length, with startup bootstrap suppression.
-
-    During the first few live Phase-2 epochs we rely on the DDPR-only
-    translation anchor to hand off from the init graph into the regular
-    graph. A global CP hold during that same window leaves the graph
-    floating with no DDCP/AR pull-back channel, so suppress it until the
-    bootstrap-DDPR countdown expires.
-    """
+    """Configured cp-hold length."""
     return int(tc.cfg.recov_cp_hold)

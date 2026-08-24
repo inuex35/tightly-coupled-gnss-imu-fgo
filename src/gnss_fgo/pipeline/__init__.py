@@ -13,12 +13,12 @@ from . import imu_prediction, quality_gate, solve
 from . import validate_fix, report
 
 
-def run_tc_epoch(tc, obs, obsb, rs, vs, dts, rsb, sat, el, iu,
+def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                     obs_sd, ir_map, info, ns, init_ecef,
                     R_enu2ecef):
     """Phase 2: IMU/GNSS TC pipeline."""
     epoch = make_epoch_data(
-        obs, obsb, rs, vs, dts, rsb, sat, el, iu, obs_sd, ir_map,
+        obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
         info, ns, init_ecef, R_enu2ecef)
     for stage in (imu_prediction.run, quality_gate.run,
                   solve.run, validate_fix.run,

@@ -8,7 +8,6 @@ marginalised out of the FLS window we attempt a DDPR warm-reset
 through ``recovery.try_ddpr_reset`` rather than continue.
 """
 
-import numpy as np
 import gtsam
 
 from cssrlib.gnss import time2gpst
@@ -71,7 +70,7 @@ def run(tc, epoch):
         ecef_ddpr_pm, ok = _tc_recovery.try_ddpr_reset(tc, 
             epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
             epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
-            dummy_pose, dummy_pose.rotation(), np.zeros(3),
+            dummy_pose, dummy_pose.rotation(),
             info, 'ddpr_prev_missing_recover')
         if ok:
             return _tc_recovery.advance_epoch_and_pack(tc, 

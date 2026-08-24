@@ -1,12 +1,9 @@
 """Gates around a LAMBDA answer: when not to believe it.
 
-Two related judgements, both reading the same context (post-fit DDPR
-residuals, CP-hold and ddpr-bad streaks):
-
-* :func:`validate_fix` -- the
-  graph-objective delta test, then :func:`context_reject`;
-* :func:`context_reject` -- a fix that is small (nb <= ar_context_nb_max)
-  in a burst-like context is more likely wrong than lucky.
+One judgement: :func:`context_reject` -- a fix that is small
+(nb <= ar_context_nb_max) in a burst-like context (elevated DDPR
+residuals) is more likely wrong than lucky. :func:`validate_fix` is
+its epoch-flow wrapper.
 
 These are policy, not resolution: nothing here touches LAMBDA's inputs.
 """
@@ -43,7 +40,7 @@ def context_reject(tc, nb):
     return False, None
 
 
-def validate_fix(tc, xa, nb, estimate=None, key_pose=None, graph=None):
+def validate_fix(tc, nb):
     """Phase C — ar_context_reject on the accepted integers."""
     reject_ctx, reject_detail = context_reject(tc, nb)
     if reject_ctx:
