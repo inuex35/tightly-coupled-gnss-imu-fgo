@@ -239,6 +239,9 @@ class ImuGnssTc:
         lifetime is the spec.
         """
         self.current_epoch = CurrentEpochState()
+        # Same lifetime rule: AR diagnostics are per-call, and a stale
+        # exception string otherwise rides every later epoch's info.
+        self.ar_diag = ArDiagnostics()
         self.amb_gen = {}
 
     def _assign_view(self, view: SatFieldView, value):
