@@ -138,10 +138,17 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     tc._isam_p1_inserted.add(tc.Xp(ep))
     for k in v.keys():
         tc._isam_p1_inserted.add(k)
-    for _ in range(3):
-        tc.isam.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
-                        gtsam.FixedLagSmootherKeyTimestampMap())
-    est = tc.isam.calculateEstimate()
+    try:
+        for _ in range(3):
+            tc.isam.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
+                            gtsam.FixedLagSmootherKeyTimestampMap())
+        est = tc.isam.calculateEstimate()
+    except (RuntimeError, IndexError):
+        # Same degrade-gracefully policy as the insert above: the
+        # relinearization passes can also hit an indeterminate system
+        # (an ambiguity that lost all its factors in a long Phase 1).
+        _p1_fresh_restart(tc)
+        return None
 
     # Drop marginalized variables from the inserted-set: a satellite that
     # left amb_keys (ref switch) gets marginalized out of the smoother;
