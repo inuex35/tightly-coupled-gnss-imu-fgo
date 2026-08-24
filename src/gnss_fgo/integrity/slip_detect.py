@@ -4,21 +4,24 @@
 from ..factors.factors_support import get_wavelengths as _get_wavelengths
 
 
-def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
-                                obsb=None, ir_map=None):
-    """Run the three slip/multipath detectors (LLI, CMC, GF)
-    plus the outage expiry, then reset every flagged ambiguity.
-    Returns (n_reset, n_cmc_jumps, slip_keys)."""
+def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
+    """LLI + GF slip detection plus the outage expiry, then reset
+    every flagged ambiguity. Returns (n_reset, slip_keys).
+
+    Two detectors, not three: each of CMC and GF measured
+    bit-identical off ALONE, but both off together regresses — they
+    were mutual understudies over what LLI misses. GF keeps the
+    wiring (dual-band, no base needed); CMC stays as a dormant
+    library function below.
+    """
     nf = tc.nav.nf
     ns = len(sat)
     reset_keys = set()
-    cmc_exclude = set()  # CMC jump → ambiguity reset
     current_sats = set()
 
     for i in range(ns):
         s = sat[i]
         lams = _get_wavelengths(tc, obs_sd, s)
-
         for f in range(nf):
             current_sats.add((s, f))
             sat_state = tc._sat_states.get(s, f)
@@ -28,18 +31,8 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
             if hasattr(obs, 'lli') and obs.lli[iu[i], f] == 1:
                 reset_keys.add((s, f))
 
-            if (obsb is not None and ir_map is not None and
-                    s in ir_map and f < len(lams) and lams[f] > 0 and
-                    tc.cfg.cmc_thresh > 0):
-                _detslp_cmc(tc, sat_state, obs, obsb, iu[i], ir_map[s],
-                            s, f, lams[f], cmc_exclude)
-
         if nf >= 2 and len(lams) >= 2:
             _detslp_gf(tc, obs, iu[i], s, lams, nf, reset_keys)
-
-    # CMCで検出された衛星もリセット（マルチパスはNを壊す）
-    reset_keys.update(cmc_exclude)
-
 
     # Outage counter: increment for satellites NOT seen this epoch
     maxout = tc._sat_states.maxout
@@ -51,7 +44,7 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu,
                 reset_keys.add(key)
 
     n_reset = reset_slipped_ambiguities(tc, reset_keys)
-    return n_reset, len(cmc_exclude), reset_keys
+    return n_reset, reset_keys
 
 
 def reset_slipped_ambiguities(tc, reset_keys):
@@ -68,20 +61,25 @@ def reset_slipped_ambiguities(tc, reset_keys):
     return n_reset
 
 
-def _detslp_cmc(tc, sat_state, obs, obsb, row, brow, s, f, lam,
-                cmc_exclude):
-    """Code-minus-carrier: jump -> slip flag;."""
+def detslp_cmc(sat_state, obs, obsb, row, brow, f, lam, thresh):
+    """Code-minus-carrier jump detector (dormant).
+
+    Not wired: on the PPC hardware (mosaic-X5) the receiver's LLI
+    flags every slip this could find — measured bit-identical off.
+    Kept for receivers with poorer LLI; caller supplies the threshold
+    and keeps per-sat state in ``sat_state.cmc``. Returns True on a
+    jump.
+    """
     pr_rov = obs.P[row, f]
     cp_rov = obs.L[row, f]
     pr_bas = obsb.P[brow, f]
     cp_bas = obsb.L[brow, f]
     if pr_rov == 0 or cp_rov == 0 or pr_bas == 0 or cp_bas == 0:
-        return
+        return False
     cmc = (pr_rov - pr_bas) - (cp_rov - cp_bas) * lam
-    prev = sat_state.cmc
-    if prev is not None and abs(cmc - prev) > tc.cfg.cmc_thresh:
-        cmc_exclude.add((s, f))
+    prev = getattr(sat_state, 'cmc', None)
     sat_state.cmc = cmc
+    return prev is not None and abs(cmc - prev) > thresh
 
 
 def _detslp_gf(tc, obs, row, s, lams, nf, reset_keys):

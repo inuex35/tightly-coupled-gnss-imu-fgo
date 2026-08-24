@@ -77,10 +77,8 @@ class TcConfig:
     varholdamb: float = 0.001
     pim_break_trans_sigma: float = 1.0
 
-    # Cycle slip / multipath
+    # Cycle slip
     thres_slip: float = 0.15       # GF slip threshold [m]
-    cmc_thresh: float = 3.0        # Code-minus-carrier jump threshold [m]
-
 
     doppler_adaptive_sigma: int = 1  # σ follows the epoch's own residual scale
     doppler_fde_k: float = 4.0     # drop Dopplers beyond k robust scales
@@ -238,7 +236,6 @@ class TcConfig:
         'sigma_cont':              'SIG_CONT',
         'sigma_n_between':         'SIG_N_BETWEEN',
         'sigma_n_between_flt':     'SIG_N_BETWEEN_FLT',
-        'thres_slip':              'THRESSLIP',
         'zupt_g_dev_thr':          'ZUPT_G_DEV',
     }
 
