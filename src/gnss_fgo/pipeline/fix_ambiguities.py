@@ -46,12 +46,6 @@ def _ar_eligibility(tc, epoch):
         return False
     if tc._recov_cp_hold > 0:
         return False
-    if tc.ar_max_frac < 0.5:
-        max_frac = tc._compute_max_dd_frac(
-            epoch.estimate, epoch.obs_sd, epoch.sat, epoch.ns)
-        epoch.info['max_frac'] = max_frac
-        if max_frac > tc.ar_max_frac:
-            return False
     return True
 
 
@@ -78,8 +72,7 @@ def _run_ar_with_marginals(tc, epoch):
         tc.ar_diag.outcome = 'gdop_gate'
         return
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
-        epoch.sat, epoch.el, epoch.estimate,
-        tc.Xpose(epoch.key_idx), amb_snapshot, graph=epoch.graph)
+        epoch.sat, epoch.el, amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
@@ -181,7 +174,6 @@ def _ar_starvation_reset(tc, epoch):
 def _run_lambda_ar(tc, epoch):
     """Stage C4 — pre-AR gate + publish_marginals + LAMBDA AR + AR-outcome diagnostics. Always returns None."""
     # LAMBDA AR — uses the FDE-cleaned float solution.
-    tc.ar_max_frac = tc.cfg.ar_max_frac
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None

@@ -316,8 +316,6 @@ def main():
             extra += f" ERR[{e_msg[:200]}]"
         if info['phase'] == 2 and 'bias_acc' in info:
             slip = info.get('n_slip', 0)
-            mf = info.get('max_frac', 0)
-            extra += f" frac={mf:.2f}"
             if slip > 0:
                 extra += f" slip={slip}"
             fde = info.get('fde_reject', 0)

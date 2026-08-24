@@ -252,7 +252,6 @@ class ArDiagnostics:
 class RecoveryState:
     """Cross-cutting recovery / degradation flags."""
 
-    skip_count: int = 0
     recov_cp_hold: int = 0
     cp_hold_retrigger_streak: int = 0   # consecutive re-arms while active (loop audit)
     pim_discontinuity: bool = False
@@ -293,14 +292,11 @@ class MresSignalsState:
 
     last_res: float = 0.0
     per_sat: dict = field(default_factory=dict)
-    epoch: int = -10**9
 
-    def update(self, last_res: float, per_sat: dict, epoch: int) -> None:
+    def update(self, last_res: float, per_sat: dict) -> None:
         self.last_res = last_res
         self.per_sat = per_sat
-        self.epoch = epoch
 
     def reset(self) -> None:
         self.last_res = 0.0
         self.per_sat = {}
-        self.epoch = -10**9

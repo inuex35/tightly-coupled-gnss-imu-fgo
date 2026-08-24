@@ -23,19 +23,12 @@ STAGE_WRITES = (
 
 def run(tc, epoch):
     """Stage B: quality gating + slip / CP-hold decisions."""
-    info = epoch.info
     _record_geometry(tc, epoch)
-    tc.skip_count = 0
 
-    fresh_amb_bootstrap = int(
-        tc._tc_fresh_amb_epochs or 0) > 0
-    if fresh_amb_bootstrap:
-        info['fresh_amb_bootstrap'] = int(tc._tc_fresh_amb_epochs)
     epoch.slip_keys, epoch.skip_cp_now = \
         _collect_telemetry_and_tick_holds(tc, epoch)
 
-    epoch.prev_amb_values = _carry_prev_amb_and_rotate_keys(
-        tc, epoch, fresh_amb_bootstrap)
+    epoch.prev_amb_values = _carry_prev_amb_and_rotate_keys(tc, epoch)
     epoch.pred_enu, epoch.pred_ecef = _predict_antenna_position(tc, epoch)
     return None
 
@@ -90,13 +83,11 @@ def _collect_telemetry_and_tick_holds(tc, epoch):
 
 
 
-def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
+def _carry_prev_amb_and_rotate_keys(tc, epoch):
     """Step 5 — copy prev-epoch N values onto ``epoch.prev_amb_values`` for the BetweenN chain AND clear every ``amb_key`` (key rotation for the new epoch); skipped during whole-epoch CP-hold."""
     # Collect prev-epoch amb values for BetweenFactor chain (unless hold).
     prev_amb_values = {}
-    if fresh_amb_bootstrap:
-        pass
-    elif epoch.skip_cp_now:
+    if epoch.skip_cp_now:
         for (s, f), k in sorted_amb_items(tc._sat_states.amb_keys_dict()):
             tc._sat_states.get(s, f).amb_gen += 1
     else:
@@ -105,9 +96,6 @@ def _carry_prev_amb_and_rotate_keys(tc, epoch, fresh_amb_bootstrap):
                 prev_amb_values[(s, f)] = (k, epoch.estimate.atDouble(k))
     for st in tc._sat_states.values():
         st.amb_key = None
-    if fresh_amb_bootstrap:
-        tc._tc_fresh_amb_epochs = max(
-            0, int(tc._tc_fresh_amb_epochs) - 1)
     return prev_amb_values
 
 

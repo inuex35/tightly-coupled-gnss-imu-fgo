@@ -22,9 +22,9 @@ and tunnels.
 - **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
-  Doppler (clock-free), injected even on GDOP-skipped epochs
-- **Integrity & recovery** — three slip/multipath detectors, post-fit
-  FDE, and an escalation ladder from CP-hold to warm reset
+  Doppler (clock-free), injected on every epoch
+- **Integrity & recovery** — LLI + geometry-free slip detection,
+  post-fit FDE, and an escalation ladder from CP-hold to warm reset
 - **Contributed upstream** — the DD, Doppler and undifferenced GNSS
   factors are merged into
   [GTSAM](https://github.com/borglab/gtsam) itself; see the

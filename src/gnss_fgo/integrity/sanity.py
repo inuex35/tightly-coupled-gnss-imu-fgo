@@ -15,7 +15,9 @@ from . import recovery as _tc_state
 
 
 def _ddpr_multipath_dominated(tc, info):
-    """Return True when the per-sat DDPR residual distribution looks"""
+    """Return True when the residuals look multipath-dominated: one
+    satellite dwarfs the median (max/median > sanity_max_median_ratio),
+    so a whole-pose reset would punish the pose for one liar."""
     ratio_thr = float(tc.cfg.sanity_max_median_ratio)
     if ratio_thr <= 0:
         return False
@@ -37,7 +39,9 @@ def _ddpr_multipath_dominated(tc, info):
 
 def run_ddpr_sanity(tc, graph, pose_tc, pred, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map, key_idx, info, nb=0):
-    """Trigger warm reset when main-graph DDPR residuals say TC pose is"""
+    """Trigger warm reset when main-graph DDPR residuals say the TC
+    pose is wrong: fast path on catastrophic spikes, otherwise escalate
+    via the consecutive-bad-epoch counter."""
     main_res = info.get('main_ddpr_res', 0.0)
     if not _ddpr_sanity_trigger(tc, main_res):
         return None
@@ -88,7 +92,9 @@ def _sanity_report_translation(tc, pose_tc, pred, pred_res, info):
 
 
 def _apply_sanity_reset(tc, pose_tc, pred, pred_res, info, obs):
-    """Sanity-recovery graph surgery shared between the normal"""
+    """Sanity-recovery graph surgery shared between the normal and
+    fast paths: purge arcs, optionally break the PIM, and report the
+    safer of the TC / IMU-predicted translations."""
     info['ddpr_recover'] = tc._ddpr_bad_count
     n_removed = _tc_recovery.reset_ambiguities_with_cp_hold(tc)
     info['sanity_dd_removed'] = n_removed
@@ -139,7 +145,8 @@ def _ddpr_sanity_trigger(tc, main_res):
 
 
 def _ddpr_sanity_persist(tc, main_res, info):
-    """Escalation step 2: count consecutive bad epochs, fire CP-hold each one,"""
+    """Escalation step 2: count consecutive bad epochs, fire CP-hold on
+    each, and greenlight the reset after ddpr_sanity_persist of them."""
     tc._ddpr_bad_count = tc._ddpr_bad_count + 1
     info['ddpr_bad'] = tc._ddpr_bad_count
     _tc_state.trigger_cp_hold(tc, 'ddpr_main_res', info, value=main_res)

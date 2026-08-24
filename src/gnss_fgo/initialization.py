@@ -174,8 +174,7 @@ def _p1_emit_and_run_ar(tc, est, obs, rs, vs, dts, sat, el, iu, R):
     nb = 0
     xa = None
     if ep >= 5:
-        nb, xa = _tc_ar.run_ar(tc, sat, el, est,
-            tc.Xp(ep), tc.amb_keys)
+        nb, xa = _tc_ar.run_ar(tc, sat, el, tc.amb_keys)
         if nb > 0 and tc.nav.armode == 3:
             _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.Xp(ep), tc.amb_keys, xa)
 
@@ -438,6 +437,5 @@ def transition_to_tc(tc, collected_fixes):
 
     tc.tc_epoch = n - 1
     tc.phase = 2
-    tc._tc_fresh_amb_epochs = 0
 
     return pitch_rad, roll_rad, heading_rad, bias_acc, bias_gyro

@@ -3,7 +3,7 @@
 import numpy as np
 import gtsam
 from cssrlib.rtk import rtkpos
-from cssrlib.gnss import sat2prn, ecef2pos, timediff
+from cssrlib.gnss import ecef2pos, timediff
 
 from .utils import (
     collect_imu_samples as _utils_collect_imu_samples,
@@ -17,7 +17,6 @@ from .utils import (
 )
 from .config import TcConfig
 from .factors.epoch_context import make_epoch_diagnostics, prepare_process_epoch
-from .factors import factors as _tc_factors
 from . import initialization as _initialization
 from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
@@ -27,7 +26,6 @@ from .state.runtime_state import (
 )
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
-from .utils import sorted_sys_ids
 
 
 class ImuGnssTc:
@@ -167,7 +165,6 @@ class ImuGnssTc:
         # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
         self.collected_fixes = []  # list of {'ecef': ..., 'vel': ..., 'imu': [...]}
-        self.collect_imu_buf = []  # IMU samples for current collection epoch
 
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
@@ -212,7 +209,6 @@ class ImuGnssTc:
         self._last_per_sat_res = {}
         self._cached_ddpr_res_pre = None
         # Phase-2 init bootstrap counters (filled by transition_to_tc)
-        self._tc_fresh_amb_epochs = 0
         # Phase-1 last solution (used by velocity estimator)
         self._last_sol_ecef = None
         # AR ratio stash (nav_bridge.publish_attempt writes s0/s1 here)
@@ -267,7 +263,6 @@ class ImuGnssTc:
         '_fix_streak': '_fix_streak_view',
     }
     _FIELD_FORWARDS = {
-        'skip_count': ('_recovery', 'skip_count'),
         '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
         '_pim_discontinuity': ('_recovery', 'pim_discontinuity'),
         '_ddpr_bad_count': ('_recovery', 'ddpr_bad_count'),
@@ -291,35 +286,6 @@ class ImuGnssTc:
             return ecef_body
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
         return ecef_body + R_body @ lever_arr
-
-    def _compute_max_dd_frac(self, estimate, obs_sd, sat, ns):
-        """Max |DD_N − round(DD_N)| across systems+freqs — indicator of pose bias."""
-        max_frac = 0.0
-        for sys_id in sorted_sys_ids(obs_sd.sig):
-            idx_sys = [i for i in range(ns) if sat2prn(sat[i])[0] == sys_id]
-            ref_s = self.current_epoch.ref_sats.get(sys_id)
-            if ref_s is None or len(idx_sys) < 2:
-                continue
-            lams = _tc_factors.get_wavelengths(self, obs_sd, ref_s)
-            for f in range(self.nav.nf):
-                if f >= len(lams):
-                    continue
-                k_ref = self._sat_states.at(ref_s, f).amb_key
-                if k_ref is None or not estimate.exists(k_ref):
-                    continue
-                n_ref = estimate.atDouble(k_ref)
-                for ji in idx_sys:
-                    js = sat[ji]
-                    if js == ref_s:
-                        continue
-                    k_j = self._sat_states.at(js, f).amb_key
-                    if k_j is None or not estimate.exists(k_j):
-                        continue
-                    dd_cyc = n_ref - estimate.atDouble(k_j)
-                    frac = abs(dd_cyc - round(dd_cyc))
-                    if frac > max_frac:
-                        max_frac = frac
-        return max_frac
 
     def _collect_imu_samples(self, n_samples=100, target_tow=None):
         """Thin adapter — see utils.imu.collect_imu_samples. Advances imu_idx."""
