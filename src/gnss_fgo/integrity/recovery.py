@@ -73,7 +73,7 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, break_pim=True):
     tc.isam2.update(g, v, ts0)
 
     tc._recov_cp_hold = effective_cp_hold_epochs(tc)
-    tc.nav.x[0:3] = ecef_seed.copy()
+    tc.nav.x[0:3] = tc._antenna_ecef(pose_seed, ecef_seed)
     # Conditionally break IMU preintegration chain. See docstring.
     tc._pim_discontinuity = bool(break_pim)
 
@@ -127,7 +127,12 @@ def try_ddpr_reset(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
     info[reason] = True
     warm_reset_phase2(tc, ecef_ddpr, rot_seed)
     tc._ddpr_bad_count = 0
-    return ecef_ddpr, True
+    # The DDPR solve carries the lever, so ecef_ddpr is the BODY point;
+    # every reported solution is the antenna.
+    enu_body = tc.R_enu2ecef.T @ (ecef_ddpr - tc.base_ecef)
+    ant = tc._antenna_ecef(gtsam.Pose3(rot_seed, gtsam.Point3(*enu_body)),
+                           ecef_ddpr)
+    return ant, True
 
 
 def _outage_mark_skip(tc, info, source):
@@ -221,7 +226,7 @@ def process_imu_only(tc, obs):
         # Drain IMU to keep sample counter aligned with real time
         _outage_drain_imu(tc, tow_obs)
         return advance_epoch_and_pack(
-            tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
     _outage_mark_skip(tc, info, source='imu_only')
 
@@ -237,7 +242,7 @@ def process_imu_only(tc, obs):
         tc.tc_bias, target_tow=tow_obs)
     if n_imu == 0:
         return advance_epoch_and_pack(
-            tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
     info['n_imu'] = n_imu
 
     graph = gtsam.NonlinearFactorGraph()
@@ -246,7 +251,7 @@ def process_imu_only(tc, obs):
     if not estimate.exists(tc.Xpose(key_idx - 1)):
         # Previous pose marginalised — can't build IMU factor.
         return advance_epoch_and_pack(
-            tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
     pose_p = estimate.atPose3(tc.Xpose(key_idx - 1))
     vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
@@ -293,7 +298,7 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
         tc.tc_bias = bias_prev
     except (RuntimeError, IndexError, ValueError) as ex:
         info['fallback_error'] = f'{type(ex).__name__}: {ex}'
-    return advance_epoch_and_pack(tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
+    return advance_epoch_and_pack(tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
 
 # ── CP-hold triggering (formerly state.py) ─────────────────────────

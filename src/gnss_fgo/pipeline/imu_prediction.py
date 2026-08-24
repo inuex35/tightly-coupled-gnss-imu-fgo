@@ -8,6 +8,7 @@ marginalised out of the FLS window we attempt a DDPR warm-reset
 through ``recovery.try_ddpr_reset`` rather than continue.
 """
 
+import numpy as np
 import gtsam
 
 from cssrlib.gnss import time2gpst
@@ -57,7 +58,7 @@ def run(tc, epoch):
         epoch.n_imu * 0.01 - float(tc._epoch_dt), 6)
     if epoch.n_imu == 0:
         return _tc_recovery.advance_epoch_and_pack(tc, 
-            tc.nav.x[0:3], 'FLT', 0, info, epoch.obs)
+            np.array(tc.nav.x[0:3]), 'FLT', 0, info, epoch.obs)
 
     epoch.graph = gtsam.NonlinearFactorGraph()
     epoch.values = gtsam.Values()
@@ -76,7 +77,7 @@ def run(tc, epoch):
             return _tc_recovery.advance_epoch_and_pack(tc, 
                 ecef_ddpr_pm, 'FLT', 0, info, epoch.obs)
         return _tc_recovery.advance_epoch_and_pack(tc, 
-            tc.nav.x[0:3], 'FLT', 0, info, epoch.obs)
+            np.array(tc.nav.x[0:3]), 'FLT', 0, info, epoch.obs)
 
     epoch.pose_p = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx - 1))
     epoch.vel_prev = epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1))
