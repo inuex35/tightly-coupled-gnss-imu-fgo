@@ -118,6 +118,11 @@ def main():
     decb.setSignals(sigsb)
     nav = gn.Nav(nf=nav_nf)
     dec.decode_nav(navfile, nav)
+    # RINEX 3 observation headers carry the GLONASS slot/frequency table
+    # even when the companion navigation file has no GLONASS ephemerides.
+    # qcedit needs this mapping before it can form geometry-free checks.
+    nav.glo_ch.update(decb.glo_ch)
+    nav.glo_ch.update(dec.glo_ch)
 
     base_ecef = np.array(list(decb.pos))
     if np.linalg.norm(base_ecef) == 0:
@@ -189,7 +194,7 @@ def main():
             sol, tag, nb, info = tc.process_imu_only(obs)
             roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
             axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
-            _, tow_obs = gn.time2gpst(obs.t)
+            week_obs, tow_obs = gn.time2gpst(obs.t)
             ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
             ref_ecef = ref[ri_ref]['ecef']
             enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
@@ -198,7 +203,8 @@ def main():
             print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
                   f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
                   f"3D={err_3d:.4f}m {reason}")
-            results.append({'ne': ne, 'tag': tag, 'phase': tc.phase,
+            results.append({'ne': ne, 'week': week_obs, 'tow': tow_obs,
+                            'tag': tag, 'phase': tc.phase,
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'sol_xyz': np.array(sol, copy=True),
@@ -224,7 +230,7 @@ def main():
         if ns < 4:
             # Too few sats for DD: advance graph by IMU only.
             sol, tag, nb, info = tc.process_imu_only(obs)
-            _, tow_obs = gn.time2gpst(obs.t)
+            week_obs, tow_obs = gn.time2gpst(obs.t)
             ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
             ref_ecef = ref[ri_ref]['ecef']
             enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
@@ -232,7 +238,8 @@ def main():
             print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
                   f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
                   f"3D={err_3d:.4f}m SKIP_FEWSATS(ns={ns})")
-            results.append({'ne': ne, 'tag': tag, 'phase': tc.phase,
+            results.append({'ne': ne, 'week': week_obs, 'tow': tow_obs,
+                            'tag': tag, 'phase': tc.phase,
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'roll_deg': np.nan, 'pitch_deg': np.nan,
@@ -250,13 +257,15 @@ def main():
         obs_sd = prep['obs_sd']
         ir_map = {s: i for i, s in enumerate(obsb.sat)}
 
-        _, tow_obs = gn.time2gpst(obs.t)
+        week_obs, tow_obs = gn.time2gpst(obs.t)
         ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
         ref_match_dt_max = max(ref_match_dt_max,
                                abs(float(ref_tows[ri_ref]) - float(tow_obs)))
         ref_vel = ref[ri_ref]['vel']
         ref_ecef = ref[ri_ref]['ecef']
 
+        # Reference position/velocity are reporting inputs only.  Do not pass
+        # either through the estimator API, even to its optional diagnostics.
         sol, tag, nb, info = tc.process(
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map)
         roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
@@ -265,7 +274,8 @@ def main():
         enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
         err_3d = np.linalg.norm(sol - ref_ecef)
         rec = {
-            'ep': ne, 'tag': tag, 'nb': nb, 'err': err_3d,
+            'ep': ne, 'week': week_obs, 'tow': tow_obs,
+            'tag': tag, 'nb': nb, 'err': err_3d,
             'enu': enu_err, 'phase': info['phase'],
             'sol_xyz': np.array(sol, copy=True),
             'roll_deg': roll_deg,
