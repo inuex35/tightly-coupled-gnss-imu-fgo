@@ -35,6 +35,7 @@ class ResolverResult:
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
     thres_used: float = 0.0           # the ratio threshold this attempt faced
     dropped: int = 0                  # z-components left float (0 = full fix)
+    holdable: frozenset = frozenset()  # keys safe to hold (partial only)
 
 
 class AmbiguityResolver:
@@ -161,12 +162,20 @@ class AmbiguityResolver:
             par = self._partial(y, Q) if allow_partial else None
             if par is None:
                 return result
-            bvec, nb, s0, s1, thres, k = par
+            bvec, nb, s0, s1, thres, k, int_rows = par
             result.s0, result.s1 = s0, s1
             result.thres_used = thres
             result.dropped = k
             result.nb = nb
             result.fixed = self._restore_sd(pairs, float_values, bvec)
+            # A DD whose iZt row touches only fixed z-components is an
+            # exact integer: those pairs may be held like a full fix.
+            holdable = set()
+            for row, (ref, tgt) in enumerate(pairs):
+                if int_rows[row]:
+                    holdable.add(ref)
+                    holdable.add(tgt)
+            result.holdable = frozenset(holdable)
             return result
 
         result.nb = len(pairs)
@@ -219,6 +228,7 @@ class AmbiguityResolver:
                 QP = np.linalg.solve(Qz[k:, k:].T, Qz[:k, k:].T).T
                 zc = z[:k] - QP @ (z[k:] - zpar[:, 0])
                 bvec = iZt @ np.concatenate((zc, zpar[:, 0]))
-                return bvec, nb, s0, s1, thres, k
+                int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
+                return bvec, nb, s0, s1, thres, k, int_rows
             k += max(1, (kmax - k) // 4)
         return None

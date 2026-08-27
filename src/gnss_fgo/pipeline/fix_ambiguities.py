@@ -100,11 +100,14 @@ def _run_ar_with_marginals(tc, epoch):
     # leave its integers pinned. The leftover holds did anchor run3's
     # storm, and losing that accident costs AllRMS there — accepted
     # in favor of the coherent ordering.
-    # A partial fix carries conditioned floats: publish it, never
-    # hold it.
-    if (epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3
-            and not tc.ar_diag.partial_dropped):
-        _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa)
+    if epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3:
+        # A partial fix holds only its exact-integer subset; the
+        # conditioned-float pairs stay free.
+        allow = (getattr(tc, '_ar_partial_holdable', None)
+                 if tc.ar_diag.partial_dropped else None)
+        if not tc.ar_diag.partial_dropped or allow:
+            _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa,
+                                              allow=allow)
 
 
 def _record_ar_diagnostics(tc, info):

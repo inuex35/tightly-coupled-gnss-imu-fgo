@@ -63,6 +63,7 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
         # re-entering the search); the fix rides on xvalidate/context.
         tc.ar_diag.exact_fit_accept = 1
     tc.ar_diag.partial_dropped = int(res.dropped)
+    tc._ar_partial_holdable = res.holdable if res.dropped else None
     xa = ar_problem.fixed_state(tc, problem, res)
     return res.nb, xa
 

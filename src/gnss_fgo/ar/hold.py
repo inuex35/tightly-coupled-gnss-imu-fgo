@@ -58,10 +58,15 @@ def _activate_phase2_hold_states(tc, hold_keys, xa):
         tc.nav.x[tc.IB(s, f, tc.nav.na)] = held_value
 
 
-def apply_fix_and_hold(tc, amb_dict, xa):
+def apply_fix_and_hold(tc, amb_dict, xa, allow=None):
     """Phase D — fix-and-hold (armode==3): mark held flags, then Phase 1 adds hold-prior factors while Phase 2 activates the hold on sat_states / nav.x (no graph factors). Always returns True; the bool return survives for the Phase-1 call shape."""
     tc.holdamb_flags()
     hold_keys = _collect_held_sat_freq_keys(tc, amb_dict)
+    if allow is not None:  # partial fix: hold only the integer subset
+        excluded = [k for k in hold_keys if k not in allow]
+        hold_keys = [k for k in hold_keys if k in allow]
+        for s, f in excluded:  # fix==3 means held; these are not
+            tc.nav.fix[s - 1, f] = 2
     if tc.phase != 2:
         hg = gtsam.NonlinearFactorGraph()
         _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa)
