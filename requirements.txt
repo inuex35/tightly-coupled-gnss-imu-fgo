@@ -12,4 +12,4 @@ numpy
 # cssrlib: upstream lacks prepare_double_difference_measurements /
 # base_process_dd_only (the layered DD-only RTK core this pipeline
 # drives). Pinned to a commit for reproducibility:
-cssrlib @ git+https://github.com/inuex35/cssrlib.git@baed85416389a8d55d339cf44fa538522b539be8
+cssrlib @ git+https://github.com/inuex35/cssrlib.git@5b3711a73f6d8eb3a4b5429d7cf31783cb41927d

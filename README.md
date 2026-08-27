@@ -16,9 +16,9 @@ and tunnels.
 - **RTK in the graph** — DD pseudorange + DD carrier-phase factors on a
   GTSAM `IncrementalFixedLagSmoother`, ambiguities as float states,
   clock-free seeding (SD phase − SD code)
-- **Integer ambiguity resolution** — LAMBDA with ratio test, exclusion
-  retry, partial AR, fix-and-hold, and geometry/residual acceptance
-  gates
+- **Integer ambiguity resolution** — LAMBDA with a dimension-adaptive
+  ratio test, ranked subset retry, fix-and-hold, and
+  geometry/residual acceptance gates
 - **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
@@ -38,18 +38,16 @@ and tunnels.
 Everything is measured on open data with all-default settings, and is
 reproducible end to end — three full urban-Tokyo drives and three
 urban-Nagoya drives
-([PPC-Dataset](https://github.com/taroz/PPC-Dataset)), plus the
-GREAT-MSF w2 window (Wuhan):
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset)):
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11928 ep  | 14.17 m | 0.110 m | 0.55 m  | 62.3 % | 69.2 % |
-| tokyo run2  |  9151 ep  |  7.09 m | 0.053 m | 0.85 m  | 69.7 % | 74.5 % |
-| tokyo run3  | 15301 ep  |  5.58 m | 0.062 m | 0.31 m  | 70.0 % | 73.4 % |
-| nagoya run1 |  7602 ep  | 16.15 m | 0.146 m | 1.12 m  | 61.1 % | 64.3 % |
-| nagoya run2 |  9451 ep  | 20.68 m | 0.319 m | 0.70 m  | 49.4 % | 51.6 % |
-| nagoya run3 |  5201 ep  | 19.72 m | 0.578 m | 1.89 m  | 47.0 % | 48.0 % |
-| MSF w2      |  1041 ep  |  0.17 m | 0.141 m | 0.14 m  | 99.0 % | 99.5 % |
+| tokyo run1  | 11928 ep  | 14.10 m | 0.087 m | 0.29 m  | 62.5 % | 71.1 % |
+| tokyo run2  |  9151 ep  |  7.12 m | 0.041 m | 0.32 m  | 75.0 % | 79.8 % |
+| tokyo run3  | 15301 ep  |  8.00 m | 0.049 m | 0.21 m  | 72.7 % | 76.7 % |
+| nagoya run1 |  7602 ep  | 14.95 m | 0.141 m | 0.13 m  | 56.9 % | 68.5 % |
+| nagoya run2 |  9451 ep  | 27.07 m | 0.243 m | 0.36 m  | 49.7 % | 54.0 % |
+| nagoya run3 |  5201 ep  | 19.15 m | 0.799 m | 0.88 m  | 43.1 % | 46.7 % |
 
 tokyo run1 is the hardest route — a deep canyon plus a full tunnel
 blackout, bridged by IMU + SD Doppler dead reckoning.
@@ -58,15 +56,16 @@ blackout, bridged by IMU + SD Doppler dead reckoning.
 
 The defaults admit each satellite on the bands it actually transmits
 (`SAT_BAND_PLAN=1` — a pre-IIF GPS without L5 or a B1I-only BDS-2 is
-judged on what it broadcasts instead of being discarded wholesale) and
+judged on what it broadcasts instead of being discarded wholesale),
 run LAMBDA's ratio test against the demo5/FFRT dimension-adaptive
 threshold (`AR_THRESAR_MIN=1.5`, `AR_THRESAR_MAX=3.0`) instead of a
-fixed 2.0. The two were adopted together after being measured across
-all seven datasets above — together they are the best all-round
-configuration on five of the seven, and on tokyo run3 they beat the
-previous defaults on every metric at once (fix 65.5 → 70.0 %, AllRMS
-11.05 → 5.58 m, FixRMS 0.573 → 0.305 m). Revert to the previous
-behaviour with `SAT_BAND_PLAN=0 AR_THRESAR_MIN=0 AR_THRESAR_MAX=0`.
+fixed 2.0, and recover declined fixes with the ranked subset retry
+alone — the demo5 single-satellite exclusion retry was measured
+per-mechanism across every dataset and deleted (its recovered fixes
+degraded FixRMS everywhere it fired). Each choice was adopted from
+per-dataset A/B measurement on this exact revision pair. Revert with
+`SAT_BAND_PLAN=0 AR_THRESAR_MIN=0 AR_THRESAR_MAX=0
+SUBSET_AR_ENABLE=0`.
 
 ## Quick start
 
@@ -85,7 +84,7 @@ pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rollin
 # cssrlib DD-only RTK core (pinned; this revision carries the
 # nav.sat_band_plan admission policy the defaults use and the satposs
 # signal-flight-time fix the results below depend on):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@baed85416389a8d55d339cf44fa538522b539be8"
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@5b3711a73f6d8eb3a4b5429d7cf31783cb41927d"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
@@ -105,7 +104,7 @@ Packages are the roles:
 |---|---|
 | `pipeline/` | the epoch flow: `imu_prediction` → `quality_gate` → `solve` (`measurement_factors` / `update_smoother` / `fix_ambiguities` / `check_postfit`) → `validate_fix` → `report` |
 | `factors/` | measurement → GTSAM factor builders, one file per family |
-| `ar/` | LAMBDA core, exclusion retry, subset search, fix-and-hold |
+| `ar/` | LAMBDA core, ranked subset retry, fix-and-hold |
 | `integrity/` | slip detection, sanity ladder, outage recovery |
 | `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
 
