@@ -24,7 +24,7 @@ __all__ = ['ar_gates', 'ar_hold', 'nav_bridge', 'ar_problem',
 
 
 
-def _resolve(tc, sat_list, amb_dict):
+def _resolve(tc, sat_list, amb_dict, allow_partial=False):
     """AR straight off the smoother (the only resolver since the cssrlib
     resamb dispatch was retired).
 
@@ -47,7 +47,7 @@ def _resolve(tc, sat_list, amb_dict):
         thresar_min=float(tc.cfg.ar_thresar_min),
         thresar_max=float(tc.cfg.ar_thresar_max))
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
-                           problem.elevations)
+                           problem.elevations, allow_partial=allow_partial)
     tc._last_ar_thres = float(res.thres_used) or float(tc.nav.thresar)
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
@@ -62,6 +62,7 @@ def _resolve(tc, sat_list, amb_dict):
         # Exact fit: the ratio test could not run (held integers
         # re-entering the search); the fix rides on xvalidate/context.
         tc.ar_diag.exact_fit_accept = 1
+    tc.ar_diag.partial_dropped = int(res.dropped)
     xa = ar_problem.fixed_state(tc, problem, res)
     return res.nb, xa
 
@@ -153,6 +154,16 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
         try:
             nb, xa = _try_subset_ar(tc, sat, el, amb_dict)
         except Exception as ex:
+            tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
+            nb, xa = 0, None
+    if nb <= 0:
+        # Last resort: fix the well-determined z-subspace (published,
+        # never held -- see fix_ambiguities).
+        try:
+            nb, xa = _resolve(tc, [int(x) for x in sat], amb_dict,
+                              allow_partial=True)
+        except Exception as ex:
+            tc.ar_diag.outcome = 'lambda_exception'
             tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
             nb, xa = 0, None
 
