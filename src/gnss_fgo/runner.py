@@ -137,10 +137,8 @@ class ImuGnssTc:
     def _apply_nav_config(self):
         """Apply TcConfig values onto cssrlib's mutable nav state."""
         self.nav.armode = self.cfg.ar_mode
-        self.nav.parmode = self.cfg.parmode
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
-        self.nav.par_P0 = self.cfg.par_P0
         self.nav.thresar = self.cfg.ar_thresar
         self.nav.minfixsats = self.cfg.ar_minfixsats
         self.nav.sat_band_plan = bool(self.cfg.sat_band_plan)
