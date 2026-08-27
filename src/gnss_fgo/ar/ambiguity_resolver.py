@@ -31,7 +31,6 @@ class ResolverResult:
     fixed: dict = field(default_factory=dict)   # (sat, freq) -> fixed SD value
     s0: float = 0.0
     s1: float = 0.0
-    declined_partial: bool = False    # parmode-2 guard declined a partial fix
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
     thres_used: float = 0.0           # the ratio threshold this attempt faced
 
@@ -39,11 +38,9 @@ class ResolverResult:
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
-    def __init__(self, thresar=3.0, parmode=1, par_p0=0.995, min_pairs=2,
+    def __init__(self, thresar=3.0, min_pairs=2,
                  el_mask=0.0, thresar_min=0.0, thresar_max=0.0):
         self.thresar = float(thresar)
-        self.parmode = int(parmode)
-        self.par_p0 = float(par_p0)
         self.min_pairs = int(min_pairs)
         self.el_mask = float(el_mask)
         self.thresar_min = float(thresar_min)
@@ -137,7 +134,7 @@ class AmbiguityResolver:
         y = D @ x
         Q = D @ np.asarray(covariance, dtype=float) @ D.T
 
-        b, s, nfix, ps = mlambda(y, Q, parmode=self.parmode, P0=self.par_p0)
+        b, s, nfix, ps = mlambda(y, Q)
         s0 = float(s[0]) if len(s) > 0 else 0.0
         s1 = float(s[1]) if len(s) > 1 else 0.0
         if s0 <= 1e-12 * max(s1, 1.0):
@@ -149,9 +146,8 @@ class AmbiguityResolver:
         result = ResolverResult(s0=s0, s1=s1, pairs=pairs, thres_used=thres)
         if nfix <= 0:
             return result
-        # s0 <= 0 means mlambda could not form a ratio; partial AR (parmode 2)
-        # carries its own acceptance, so neither case is held to the threshold.
-        if not (self.parmode == 2 or s0 <= 0.0 or ratio >= thres):
+        # s0 <= 0 means mlambda could not form a ratio (exact fit).
+        if not (s0 <= 0.0 or ratio >= thres):
             return result
 
         # Restore single-difference ambiguities: the reference keeps its float
@@ -160,11 +156,6 @@ class AmbiguityResolver:
         for row, (ref, tgt) in enumerate(pairs):
             fixed.setdefault(ref, float_values[ref])
             fixed[tgt] = fixed[ref] - float(b[row, 0])
-        if self.parmode == 2 and int(nfix) < len(pairs):
-            # Partial back-substitution is not implemented: decline
-            # rather than hold non-fixed ambiguities at made-up integers.
-            result.declined_partial = True
-            return result
         result.nb = len(pairs)
         result.fixed = fixed
         return result

@@ -121,8 +121,6 @@ class TcConfig:
     init_pitch_deg:          float = float('nan')
     # AR
     ar_mode: int = 3               # 0=none, 1=cont, 3=fix-and-hold
-    parmode: int = 1
-    par_P0: float = 0.995          # PAR success-rate threshold (parmode=2 only)
     ar_starve_reset: int = 50      # epochs of consecutive lambda_zero
                                    # (ratio starvation) with a QUIET
                                    # float that trigger the ambiguity
@@ -145,7 +143,7 @@ class TcConfig:
                                    # cannot support an integer decision
                                    # (9 m vertical basin at GDOP~10
                                    # costs only ~1.7 m code residual).
-    ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
+    ar_thresar: float = 3.0        # nav.thresar — base AR ratio gate
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5

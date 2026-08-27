@@ -42,8 +42,7 @@ def _resolve(tc, sat_list, amb_dict):
         tc._last_s1 = 0.0
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
-        thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
-        par_p0=float(tc.nav.par_P0),
+        thresar=float(tc.nav.thresar),
         el_mask=float(tc.nav.elmaskar),  # 20 deg, from cssrlib estimation config
         thresar_min=float(tc.cfg.ar_thresar_min),
         thresar_max=float(tc.cfg.ar_thresar_max))
@@ -58,10 +57,6 @@ def _resolve(tc, sat_list, amb_dict):
             # or every later purge fires early.
             # Zero-pair declines keep counting as starvation.
             tc.ar_diag.outcome = 'min_pairs_declined'
-        elif res.declined_partial:
-            # Same freeze class: mlambda produced integers and the
-            # partial-AR guard declined them.
-            tc.ar_diag.outcome = 'partial_declined'
         return 0, tc.nav.x.copy()
     if res.s0 <= 0.0:
         # Exact fit: the ratio test could not run (held integers
@@ -162,8 +157,7 @@ def _run_lambda_attempts(tc, sat, el, amb_dict):
             nb, xa = 0, None
 
     if nb <= 0:
-        if tc.ar_diag.outcome not in ('partial_declined',
-                                      'min_pairs_declined'):
+        if tc.ar_diag.outcome != 'min_pairs_declined':
             tc.ar_diag.outcome = 'lambda_zero'
         return 0, None
     return nb, xa
