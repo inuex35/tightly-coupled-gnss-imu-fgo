@@ -55,8 +55,7 @@ blackout, bridged by IMU + SD Doppler dead reckoning.
 ![nagoya_defaults](docs/nagoya_defaults.png)
 
 Every default was chosen by per-dataset A/B measurement on this exact
-revision pair; the knobs and their reverts are in
-[Configuration](#configuration).
+revision pair.
 
 ## Quick start
 
@@ -108,12 +107,6 @@ Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
 `SIG_PR`, `ZUPT_MAX_SPEED`, …) — see `config.py` for the complete,
 commented list. The example script adds its own env switches
 (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
-Reverts for the measured defaults: `SAT_BAND_PLAN=0` (strict all-band
-admission), `AR_THRESAR_MIN=0 AR_THRESAR_MAX=0` (fixed AR ratio
-threshold), `SUBSET_AR_ENABLE=0` (no exclusion retry),
-`P1_FDE_ENABLE=0` (no Phase-1 FDE screen).
-A few recovery-path priors (warm-reset and outage anchors,
-Phase-2 seed sigmas) are hardcoded constants, not knobs.
 
 ## License
 
