@@ -54,18 +54,9 @@ blackout, bridged by IMU + SD Doppler dead reckoning.
 
 ![nagoya_defaults](docs/nagoya_defaults.png)
 
-The defaults admit each satellite on the bands it actually transmits
-(`SAT_BAND_PLAN=1` — a pre-IIF GPS without L5 or a B1I-only BDS-2 is
-judged on what it broadcasts instead of being discarded wholesale),
-run LAMBDA's ratio test against the demo5/FFRT dimension-adaptive
-threshold (`AR_THRESAR_MIN=1.5`, `AR_THRESAR_MAX=3.0`) instead of a
-fixed 2.0, and recover declined fixes with the ranked subset retry
-alone — the demo5 single-satellite exclusion retry was measured
-per-mechanism across every dataset and deleted (its recovered fixes
-degraded FixRMS everywhere it fired). Each choice was adopted from
-per-dataset A/B measurement on this exact revision pair. Revert with
-`SAT_BAND_PLAN=0 AR_THRESAR_MIN=0 AR_THRESAR_MAX=0
-SUBSET_AR_ENABLE=0`.
+Every default was chosen by per-dataset A/B measurement on this exact
+revision pair; the knobs and their reverts are in
+[Configuration](#configuration).
 
 ## Quick start
 
@@ -117,9 +108,10 @@ Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
 `SIG_PR`, `ZUPT_MAX_SPEED`, …) — see `config.py` for the complete,
 commented list. The example script adds its own env switches
 (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
-The measured defaults and their reverts: `SAT_BAND_PLAN=0` (strict
-all-band admission), `AR_THRESAR_MIN=0 AR_THRESAR_MAX=0` (fixed AR
-ratio threshold), `P1_FDE_ENABLE=0` (no Phase-1 FDE screen).
+Reverts for the measured defaults: `SAT_BAND_PLAN=0` (strict all-band
+admission), `AR_THRESAR_MIN=0 AR_THRESAR_MAX=0` (fixed AR ratio
+threshold), `SUBSET_AR_ENABLE=0` (no exclusion retry),
+`P1_FDE_ENABLE=0` (no Phase-1 FDE screen).
 A few recovery-path priors (warm-reset and outage anchors,
 Phase-2 seed sigmas) are hardcoded constants, not knobs.
 
