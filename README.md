@@ -33,8 +33,6 @@ and tunnels.
 
 ## Results
 
-![tokyo_defaults](docs/tokyo_defaults.png)
-
 Everything is measured on open data with all-default settings, and is
 reproducible end to end — three full urban-Tokyo drives and three
 urban-Nagoya drives
@@ -50,12 +48,12 @@ urban-Nagoya drives
 | nagoya run3 |  5201 ep  | 19.15 m | 0.799 m | 0.88 m  | 43.1 % | 46.7 % |
 
 tokyo run1 is the hardest route — a deep canyon plus a full tunnel
-blackout, bridged by IMU + SD Doppler dead reckoning.
+blackout, bridged by IMU + SD Doppler dead reckoning. Every default
+was chosen by per-dataset A/B measurement on this exact revision pair.
+
+![tokyo_defaults](docs/tokyo_defaults.png)
 
 ![nagoya_defaults](docs/nagoya_defaults.png)
-
-Every default was chosen by per-dataset A/B measurement on this exact
-revision pair.
 
 ## Quick start
 
