@@ -48,6 +48,17 @@ class TcConfig:
     fde_max_frac: float = 0.5      # skip FDE if >this fraction rejected
     fde_enable: int = 1           # 0=off, 1=on (FDE_ENABLE)
     fde_max_iter: int = 1
+    # Judge each satellite over the bands it has produced (cssrlib
+    # nav.sat_band_plan); off, a satellite missing any selected band is
+    # dropped outright. Pair with FFRT below -- alone it collapses the
+    # ratio test. Inert on a cssrlib build lacking the flag
+    # (SAT_BAND_PLAN).
+    sat_band_plan: int = 1
+    # demo5/FFRT dimension-adaptive AR ratio threshold, clamped to
+    # [min, max]; equal values disable it and keep the fixed
+    # ar_thresar.
+    ar_thresar_min: float = 1.5
+    ar_thresar_max: float = 3.0
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0
@@ -135,8 +146,6 @@ class TcConfig:
                                    # (9 m vertical basin at GDOP~10
                                    # costs only ~1.7 m code residual).
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
-    rtklib_mode: int = 1
-    ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5

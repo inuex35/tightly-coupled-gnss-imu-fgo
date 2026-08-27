@@ -2,8 +2,7 @@
 
     problem      graph -> ArProblem (reads only) + the fixed state vector
     ambiguity_resolver   LAMBDA over that problem (pure)
-    retry        demo5 single-satellite retry policy
-    subset       this project's ranked subset fallback
+    subset       the ranked exclusion search (the only retry)
     gates        pre-checks and fix validation
     hold         fix-and-hold
     nav_bridge   every nav write, and the table of who reads each field
@@ -17,12 +16,11 @@ from . import gates as ar_gates
 from . import hold as ar_hold
 from . import nav_bridge
 from . import problem as ar_problem
-from . import retry as ar_retry
 from . import subset as ar_subset
 from .ambiguity_resolver import AmbiguityResolver
 
 __all__ = ['ar_gates', 'ar_hold', 'nav_bridge', 'ar_problem',
-           'ar_retry', 'ar_subset', 'AmbiguityResolver', 'run_ar']
+           'ar_subset', 'AmbiguityResolver', 'run_ar']
 
 
 
@@ -37,20 +35,21 @@ def _resolve(tc, sat_list, amb_dict):
     """
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
-        # A no-fix RESULT, never None: the retry wrapper's continuation
-        # (exclusion pass, excsat/prev-ratio writes) must still run on
-        # unposable epochs — losing it measurably moved the estimate.
+        # A no-fix result, never None; zero the stash or the subset
+        # search reads a stale ratio.
         tc.ar_diag.outcome = 'problem_unposed'
-        # No LAMBDA ran: zero the stash or the retry reads a stale ratio.
         tc._last_s0 = 0.0
         tc._last_s1 = 0.0
         return 0, tc.nav.x.copy()
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
-        el_mask=float(tc.nav.elmaskar))  # 20 deg, from cssrlib estimation config
+        el_mask=float(tc.nav.elmaskar),  # 20 deg, from cssrlib estimation config
+        thresar_min=float(tc.cfg.ar_thresar_min),
+        thresar_max=float(tc.cfg.ar_thresar_max))
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations)
+    tc._last_ar_thres = float(res.thres_used) or float(tc.nav.thresar)
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         if 0 < len(res.pairs) < resolver.min_pairs:
@@ -72,23 +71,12 @@ def _resolve(tc, sat_list, amb_dict):
     return res.nb, xa
 
 
-def _resolve_with_retry(tc, sat_list, amb_dict):
-    """The demo5 retry policy around the resolver (see ar_retry)."""
-    return ar_retry.run(
-        tc, sat_list, lambda t, sl: _resolve(t, sl, amb_dict))
-
-
 def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
                            restore_state=True):
     """Run one AR attempt, optionally excluding one or more satellites."""
     sat_list = [int(s) for s in sat]
     vsat_snapshot = tc.nav.vsat.copy()
     fix_snapshot = tc.nav.fix.copy()
-    lock_snapshot = tc.nav.lock.copy()
-    # Cross-generation retry state (nav_bridge table: next epoch's
-    # round-robin / arfilter read these) — probes must not trample it.
-    excsat_snapshot = tc.nav.excsat
-    prev_ratio2_snapshot = tc.nav.prev_ratio2
     try:
         if sat_exclude is not None:
             if isinstance(sat_exclude, (int, np.integer)):
@@ -98,17 +86,11 @@ def _run_single_ar_attempt(tc, sat, amb_dict, sat_exclude=None,
             for s in excl:
                 tc.nav.vsat[s - 1, :] = 0
             sat_list = [s for s in sat_list if s not in excl]
-        return (_resolve_with_retry(tc, sat_list, amb_dict)
-                if tc.cfg.rtklib_mode
-                else _resolve(tc, sat_list, amb_dict))
+        return _resolve(tc, sat_list, amb_dict)
     finally:
         if restore_state:
             tc.nav.vsat[:, :] = vsat_snapshot
             tc.nav.fix[:, :] = fix_snapshot
-            # Probing attempts must not age the lock counters.
-            tc.nav.lock[:, :] = lock_snapshot
-            tc.nav.excsat = excsat_snapshot
-            tc.nav.prev_ratio2 = prev_ratio2_snapshot
 
 
 def _try_subset_ar(tc, sat, el, amb_dict):
@@ -153,15 +135,15 @@ def _record_amb_diagnostics(tc, sat, amb_dict):
 
 
 def _run_lambda_attempts(tc, sat, el, amb_dict):
-    """Phase B — run the resolver (with the demo5 retry under rtklib_mode) plus optional subset retry, then guard with lambda_zero. Returns (nb, xa) or (0, None) on any rejection."""
+    """Phase B — run the resolver, then the subset exclusion search on
+    a decline, then the lambda_zero guard. Returns (nb, xa) or
+    (0, None) on any rejection."""
     tc.ar_diag.resamb_raw_nb = -1
     try:
         # One resolver, both phases (no fallback — problem-unposed
         # epochs simply do not fix).
         sats = [int(x) for x in sat]
-        nb, xa = (_resolve_with_retry(tc, sats, amb_dict)
-                  if tc.cfg.rtklib_mode
-                  else _resolve(tc, sats, amb_dict))
+        nb, xa = _resolve(tc, sats, amb_dict)
     except Exception as ex:
         # mlambda raises LambdaError (a LinAlgError) when Qah is not
         # positive definite — a live path in the degenerate held-fit

@@ -16,9 +16,9 @@ and tunnels.
 - **RTK in the graph** — DD pseudorange + DD carrier-phase factors on a
   GTSAM `IncrementalFixedLagSmoother`, ambiguities as float states,
   clock-free seeding (SD phase − SD code)
-- **Integer ambiguity resolution** — LAMBDA with ratio test, exclusion
-  retry, partial AR, fix-and-hold, and geometry/residual acceptance
-  gates
+- **Integer ambiguity resolution** — LAMBDA with a dimension-adaptive
+  ratio test, ranked subset retry, fix-and-hold, and
+  geometry/residual acceptance gates
 - **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
@@ -35,19 +35,27 @@ and tunnels.
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
 
-Everything is measured on open data
-([PPC-Dataset](https://github.com/taroz/PPC-Dataset), three full
-urban-Tokyo drives) with all-default settings, and is reproducible
-end to end:
+Everything is measured on open data with all-default settings, and is
+reproducible end to end — three full urban-Tokyo drives and three
+urban-Nagoya drives
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset)):
 
-| run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
-|------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 16.78 m | 0.289 m | 0.83 m  | 46.4 % | 55.4 % |
-| run2 |  9151 ep  | 11.03 m | 0.053 m | 1.02 m  | 60.8 % | 68.7 % |
-| run3 | 15301 ep  |  8.63 m | 0.052 m | 0.48 m  | 65.6 % | 69.1 % |
+| run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
+|-------------|-----------|---------|---------|---------|--------|--------|
+| tokyo run1  | 11928 ep  | 14.10 m | 0.087 m | 0.29 m  | 62.5 % | 71.1 % |
+| tokyo run2  |  9151 ep  |  7.12 m | 0.041 m | 0.32 m  | 75.0 % | 79.8 % |
+| tokyo run3  | 15301 ep  |  8.00 m | 0.049 m | 0.21 m  | 72.7 % | 76.7 % |
+| nagoya run1 |  7602 ep  | 14.95 m | 0.141 m | 0.13 m  | 56.9 % | 68.5 % |
+| nagoya run2 |  9451 ep  | 27.07 m | 0.243 m | 0.36 m  | 49.7 % | 54.0 % |
+| nagoya run3 |  5201 ep  | 19.15 m | 0.799 m | 0.88 m  | 43.1 % | 46.7 % |
 
-run1 is the hardest route — a deep canyon plus a full tunnel blackout,
-bridged by IMU + SD Doppler dead reckoning.
+tokyo run1 is the hardest route — a deep canyon plus a full tunnel
+blackout, bridged by IMU + SD Doppler dead reckoning.
+
+![nagoya_defaults](docs/nagoya_defaults.png)
+
+Every default was chosen by per-dataset A/B measurement on this exact
+revision pair.
 
 ## Quick start
 
@@ -63,8 +71,10 @@ pip install numpy matplotlib
 gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
-# cssrlib DD-only RTK core (pinned):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@24ec6450e9a9d1fc69b451006a6c4eac5fdf4fd8"
+# cssrlib DD-only RTK core (pinned; this revision carries the
+# nav.sat_band_plan admission policy the defaults use and the satposs
+# signal-flight-time fix the results below depend on):
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@5b3711a73f6d8eb3a4b5429d7cf31783cb41927d"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
@@ -84,7 +94,7 @@ Packages are the roles:
 |---|---|
 | `pipeline/` | the epoch flow: `imu_prediction` → `quality_gate` → `solve` (`measurement_factors` / `update_smoother` / `fix_ambiguities` / `check_postfit`) → `validate_fix` → `report` |
 | `factors/` | measurement → GTSAM factor builders, one file per family |
-| `ar/` | LAMBDA core, exclusion retry, subset search, fix-and-hold |
+| `ar/` | LAMBDA core, ranked subset retry, fix-and-hold |
 | `integrity/` | slip detection, sanity ladder, outage recovery |
 | `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
 
@@ -97,8 +107,6 @@ Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
 `SIG_PR`, `ZUPT_MAX_SPEED`, …) — see `config.py` for the complete,
 commented list. The example script adds its own env switches
 (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
-A few recovery-path priors (warm-reset and outage anchors,
-Phase-2 seed sigmas) are hardcoded constants, not knobs.
 
 ## License
 

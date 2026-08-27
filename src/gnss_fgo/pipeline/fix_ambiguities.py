@@ -57,14 +57,10 @@ def _run_ar_with_marginals(tc, epoch):
     amb_snapshot = tc._sat_states.amb_keys_dict()
     _tc_ar.nav_bridge.publish_marginals(tc, epoch.estimate,
         tc.Xpose(epoch.key_idx), amb_snapshot)
-    # AR-only geometry gate (demo5 arthres1 spirit): when the DOP says
-    # the geometry cannot support an integer decision, do not attempt
-    # AR. At 7 sats / GDOP~10 a 9 m vertical basin costs only ~1.7 m of
-    # code residual — no residual test can see it, and the marginal
-    # covariance can't be used (it depends on the very holds the gate
-    # controls: measured feedback death, fix 46%->0.6%). GDOP is pure
-    # geometry: no loop. Measured run1 separation: correct fixes GDOP
-    # p50 3.3 / p99 7.6, basin wrong fixes p50 9.5.
+    # AR-only geometry gate (demo5 arthres1 spirit): skip AR when the
+    # GDOP says the geometry cannot support an integer decision. Pure
+    # geometry, deliberately not the marginal covariance (which depends
+    # on the very holds the gate controls).
     ar_gdop = float(tc.cfg.ar_gdop_max)
     gdop_now = float(info.get('gdop', 0.0) or 0.0)
     if ar_gdop > 0.0 and gdop_now > ar_gdop:

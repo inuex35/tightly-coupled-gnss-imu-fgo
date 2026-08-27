@@ -106,7 +106,7 @@ def ddpr_res_at_fixed_pose(tc, graph, estimate, key_pose, xa):
 def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
     """DDPR residuals in the main graph at ``estimate``.
 
-    UNIT CAVEAT (r5 #4): res = sqrt(2*err)*sigma_pr*sqrt(2) rescales
+    UNIT CAVEAT: res = sqrt(2*err)*sigma_pr*sqrt(2) rescales
     the factor-whitened residual by the FLAT sigma_pr — but with
     varerr_enable=1 the factor sigma is elevation-dependent, so these
     are elevation-NORMALIZED residuals in pseudo-metres (zenith ~1.5x
@@ -241,19 +241,30 @@ def _fde_reset_rejected_amb(tc, factors_all, reject_fi):
         # Held integers were already handed over as seeds above.
 
 
-def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
+def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None,
+              smoother=None, pose_key=None):
     """GICI-style Fault Detection and Exclusion.
 
     ``fi_start`` is the smoother's factor count before this epoch's
     insert: the epoch's factors occupy [fi_start, fi_start + G). The
     old ``nf_total - G`` derivation skipped the first M factors of the
     epoch whenever the same update appended M marginal containers.
+
+    Runs on ``tc.isam2`` (Phase 2) by default; Phase 1 passes its own
+    smoother and pose key. ``nv=None`` sizes the over-rejection safeguard
+    from the collected residual count instead of a caller-supplied
+    measurement count. The cp_hold escalation on safeguard is Phase-2
+    machinery and fires only there.
     """
+    phase2 = smoother is None
+    sm = tc.isam2 if phase2 else smoother
+    if pose_key is None:
+        pose_key = tc.Xpose(key_idx)
     max_iter = max(1, tc.cfg.fde_max_iter)
     iterative = max_iter > 1
     total_rejected = 0
     for _it in range(max_iter):
-        factors_all = tc.isam2.getFactors()
+        factors_all = sm.getFactors()
         nf_total = factors_all.size()
         # Current epoch's factors only: rejecting history
         # un-anchors the trajectory (measured km-scale divergence).
@@ -263,6 +274,8 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
         fi_end = min(nf_total, fi_start + graph.size())
         pr_entries, cp_entries = _fde_collect_residuals(
             tc, factors_all, fi_start, fi_end, estimate)
+        if nv is None:
+            nv = len(pr_entries) + len(cp_entries)
         if iterative:
             reject_fi = _fde_pick_rejects_iterative(tc, pr_entries, cp_entries)
             if not reject_fi:
@@ -270,9 +283,10 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
             # Same over-rejection safeguard as single-pass.
             if total_rejected + 1 > tc.cfg.fde_max_frac * max(1, nv):
                 info['fde_skipped'] = total_rejected + 1
-                _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
-                                     value=info['fde_skipped'],
-                                     skip_if_active=True)
+                if phase2:
+                    _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
+                                         value=info['fde_skipped'],
+                                         skip_if_active=True)
                 break
         else:
             reject_fi = _fde_pick_rejects_single_pass(tc, pr_entries, cp_entries)
@@ -280,19 +294,20 @@ def apply_fde(tc, graph, key_idx, nv, estimate, info, fi_start=None):
                 break
             if len(reject_fi) > tc.cfg.fde_max_frac * max(1, nv):
                 info['fde_skipped'] = len(reject_fi)
-                _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
-                                     value=info['fde_skipped'],
-                                     skip_if_active=True)
+                if phase2:
+                    _tc_state.trigger_cp_hold(tc, 'fde_safeguard', info,
+                                         value=info['fde_skipped'],
+                                         skip_if_active=True)
                 return estimate
 
         _fde_reset_rejected_amb(tc, factors_all, reject_fi)
         total_rejected += len(reject_fi)
         try:
-            tc.isam2.update(
+            sm.update(
                 gtsam.NonlinearFactorGraph(), gtsam.Values(),
                 gtsam.FixedLagSmootherKeyTimestampMap(), reject_fi)
-            est_fde = tc.isam2.calculateEstimate()
-            if est_fde.exists(tc.Xpose(key_idx)):
+            est_fde = sm.calculateEstimate()
+            if est_fde.exists(pose_key):
                 estimate = est_fde
         except (RuntimeError, IndexError):
             break
