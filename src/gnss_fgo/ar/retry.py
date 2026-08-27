@@ -41,7 +41,8 @@ def run(tc, sat_list, solve):
     order = sat_arr[start:] + sat_arr[:start]
 
     exc = 0
-    if (tc.nav.arfilter and ratio < tc.nav.thresar
+    if (tc.nav.arfilter
+            and ratio < getattr(tc, '_last_ar_thres', tc.nav.thresar)
             and tc.nav.prev_ratio2 > 0.0
             and ratio < 1.1 * tc.nav.prev_ratio2):
         for s_ in order:

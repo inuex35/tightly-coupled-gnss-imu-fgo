@@ -48,9 +48,14 @@ def _resolve(tc, sat_list, amb_dict):
     resolver = AmbiguityResolver(
         thresar=float(tc.nav.thresar), parmode=int(tc.nav.parmode),
         par_p0=float(tc.nav.par_P0),
-        el_mask=float(tc.nav.elmaskar))  # 20 deg, from cssrlib estimation config
+        el_mask=float(tc.nav.elmaskar),  # 20 deg, from cssrlib estimation config
+        thresar_min=float(tc.cfg.ar_thresar_min),
+        thresar_max=float(tc.cfg.ar_thresar_max))
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations)
+    # The retry policy's arfilter compares the recorded ratio against the
+    # SAME threshold this attempt faced; with FFRT that is nb-dependent.
+    tc._last_ar_thres = float(res.thres_used) or float(tc.nav.thresar)
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         if 0 < len(res.pairs) < resolver.min_pairs:

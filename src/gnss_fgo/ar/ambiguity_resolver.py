@@ -33,18 +33,60 @@ class ResolverResult:
     s1: float = 0.0
     declined_partial: bool = False    # parmode-2 guard declined a partial fix
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
+    thres_used: float = 0.0           # the ratio threshold this attempt faced
 
 
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
     def __init__(self, thresar=3.0, parmode=1, par_p0=0.995, min_pairs=2,
-                 el_mask=0.0):
+                 el_mask=0.0, thresar_min=0.0, thresar_max=0.0):
         self.thresar = float(thresar)
         self.parmode = int(parmode)
         self.par_p0 = float(par_p0)
         self.min_pairs = int(min_pairs)
         self.el_mask = float(el_mask)
+        self.thresar_min = float(thresar_min)
+        self.thresar_max = float(thresar_max)
+
+    # Polynomial coefficients for the demo5/FFRT adaptive AR ratio
+    # threshold as a function of DD count (fitted to LAMBDA reliability
+    # curves from TU Delft; valid for 1-50 pairs). Ported verbatim from
+    # the fork's reviewed cssrlib implementation (13db2f5): rows are
+    # evaluated at the base threshold first, then the threshold
+    # polynomial in 1/(nb+1).
+    _AR_POLY_COEFFS = (
+        (-1.94058448e-01, -7.79023476e+00, 1.24231120e+02,
+         -4.03126050e+02, 3.50413202e+02),
+        (6.42237302e-01, -8.39813962e+00, 2.92107285e+01,
+         -2.37577308e+01, -1.14307128e+00),
+        (-2.22600390e-02, 3.23169103e-01, -1.39837429e+00,
+         2.19282996e+00, -5.34583971e-02))
+
+    def ratio_threshold(self, nb):
+        """Ratio-test threshold for ``nb`` DD candidates.
+
+        Fixed ``thresar`` unless ``thresar_min != thresar_max``, in which
+        case the demo5 FFRT polynomial adapts it to the problem dimension
+        -- a fixed ratio threshold grows ever more conservative as the
+        candidate count rises (s1/s0 tends to 1 in high dimension even
+        for a correct fix), which is exactly the lambda_zero epidemic the
+        tokyo runs measure. Clamped to [thresar_min, thresar_max].
+        """
+        if self.thresar_min == self.thresar_max:
+            return self.thresar
+        p0 = self.thresar
+        nb1 = min(int(nb), 50)
+        coeff = []
+        for row in self._AR_POLY_COEFFS:
+            c = row[0]
+            for kj in range(1, 5):
+                c = c * p0 + row[kj]
+            coeff.append(c)
+        th = coeff[0]
+        for ki in range(1, 3):
+            th = th / (nb1 + 1) + coeff[ki]
+        return min(max(th, self.thresar_min), self.thresar_max)
 
     def double_difference(self, keys, elevations):
         """Pick a reference per (constellation, frequency) and pair the rest.
@@ -105,12 +147,13 @@ class AmbiguityResolver:
             # ratio -- and, through prev_ratio2, the retry policy.
             s0 = 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
-        result = ResolverResult(s0=s0, s1=s1, pairs=pairs)
+        thres = self.ratio_threshold(len(pairs))
+        result = ResolverResult(s0=s0, s1=s1, pairs=pairs, thres_used=thres)
         if nfix <= 0:
             return result
         # s0 <= 0 means mlambda could not form a ratio; partial AR (parmode 2)
         # carries its own acceptance, so neither case is held to the threshold.
-        if not (self.parmode == 2 or s0 <= 0.0 or ratio >= self.thresar):
+        if not (self.parmode == 2 or s0 <= 0.0 or ratio >= thres):
             return result
 
         # Restore single-difference ambiguities: the reference keeps its float

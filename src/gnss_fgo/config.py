@@ -61,6 +61,13 @@ class TcConfig:
     # judgment set narrows to the bands the satellite has demonstrably
     # produced; within it the strict gate is unchanged (SAT_BAND_PLAN).
     sat_band_plan: int = 0
+    # demo5/FFRT adaptive AR ratio threshold. Equal values (the default)
+    # keep the fixed ar_thresar; unequal values enable the dimension-
+    # adaptive polynomial clamped to [min, max]. The known lambda_zero
+    # epidemic (24% of P2 epochs at baseline, 45% under sat_band_plan)
+    # is a fixed threshold meeting 30-50-dimensional candidate sets.
+    ar_thresar_min: float = 0.0
+    ar_thresar_max: float = 0.0
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0
