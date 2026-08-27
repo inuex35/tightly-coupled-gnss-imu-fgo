@@ -83,9 +83,9 @@ gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*'
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
 # cssrlib DD-only RTK core (pinned; this revision carries the
-# nav.sat_band_plan admission policy the defaults use -- on an older
-# cssrlib the flag is silently inert and admission stays strict):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@750a48e2ba7a2322d8a46cb8caeb7436f21ae66e"
+# nav.sat_band_plan admission policy the defaults use and the satposs
+# signal-flight-time fix the results below depend on):
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@baed85416389a8d55d339cf44fa538522b539be8"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
