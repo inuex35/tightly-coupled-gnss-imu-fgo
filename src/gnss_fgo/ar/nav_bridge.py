@@ -13,12 +13,9 @@ knows what it is touching.
     nav.x[na:]               publish_marginals       ddidx (nonzero = has an
                                                      estimate), sdres trace
     nav.P (held diag)        publish_marginals       sdres optional file trace
-    nav.vsat                 publish_marginals       ddidx selection, retries
+    nav.vsat                 publish_marginals       ddidx selection, subset
     nav.el                   qcedit (cssrlib)        ddidx mask, weights
     nav.fix                  ddidx                   hold policy
-    nav.lock                 retry, every call       next epoch's arfilter
-    nav.excsat               retry outcome           next epoch's round-robin
-    nav.prev_ratio2          retry outcome           next epoch's arfilter
     tc._last_s0/_last_s1     every resolution        ratio gates, diagnostics
 
 Contract: satellite ids are 1..MAXSAT (cssrlib guarantees the range),
@@ -43,42 +40,7 @@ def publish_attempt(tc, sat_list, result):
     tc._last_s0, tc._last_s1 = result.s0, result.s1
 
 
-def update_lock_counters(tc, sat_list):
-    """RTKLIB ``ssat[].lock`` semantics, run on every retry-path call.
 
-    Incremented for satellites valid this epoch, reset for the rest. Next
-    epoch's ``arfilter`` reads ``lock == 1`` as "freshly acquired" -- leave
-    this out and the retry excludes a different satellite from then on.
-    """
-    valid = {int(s) for s in sat_list}
-    for i in range(tc.nav.lock.shape[0]):
-        sv = i + 1
-        for f in range(tc.nav.nf):
-            if sv in valid and tc.nav.vsat[i, f] != 0:
-                tc.nav.lock[i, f] += 1
-            else:
-                tc.nav.lock[i, f] = 0
-
-
-def publish_retry_success(tc, ratio):
-    """First-pass fix: prev_ratio2 follows it, the cursor resets.
-
-    A degenerate exact-fit success (ratio 0) measured nothing: keep the
-    last real ratio instead of overwriting the heuristic's memory.
-    """
-    if ratio > 0.0:
-        tc.nav.prev_ratio2 = ratio
-    tc.nav.excsat = 0
-
-
-def publish_retry_outcome(tc, fixed, ratio, excluded_sat):
-    """Second pass done: remember the exclusion only when it worked."""
-    if fixed:
-        if ratio > 0.0:
-            tc.nav.prev_ratio2 = ratio
-        tc.nav.excsat = excluded_sat
-    else:
-        tc.nav.excsat = 0
 
 
 def publish_marginals(tc, estimate, key_pose, amb_dict):

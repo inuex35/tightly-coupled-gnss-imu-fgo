@@ -142,8 +142,6 @@ class ImuGnssTc:
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
         self.nav.par_P0 = self.cfg.par_P0
         self.nav.thresar = self.cfg.ar_thresar
-        self.nav.rtklib_mode = bool(self.cfg.rtklib_mode)
-        self.nav.arfilter = bool(self.cfg.ar_arfilter)
         self.nav.minfixsats = self.cfg.ar_minfixsats
         self.nav.sat_band_plan = bool(self.cfg.sat_band_plan)
 

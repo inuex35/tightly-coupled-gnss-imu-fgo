@@ -164,8 +164,6 @@ class TcConfig:
                                    # (9 m vertical basin at GDOP~10
                                    # costs only ~1.7 m code residual).
     ar_thresar: float = 3.0        # nav.thresar — ratio gate for parmode=1
-    rtklib_mode: int = 1
-    ar_arfilter: int = 1           # demote newly-acquired sats hurting ratio
     ar_minfixsats: int = 4         # min sats to attempt AR (after exclusion)
     subset_ar_enable: int = 1
     subset_ar_max_candidates: int = 5
