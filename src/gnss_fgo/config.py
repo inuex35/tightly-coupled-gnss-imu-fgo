@@ -54,6 +54,13 @@ class TcConfig:
     # poisoned the float, AR never fixed, and the pipeline never reached
     # Phase 2 where FDE lives (P1_FDE_ENABLE).
     p1_fde_enable: int = 1
+    # Judge each satellite over the bands it transmits (cssrlib
+    # nav.sat_band_plan). Off, a pre-IIF GPS (no L5) or a BeiDou-2 (B1I
+    # only) fails its missing selected band every epoch and is dropped for
+    # the whole session -- 19 of 47 satellites on tokyo run2. On, the
+    # judgment set narrows to the bands the satellite has demonstrably
+    # produced; within it the strict gate is unchanged (SAT_BAND_PLAN).
+    sat_band_plan: int = 0
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0

@@ -145,6 +145,7 @@ class ImuGnssTc:
         self.nav.rtklib_mode = bool(self.cfg.rtklib_mode)
         self.nav.arfilter = bool(self.cfg.ar_arfilter)
         self.nav.minfixsats = self.cfg.ar_minfixsats
+        self.nav.sat_band_plan = bool(self.cfg.sat_band_plan)
 
     def _init_runtime_state(self):
         """Initialize mutable per-run state for both pipeline phases."""
