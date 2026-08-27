@@ -5,13 +5,10 @@ fix-and-hold table, and the selection state (``nav.vsat``, elevations). The
 output is a plain :class:`ArProblem` -- everything LAMBDA needs, in one
 value, with no reference back to the smoother or to ``nav``.
 
-Selection contract (measured, not designed -- both halves are load-bearing):
+Selection contract (both halves are load-bearing):
 
 * the satellite list is a **presence check** and ``nav.vsat`` does the
-  selecting, exactly as in cssrlib's ``ddidx``. Using only the list drops
-  the surviving bands of every excluded satellite; using only ``vsat`` lets
-  an excluded satellite back in. Each mistake was measured on tokyo run2
-  before this line was written the way it is.
+  selecting, exactly as in cssrlib's ``ddidx``.
 * a **held** ambiguity contributes its pinned value with ``varholdamb``
   variance on the diagonal; its off-diagonal terms are zero unless the
   key still lives in the graph.

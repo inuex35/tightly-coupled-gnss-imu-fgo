@@ -116,8 +116,8 @@ def _emit_held_ddcp_factor(tc, graph, pair_id, key_pose, key_float,
     # counter arithmetic cannot name a slot reliably across recovery
     # paths. When both ambiguities are held the factor is pose-only and
     # its key tuple is not unique (every such factor shares the pose
-    # key) — those factors are DELIBERATELY outside post-fit FDE's
-    # sight (r6 #2): a wrong integer in a held-held pair is caught by
+    # key) — those factors are deliberately outside post-fit FDE's
+    # sight: a wrong integer in a held-held pair is caught by
     # xvalidate at fix time and by the sanity ladder when the
     # residuals stay bad, not by per-factor exclusion.
     if key_float is not None:
