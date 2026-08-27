@@ -44,12 +44,8 @@ def publish_attempt(tc, sat_list, result):
 
 
 def publish_marginals(tc, estimate, key_pose, amb_dict):
-    """Publish the AR-selection state: float/held ambiguities, vsat, key_pose.
-
-    The covariance readback that used to fill nav.P from joint marginals
-    was measured dead (its only reader is sdres's optional file trace)
-    and removing it is line-identical and several times faster; only the
-    cheap held-variance diagonal is still written.
+    """Publish the AR-selection state: float/held ambiguities, vsat,
+    key_pose. Only the held-variance diagonal enters nav.P.
     """
     # The resolver reads the marginals straight from ISAM2 and needs the
     # very pose they are taken against, not tc.tc_epoch, which still
@@ -73,8 +69,7 @@ def _publish_float_ambiguities(tc, estimate, amb_dict):
     for (s, f), k in sorted_amb_items(amb_dict):
         if estimate.exists(k):
             tc.nav.x[tc.IB(s, f, tc.nav.na)] = estimate.atDouble(k)
-            # Exclude ambiguities (re)seeded THIS epoch. Making the
-            # wait span real epochs was measured worse; one epoch is the spec.
+            # Exclude ambiguities (re)seeded this epoch.
             if (s, f) not in tc.current_epoch.seeded_amb_keys:
                 tc.nav.vsat[s - 1, f] = 1
                 diag_vsat1 += 1

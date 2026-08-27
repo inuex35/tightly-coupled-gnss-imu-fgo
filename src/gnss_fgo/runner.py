@@ -184,7 +184,7 @@ class ImuGnssTc:
         self._init_epoch_state_defaults()
 
     def _init_epoch_state_defaults(self):
-        """Per-epoch / per-run state previously read via ``getattr(tc, '_X', default)`` shims throughout the package."""
+        """Per-epoch / per-run scratch state, one attribute per field."""
         # AR diagnostics (set inside ar.run_ar)
         self._ar_context_reject = None
         self._ar_subset_debug = None
@@ -232,10 +232,8 @@ class ImuGnssTc:
         belongs in CurrentEpochState, where it cannot outlive the epoch.
         amb_gen is the one per-sat field still wiped here: it is part
         of the N-key value (slip resets bump it pre-build), so it must
-        reset with the epoch to keep key numbering stable. Persisting
-        any of this across epochs was measured on run1 and every
-        variant came back equal or worse (#22), so the one-epoch
-        lifetime is the spec.
+        reset with the epoch to keep key numbering stable. The
+        one-epoch lifetime is the spec (persisting was measured worse).
         """
         self.current_epoch = CurrentEpochState()
         # Same lifetime rule: AR diagnostics are per-call, and a stale

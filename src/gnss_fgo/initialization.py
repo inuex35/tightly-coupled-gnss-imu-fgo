@@ -19,8 +19,7 @@ def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                               sat, el, iu, ir_map, init_ecef, R, info)
     if est is None:
         # Double smoother failure inside _p1_build_and_solve (the
-        # restart's update failed too): skip the epoch as FLT instead
-        # of crashing on the None estimate (r6 #1).
+        # restart's update failed too): skip the epoch as FLT.
         return _tc_recovery.advance_epoch_and_pack(
             tc, tc.nav.x[0:3], 'FLT', 0, info, obs)
     sol, tag, nb, _xa = _p1_emit_and_run_ar(tc, est, sat, el, R)
@@ -133,8 +132,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
             nf_before = tc.isam.getFactors().size()
             tc.isam.update(g, v, ts)
         except (RuntimeError, IndexError):
-            # A second consecutive failure used to take the whole run
-            # down (r5 #11); skip the epoch instead.
+            # Second consecutive smoother failure: skip the epoch.
             return None
     # Record everything we just inserted so the next epoch can skip.
     tc._isam_p1_inserted.add(tc.Xp(ep))

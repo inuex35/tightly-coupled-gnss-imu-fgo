@@ -106,7 +106,7 @@ def ddpr_res_at_fixed_pose(tc, graph, estimate, key_pose, xa):
 def main_ddpr_residuals(tc, graph, estimate, with_pairs=False):
     """DDPR residuals in the main graph at ``estimate``.
 
-    UNIT CAVEAT (r5 #4): res = sqrt(2*err)*sigma_pr*sqrt(2) rescales
+    UNIT CAVEAT: res = sqrt(2*err)*sigma_pr*sqrt(2) rescales
     the factor-whitened residual by the FLAT sigma_pr — but with
     varerr_enable=1 the factor sigma is elevation-dependent, so these
     are elevation-NORMALIZED residuals in pseudo-metres (zenith ~1.5x

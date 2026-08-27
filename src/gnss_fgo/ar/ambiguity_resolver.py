@@ -141,10 +141,8 @@ class AmbiguityResolver:
         s0 = float(s[0]) if len(s) > 0 else 0.0
         s1 = float(s[1]) if len(s) > 1 else 0.0
         if s0 <= 1e-12 * max(s1, 1.0):
-            # Exact fit (held ambiguities re-entering the search): s0 is
-            # FP noise and s1/s0 measures nothing. Without this floor the
-            # draw between an exact 0.0 and a denormal decides the recorded
-            # ratio -- and, through prev_ratio2, the retry policy.
+            # Exact fit (held integers re-entering): s0 is FP noise
+            # and the ratio measures nothing.
             s0 = 0.0
         ratio = 0.0 if s0 <= 0.0 else s1 / s0
         thres = self.ratio_threshold(len(pairs))
@@ -163,11 +161,8 @@ class AmbiguityResolver:
             fixed.setdefault(ref, float_values[ref])
             fixed[tgt] = fixed[ref] - float(b[row, 0])
         if self.parmode == 2 and int(nfix) < len(pairs):
-            # Partial AR fixed only nfix of the candidates; reporting
-            # nb = len(pairs) would hold NON-fixed ambiguities at
-            # made-up integers. Until the partial back-substitution is
-            # implemented, decline the fix (dormant at the default
-            # parmode=1).
+            # Partial back-substitution is not implemented: decline
+            # rather than hold non-fixed ambiguities at made-up integers.
             result.declined_partial = True
             return result
         result.nb = len(pairs)
