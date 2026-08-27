@@ -163,7 +163,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     # admission gate was the only defence, and a contaminated cohort
     # poisoned the float before AR could ever produce the fixes the
     # Phase-2 transition (and Phase-2's own FDE) are gated on.
-    if tc.cfg.p1_fde_enable and info is not None:
+    if info is not None:
         # fi_start is the factor count recorded before this epoch's
         # insert -- the FLS appends its marginal containers after the
         # new factors, so nf_total - G starts late (the #63 fix, which
