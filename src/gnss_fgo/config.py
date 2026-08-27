@@ -48,6 +48,12 @@ class TcConfig:
     fde_max_frac: float = 0.5      # skip FDE if >this fraction rejected
     fde_enable: int = 1           # 0=off, 1=on (FDE_ENABLE)
     fde_max_iter: int = 1
+    # Phase-1 FDE: the same postfit screen, run on the Phase-1 GNSS-only
+    # smoother. Phase 1 used to have no residual screening at all -- the
+    # admission gate was its only defence, so a contaminated cohort
+    # poisoned the float, AR never fixed, and the pipeline never reached
+    # Phase 2 where FDE lives (P1_FDE_ENABLE).
+    p1_fde_enable: int = 1
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0

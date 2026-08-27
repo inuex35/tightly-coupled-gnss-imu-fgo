@@ -9,13 +9,14 @@ from cssrlib.gnss import time2gpst
 from . import ar as _tc_ar
 from .integrity import recovery as _tc_recovery
 from .factors import factors as _tc_factors
+from .pipeline import residuals as _tc_residuals
 
 
 def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                     obs_sd, ir_map, info, init_ecef, R):
     """Phase 1: GNSS-only Pose3 RTK on shared ambiguity keys."""
     est = _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb,
-                              sat, el, iu, ir_map, init_ecef, R)
+                              sat, el, iu, ir_map, init_ecef, R, info)
     if est is None:
         # Double smoother failure inside _p1_build_and_solve (the
         # restart's update failed too): skip the epoch as FLT instead
@@ -43,7 +44,7 @@ def _p1_fresh_restart(tc):
 
 
 def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
-                          ir_map, init_ecef, R):
+                          ir_map, init_ecef, R, info=None):
     """Phase 1A — build the per-epoch DD graph + Values, run an FLS update with three follow-up iterations, and return the smoother estimate."""
     g = gtsam.NonlinearFactorGraph()
     v = gtsam.Values()
@@ -104,6 +105,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ts[k] = tc.phase1_t
     for k in tc.amb_keys.values():
         ts[k] = tc.phase1_t
+    nf_before = tc.isam.getFactors().size()
     try:
         tc.isam.update(g, v, ts)
     except RuntimeError:
@@ -128,6 +130,7 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         for k in v.keys():
             ts[k] = tc.phase1_t
         try:
+            nf_before = tc.isam.getFactors().size()
             tc.isam.update(g, v, ts)
         except (RuntimeError, IndexError):
             # A second consecutive failure used to take the whole run
@@ -156,6 +159,20 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     # variable the smoother no longer has (IndeterminantLinearSystem).
     tc._isam_p1_inserted = {
         k for k in tc._isam_p1_inserted if est.exists(k)}
+
+    # Phase-1 FDE: the same postfit screen Phase 2 runs, on the Phase-1
+    # smoother. Phase 1 had no residual screening of any kind -- the
+    # admission gate was the only defence, and a contaminated cohort
+    # poisoned the float before AR could ever produce the fixes the
+    # Phase-2 transition (and Phase-2's own FDE) are gated on.
+    if tc.cfg.p1_fde_enable and info is not None:
+        # fi_start is the factor count recorded before this epoch's
+        # insert -- the FLS appends its marginal containers after the
+        # new factors, so nf_total - G starts late (the #63 fix, which
+        # applies to the Phase-1 smoother the same way).
+        est = _tc_residuals.apply_fde(
+            tc, g, None, None, est, info, fi_start=nf_before,
+            smoother=tc.isam, pose_key=tc.Xp(ep))
 
     return est
 
