@@ -60,14 +60,23 @@ class TcConfig:
     # the whole session -- 19 of 47 satellites on tokyo run2. On, the
     # judgment set narrows to the bands the satellite has demonstrably
     # produced; within it the strict gate is unchanged (SAT_BAND_PLAN).
-    sat_band_plan: int = 0
-    # demo5/FFRT adaptive AR ratio threshold. Equal values (the default)
+    #
+    # Default ON, paired with the FFRT threshold below (best all-round
+    # configuration on five of the seven measured datasets; tokyo run3
+    # beats the previous defaults on every metric at once). Do not enable
+    # without FFRT: alone it collapses the ratio test (tokyo run3 fix
+    # 65.5% -> 14.4%). On a cssrlib build lacking nav.sat_band_plan the
+    # flag is silently inert and admission stays strict.
+    sat_band_plan: int = 1
+    # demo5/FFRT adaptive AR ratio threshold. Equal values disable it and
     # keep the fixed ar_thresar; unequal values enable the dimension-
     # adaptive polynomial clamped to [min, max]. The known lambda_zero
-    # epidemic (24% of P2 epochs at baseline, 45% under sat_band_plan)
-    # is a fixed threshold meeting 30-50-dimensional candidate sets.
-    ar_thresar_min: float = 0.0
-    ar_thresar_max: float = 0.0
+    # epidemic (24% of P2 epochs at the old defaults, 45% under
+    # sat_band_plan) is a fixed threshold meeting 30-50-dimensional
+    # candidate sets. Default ON; the 1.5 floor is what rejects the
+    # liar-hostage candidates that surface ratios of ~1.3.
+    ar_thresar_min: float = 1.5
+    ar_thresar_max: float = 3.0
     ddpr_sanity_enable: int = 1   # 0=off, 1=on (DDPR_SANITY_ENABLE)
     sanity_break_pim: int = 1
     sanity_pose_replace_thresh: float = 5.0

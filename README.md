@@ -35,19 +35,38 @@ and tunnels.
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
 
-Everything is measured on open data
-([PPC-Dataset](https://github.com/taroz/PPC-Dataset), three full
-urban-Tokyo drives) with all-default settings, and is reproducible
-end to end:
+Everything is measured on open data with all-default settings, and is
+reproducible end to end — three full urban-Tokyo drives and three
+urban-Nagoya drives
+([PPC-Dataset](https://github.com/taroz/PPC-Dataset)), plus the
+GREAT-MSF w2 window (Wuhan):
 
-| run  | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
-|------|-----------|---------|---------|---------|--------|--------|
-| run1 | 11928 ep  | 16.78 m | 0.289 m | 0.83 m  | 46.4 % | 55.4 % |
-| run2 |  9151 ep  | 11.03 m | 0.053 m | 1.02 m  | 60.8 % | 68.7 % |
-| run3 | 15301 ep  |  8.63 m | 0.052 m | 0.48 m  | 65.6 % | 69.1 % |
+| run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
+|-------------|-----------|---------|---------|---------|--------|--------|
+| tokyo run1  | 11928 ep  | 14.17 m | 0.110 m | 0.55 m  | 62.3 % | 69.2 % |
+| tokyo run2  |  9151 ep  |  7.09 m | 0.053 m | 0.85 m  | 69.7 % | 74.5 % |
+| tokyo run3  | 15301 ep  |  5.58 m | 0.062 m | 0.31 m  | 70.0 % | 73.4 % |
+| nagoya run1 |  7602 ep  | 16.15 m | 0.146 m | 1.12 m  | 61.1 % | 64.3 % |
+| nagoya run2 |  9451 ep  | 20.68 m | 0.319 m | 0.70 m  | 49.4 % | 51.6 % |
+| nagoya run3 |  5201 ep  | 19.72 m | 0.578 m | 1.89 m  | 47.0 % | 48.0 % |
+| MSF w2      |  1041 ep  |  0.17 m | 0.141 m | 0.14 m  | 99.0 % | 99.5 % |
 
-run1 is the hardest route — a deep canyon plus a full tunnel blackout,
-bridged by IMU + SD Doppler dead reckoning.
+tokyo run1 is the hardest route — a deep canyon plus a full tunnel
+blackout, bridged by IMU + SD Doppler dead reckoning.
+
+![nagoya_defaults](docs/nagoya_defaults.png)
+
+The defaults admit each satellite on the bands it actually transmits
+(`SAT_BAND_PLAN=1` — a pre-IIF GPS without L5 or a B1I-only BDS-2 is
+judged on what it broadcasts instead of being discarded wholesale) and
+run LAMBDA's ratio test against the demo5/FFRT dimension-adaptive
+threshold (`AR_THRESAR_MIN=1.5`, `AR_THRESAR_MAX=3.0`) instead of a
+fixed 2.0. The two were adopted together after being measured across
+all seven datasets above — together they are the best all-round
+configuration on five of the seven, and on tokyo run3 they beat the
+previous defaults on every metric at once (fix 65.5 → 70.0 %, AllRMS
+11.05 → 5.58 m, FixRMS 0.573 → 0.305 m). Revert to the previous
+behaviour with `SAT_BAND_PLAN=0 AR_THRESAR_MIN=0 AR_THRESAR_MAX=0`.
 
 ## Quick start
 
@@ -63,8 +82,10 @@ pip install numpy matplotlib
 gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
-# cssrlib DD-only RTK core (pinned):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@24ec6450e9a9d1fc69b451006a6c4eac5fdf4fd8"
+# cssrlib DD-only RTK core (pinned; this revision carries the
+# nav.sat_band_plan admission policy the defaults use -- on an older
+# cssrlib the flag is silently inert and admission stays strict):
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@750a48e2ba7a2322d8a46cb8caeb7436f21ae66e"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
@@ -97,6 +118,9 @@ Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
 `SIG_PR`, `ZUPT_MAX_SPEED`, …) — see `config.py` for the complete,
 commented list. The example script adds its own env switches
 (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
+The measured defaults and their reverts: `SAT_BAND_PLAN=0` (strict
+all-band admission), `AR_THRESAR_MIN=0 AR_THRESAR_MAX=0` (fixed AR
+ratio threshold), `P1_FDE_ENABLE=0` (no Phase-1 FDE screen).
 A few recovery-path priors (warm-reset and outage anchors,
 Phase-2 seed sigmas) are hardcoded constants, not knobs.
 
