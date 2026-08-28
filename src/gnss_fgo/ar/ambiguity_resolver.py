@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from cssrlib.gnss import sat2prn
-from cssrlib.mlambda import mlambda
+from cssrlib.core.mlambda import (estimILS, ldldecom, mlambda, reduction,
+                                  sr_boost)
 
 
 @dataclass
@@ -33,10 +34,21 @@ class ResolverResult:
     s1: float = 0.0
     pairs: list = field(default_factory=list)   # (ref, target, freq) per DD
     thres_used: float = 0.0           # the ratio threshold this attempt faced
+    dropped: int = 0                  # z-components left float (0 = full fix)
+    holdable: frozenset = frozenset()  # keys safe to hold (partial only)
 
 
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
+
+    #: Partial AR: fewest z-components a partial fix may keep (small
+    #: subsets fix confidently to the multipath-biased optimum -- of
+    #: the measured wrong partials, p90 was 16 components), the
+    #: bootstrapped success rate that picks the first subset, and the
+    #: reduced searches allowed per epoch.
+    min_fix = 20
+    par_p0 = 0.995
+    par_trials = 8
 
     def __init__(self, thresar=3.0, min_pairs=2,
                  el_mask=0.0, thresar_min=0.0, thresar_max=0.0):
@@ -107,7 +119,8 @@ class AmbiguityResolver:
                 pairs.append((ref, key))
         return pairs
 
-    def resolve(self, float_values, covariance, keys, elevations):
+    def resolve(self, float_values, covariance, keys, elevations,
+                allow_partial=False):
         """Fix the ambiguities.
 
         Args:
@@ -148,14 +161,76 @@ class AmbiguityResolver:
             return result
         # s0 <= 0 means mlambda could not form a ratio (exact fit).
         if not (s0 <= 0.0 or ratio >= thres):
+            par = self._partial(y, Q) if allow_partial else None
+            if par is None:
+                return result
+            bvec, nb, s0, s1, thres, k, int_rows = par
+            result.s0, result.s1 = s0, s1
+            result.thres_used = thres
+            result.dropped = k
+            result.nb = nb
+            result.fixed = self._restore_sd(pairs, float_values, bvec)
+            # A DD whose iZt row touches only fixed z-components is an
+            # exact integer: those pairs may be held like a full fix.
+            holdable = set()
+            for row, (ref, tgt) in enumerate(pairs):
+                if int_rows[row]:
+                    holdable.add(ref)
+                    holdable.add(tgt)
+            result.holdable = frozenset(holdable)
             return result
 
-        # Restore single-difference ambiguities: the reference keeps its float
-        # value and each target follows from the fixed difference.
+        result.nb = len(pairs)
+        result.fixed = self._restore_sd(pairs, float_values, b[:, 0])
+        return result
+
+    @staticmethod
+    def _restore_sd(pairs, float_values, bvec):
+        """Single-difference ambiguities from the DD vector: the
+        reference keeps its float value, each target follows from the
+        difference."""
         fixed = {}
         for row, (ref, tgt) in enumerate(pairs):
             fixed.setdefault(ref, float_values[ref])
-            fixed[tgt] = fixed[ref] - float(b[row, 0])
-        result.nb = len(pairs)
-        result.fixed = fixed
-        return result
+            fixed[tgt] = fixed[ref] - float(bvec[row])
+        return fixed
+
+    def _partial(self, y, Q):
+        """Partial AR: fix the well-determined z-components, condition
+        the rest on them, and accept by the reduced problem's own
+        FFRT ratio test.
+
+        Returns (dd_vector, nb, s0, s1, thres, dropped) or None. The
+        DD vector mixes integer-fixed and conditioned-float content;
+        the caller publishes it whole but must not hold it."""
+        n = len(y)
+        if n <= self.min_fix:
+            return None
+        L, d = ldldecom(Q)
+        L, d, Z = reduction(L, d)
+        iZt = np.round(np.linalg.inv(Z.T))
+        z = Z.T @ y
+        Qz = L.T @ np.diag(d) @ L
+
+        kmax = n - self.min_fix
+        # reduction orders d worst-first: drop from the front until the
+        # bootstrapped success rate says the rest can be fixed.
+        k = 1
+        while k < kmax and sr_boost(d[k:]) < self.par_p0:
+            k += 1
+        for _ in range(self.par_trials):
+            if k > kmax:
+                return None
+            zpar, sq = estimILS(L[k:, k:], d[k:], z[k:], 2)
+            s0, s1 = float(sq[0]), float(sq[1])
+            nb = n - k
+            thres = self.ratio_threshold(nb)
+            if s0 > 0.0 and s1 / s0 >= thres:
+                # Condition the unfixed components on the fixed subset.
+                QP = np.linalg.solve(Qz[k:, k:].T, Qz[:k, k:].T).T
+                zc = z[:k] - QP @ (z[k:] - zpar[:, 0])
+                bvec = iZt @ np.concatenate((zc, zpar[:, 0]))
+                int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
+                return bvec, nb, s0, s1, thres, k, int_rows
+            k += max(1, (kmax - k) // 4)
+        return None
