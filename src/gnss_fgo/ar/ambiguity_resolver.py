@@ -41,10 +41,12 @@ class ResolverResult:
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
-    #: Partial AR: fewest z-components a partial fix may keep, the
+    #: Partial AR: fewest z-components a partial fix may keep (small
+    #: subsets fix confidently to the multipath-biased optimum -- of
+    #: the measured wrong partials, p90 was 16 components), the
     #: bootstrapped success rate that picks the first subset, and the
     #: reduced searches allowed per epoch.
-    min_fix = 4
+    min_fix = 20
     par_p0 = 0.995
     par_trials = 8
 

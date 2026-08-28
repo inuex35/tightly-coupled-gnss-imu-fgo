@@ -22,6 +22,7 @@ def _problem(n_clean=6, n_noisy=3, seed=3):
 def test_partial_fix_accepts_the_clean_core():
     keys, vals, cov, el, truth = _problem()
     r = AmbiguityResolver(thresar=3.0, thresar_min=1.5, thresar_max=3.0)
+    r.min_fix = 4  # synthetic problem is small
     res = r.resolve(vals, cov, keys, el, allow_partial=True)
     assert res.nb > 0
     assert res.dropped > 0
