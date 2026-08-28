@@ -219,6 +219,7 @@ class ArDiagnostics:
     amb_el_median_deg: Optional[int] = None
     amb_el_above15: Optional[int] = None
     amb_el_above25: Optional[int] = None
+    partial_dropped: Optional[int] = None  # z-components left float (0 = full fix)
 
 
 @dataclass

@@ -101,7 +101,13 @@ def _run_ar_with_marginals(tc, epoch):
     # storm, and losing that accident costs AllRMS there — accepted
     # in favor of the coherent ordering.
     if epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3:
-        _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa)
+        # A partial fix holds only its exact-integer subset; the
+        # conditioned-float pairs stay free.
+        allow = (getattr(tc, '_ar_partial_holdable', None)
+                 if tc.ar_diag.partial_dropped else None)
+        if not tc.ar_diag.partial_dropped or allow:
+            _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa,
+                                              allow=allow)
 
 
 def _record_ar_diagnostics(tc, info):
@@ -115,6 +121,8 @@ def _record_ar_diagnostics(tc, info):
         info['ar_exception'] = tc.ar_diag.exception
     if outcome:
         info['ar_outcome_code'] = _AR_OUTCOME_CODES.get(outcome, -1)
+    if tc.ar_diag.partial_dropped:
+        info['ar_partial_dropped'] = int(tc.ar_diag.partial_dropped)
     ar_ctx_reject = tc._ar_context_reject
     if ar_ctx_reject:
         info['ar_context_reject'] = True
