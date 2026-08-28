@@ -70,6 +70,10 @@ def _run_ar_with_marginals(tc, epoch):
     epoch.nb, epoch.xa = _tc_ar.run_ar(tc,
         epoch.sat, epoch.el, amb_snapshot)
     xv_thr = float(tc.cfg.ar_ddpr_xvalidate_thresh or 0.0)
+    if tc.ar_diag.partial_dropped and xv_thr > 0.0:
+        # A partial fix faces a tight cross-validation bar: the
+        # measured wrong partials sit above ~1.5 m DDPR at xa.
+        xv_thr = min(xv_thr, 1.5)
     if xv_thr > 0.0 and epoch.nb > 0 and epoch.xa is not None:
         res_xa = _tc_residuals.ddpr_res_at_fixed_pose(
             tc, epoch.graph, epoch.estimate,
