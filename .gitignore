@@ -4,3 +4,4 @@ __pycache__/
 ref/
 results/
 data/
+src/gnss_fgo/batch/lambda_c/liblambda.so
