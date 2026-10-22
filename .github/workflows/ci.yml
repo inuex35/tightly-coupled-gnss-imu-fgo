@@ -28,6 +28,8 @@ jobs:
         run: |
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
+      - name: Dataset-free factor demo
+        run: python examples/synthetic_factor_demo.py
       - name: Unit tests
         run: pytest tests/ -q
       - name: Stage contract check (import-time gate)

@@ -72,6 +72,39 @@ pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rollin
 pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@5b3711a73f6d8eb3a4b5429d7cf31783cb41927d"
 ```
 
+### Dataset-free factor demo
+
+After the fork wheel and pinned cssrlib installation above, run from the
+repository root (no PPC-Dataset download, receiver or data files needed):
+
+```bash
+python examples/synthetic_factor_demo.py
+```
+
+This reuses the DD carrier-phase factor and synthetic geometry exercised in
+`tests/test_jacobians.py`. It generates a noiseless observation from four
+satellite ranges (with Earth-rotation correction), evaluates the residual,
+and optimizes one float ambiguity with a known-pose prior. Expected output
+(final rounding/sign of zero may vary):
+
+```text
+Synthetic DD carrier-phase factor (no dataset; no RTK FIX)
+Initial residual: -1.903000 m
+Optimized residual: 0.000000 m
+Float ambiguity error: 0.000000 cycles
+PASS: synthetic residual and float ambiguity checks
+```
+
+The script exits nonzero if the final residual exceeds 1e-6 m, ambiguity
+error exceeds 1e-5 cycles, or graph error does not decrease. CI runs the
+command plus a numeric Jacobian check using the existing test helper.
+These tolerances check a noiseless synthetic construction, **not measured
+RTK accuracy**. This demo does not run IMU integration, integer ambiguity
+resolution, or the full positioning pipeline; the urban results above
+remain separate real-data evaluations.
+
+### Full pipeline with real data
+
 Run (datasets not included; lay out PPC-Dataset under
 `data/PPC-Dataset/tokyo/run{1,2,3}/`):
 
