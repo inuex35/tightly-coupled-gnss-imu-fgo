@@ -34,3 +34,36 @@ jobs:
         run: |
           cd src
           ENABLE_STAGE_CONTRACT_CHECK=1 python -c "import gnss_fgo.state.stage_contract"
+
+  cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libeigen3-dev libboost-all-dev
+      - name: Resolve GTSAM fork revision
+        id: gtsam
+        run: echo "sha=$(git ls-remote https://github.com/inuex35/gtsam.git refs/heads/custom/develop | cut -f1)" >> "$GITHUB_OUTPUT"
+      - name: Cache GTSAM
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/opt/gtsam
+          key: gtsam-${{ runner.os }}-${{ steps.gtsam.outputs.sha }}
+      - name: Build GTSAM fork (custom/develop, C++ only)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 -b custom/develop https://github.com/inuex35/gtsam.git /tmp/gtsam
+          cmake -S /tmp/gtsam -B /tmp/gtsam/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DGTSAM_BUILD_TESTS=OFF -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF -DGTSAM_BUILD_UNSTABLE=OFF \
+            -DGTSAM_WITH_TBB=OFF -DGTSAM_USE_SYSTEM_EIGEN=ON -DGTSAM_BUILD_PYTHON=OFF \
+            -DCMAKE_INSTALL_PREFIX=$HOME/opt/gtsam
+          cmake --build /tmp/gtsam/build --target install
+      - name: Build C++ port
+        run: |
+          cmake -S cpp -B cpp/build -G Ninja -DCMAKE_PREFIX_PATH=$HOME/opt/gtsam
+          cmake --build cpp/build
+      - name: Unit tests
+        run: LD_LIBRARY_PATH=$HOME/opt/gtsam/lib ctest --test-dir cpp/build --output-on-failure

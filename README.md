@@ -96,6 +96,13 @@ Packages are the roles:
 Phase 1 bootstrap (stationary GNSS-only) is `initialization.py`;
 `runner.py` owns state and the cssrlib boundary.
 
+## C++ port
+
+`cpp/` is a C++17 port of the whole pipeline with no Python dependency:
+the same estimator on the GTSAM fork, with an RTKLIB-based GNSS front-end
+in place of cssrlib. Build instructions, the front-end differences and
+results are in [cpp/README.md](cpp/README.md).
+
 ## Configuration
 
 Every `config.py` field is an env var (`DOPPLER_SD_SIGMA`,
