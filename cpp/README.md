@@ -3,7 +3,7 @@
 A C++17 port of the whole pipeline (`src/gnss_fgo` + `examples/run_imu_gnss_tc.py`)
 with no Python dependency. The estimator is the same GTSAM factor graph,
 module for module; the GNSS front-end follows
-[RTKLIB](https://github.com/rtklibexplorer/RTKLIB) (demo5) instead of
+[RTKLIB](https://github.com/rtklibexplorer/RTKLIB) (rtklibexplorer, demo5) instead of
 cssrlib: RINEX decoding, signal selection, broadcast ephemerides,
 satellite orbits and observation editing.
 
@@ -70,8 +70,11 @@ scalar diagnostic); it replaces the Python `SAVE_NPZ`.
   only while every slot it has produced is usable — the policy the Python
   pipeline (cssrlib's `sat_band_plan`) ran with and the estimator is tuned
   for; `STRICT_SAT_GATE=0` is RTKLIB's per-slot editing alone.
-- Internally satellites keep the cssrlib numbering, so ambiguity keys and
-  every "lowest-numbered satellite" rule of the estimator are unchanged.
+- **Numbering, time, geometry.** RTKLIB satellite numbers (`satno`, system
+  order GPS, GLONASS, Galileo, QZSS, BeiDou, NavIC, SBAS) and RTKLIB's
+  `geodist`/`satazel`/`ecef2pos`/`dops`/time functions throughout, the
+  estimator included (`gnss.{h,cpp}` wrap them). Switching from cssrlib's
+  numbering changed no result.
 
 ## Results and verification
 
@@ -83,11 +86,11 @@ admitted satellites), so the numbers move:
 
 | run | Python AllRMS / median / FixRMS / fix % | C++ (RTKLIB, gate on) | C++ (RTKLIB, gate off) |
 |---|---|---|---|
-| tokyo run1  | 10.27 / 0.102 / 0.48 / 63.3 | 11.07 / 0.117 / 0.51 / 58.8 | 49.73 / 0.365 / 0.69 / 30.3 |
+| tokyo run1  | 10.27 / 0.102 / 0.48 / 63.3 | 11.07 / 0.117 / 0.51 / 58.8 | 46.50 / 0.328 / 0.68 / 30.3 |
 | tokyo run2  |  5.14 / 0.041 / 0.12 / 76.8 |  2.60 / 0.045 / 0.12 / 72.3 | 14.47 / 0.202 / 0.30 / 54.1 |
 | tokyo run3  |  6.11 / 0.050 / 0.18 / 73.0 |  5.24 / 0.043 / 0.20 / 73.8 | 13.25 / 0.133 / 0.26 / 60.6 |
 | nagoya run1 | 14.62 / 0.135 / 0.14 / 63.1 | 24.13 / 0.132 / 0.15 / 66.5 | 73.38 / 0.265 / 0.46 / 50.9 |
-| nagoya run2 | 23.41 / 0.234 / 0.29 / 50.2 | 16.09 / 1.145 / 1.88 / 53.7 | 76.91 / 10.18 / 0.38 / 32.6 |
+| nagoya run2 | 23.41 / 0.234 / 0.29 / 50.2 | 16.09 / 1.145 / 1.88 / 53.7 | 76.91 / 10.19 / 0.38 / 32.6 |
 | nagoya run3 | 19.54 / 0.507 / 0.60 / 46.0 | 15.98 / 1.760 / 2.53 / 42.4 | 47.09 / 18.78 / 1.13 / 22.8 |
 
 (metres / metres / metres / %, all-default settings, `LEVER_ARM=0.31,0,0.55`.)

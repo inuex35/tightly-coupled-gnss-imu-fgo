@@ -38,41 +38,10 @@ namespace {
 constexpr int kRnxSys[] = {gnss::GPS, gnss::GLO, gnss::GAL, gnss::QZS,
                            gnss::SBS, gnss::BDS, gnss::IRN};
 
-int rtk_sys_to_sys(int rtk_sys) {
-  switch (rtk_sys) {
-    case SYS_GPS: return gnss::GPS;
-    case SYS_GAL: return gnss::GAL;
-    case SYS_QZS: return gnss::QZS;
-    case SYS_CMP: return gnss::BDS;
-    case SYS_GLO: return gnss::GLO;
-    case SYS_SBS: return gnss::SBS;
-    case SYS_IRN: return gnss::IRN;
-    default: return gnss::NONE;
-  }
-}
-
-int sys_to_rtk_sys(int sys) {
-  switch (sys) {
-    case gnss::GPS: return SYS_GPS;
-    case gnss::GAL: return SYS_GAL;
-    case gnss::QZS: return SYS_QZS;
-    case gnss::BDS: return SYS_CMP;
-    case gnss::GLO: return SYS_GLO;
-    case gnss::SBS: return SYS_SBS;
-    case gnss::IRN: return SYS_IRN;
-    default: return SYS_NONE;
-  }
-}
-
-/// RTKLIB satellite number -> estimator satellite number (0 if unmapped).
-int to_rtk_sat(int sat) {
-  return satno(sys_to_rtk_sys(gnss::sat_sys(sat)), gnss::sat_prn(sat));
-}
-
-int from_rtk_sat(int rtk_sat) {
-  int prn = 0;
-  const int sys = rtk_sys_to_sys(satsys(rtk_sat, &prn));
-  return sys == gnss::NONE ? 0 : gnss::prn2sat(sys, prn);
+/// Satellite of a system the estimator decodes (0 otherwise): RTKLIB
+/// satellite numbers are used as they are.
+int usable_sat(int rtk_sat) {
+  return gnss::sat_sys(rtk_sat) == gnss::NONE ? 0 : rtk_sat;
 }
 
 gnss::GTime from_rtk(const gtime_t& t) { return {int64_t(t.time), t.sec}; }
@@ -104,7 +73,7 @@ std::vector<int> SignalPlan::sorted_sys_ids() const {
 SignalPlan rtklib_signal_plan(const std::vector<int>& systems, int nf) {
   SignalPlan plan;
   for (int sys : systems) {
-    const int rsys = sys_to_rtk_sys(sys);
+    const int rsys = gnss::to_rtk_sys(sys);
     std::vector<BandSignal> slots(nf);
     // Every code RTKLIB knows, mapped onto its frequency index.
     for (int code = 1; code <= MAXCODE; ++code) {
@@ -164,7 +133,7 @@ ObsPtr RinexObsReader::next() {
   std::vector<Row> rows;
   for (int i = 0; i < rnx->obs.n; ++i) {
     const obsd_t& d = rnx->obs.data[i];
-    const int sat = from_rtk_sat(d.sat);
+    const int sat = usable_sat(d.sat);
     if (!sat || !plan_->has_sys(gnss::sat_sys(sat))) continue;
     rows.push_back({sat, &d});
   }
@@ -225,7 +194,7 @@ NavData::SatStates NavData::satposs(const ObsEpoch& obs) const {
     obsd_t& d = data[i];
     std::memset(&d, 0, sizeof(d));
     d.time = to_rtk(obs.t);
-    d.sat = uint8_t(to_rtk_sat(obs.sat[i]));
+    d.sat = uint8_t(obs.sat[i]);
     for (int f = 0; f < obs.nf && f < NFREQ; ++f) d.P[f] = obs.P(i, f);
   }
   std::vector<double> rs(6 * n), dts(2 * n), var(n);

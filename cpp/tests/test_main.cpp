@@ -37,12 +37,17 @@ bool near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
 
 void test_sat_numbering() {
   check(gnss::prn2sat(gnss::GPS, 5) == 5, "GPS G05 -> 5");
-  check(gnss::prn2sat(gnss::GAL, 1) == 33, "GAL E01 -> 33");
-  check(gnss::prn2sat(gnss::QZS, 193) == 69, "QZS J01 -> 69");
-  check(gnss::prn2sat(gnss::BDS, 1) == 86, "BDS C01 -> 86");
+  // RTKLIB satno: GPS 32, GLONASS 27, Galileo 36, QZSS 10, BeiDou 63, ...
+  check(gnss::prn2sat(gnss::GLO, 1) == 33, "GLO R01 -> 33");
+  check(gnss::prn2sat(gnss::GAL, 1) == 60, "GAL E01 -> 60");
+  check(gnss::prn2sat(gnss::QZS, 193) == 96, "QZS J01 -> 96");
+  check(gnss::prn2sat(gnss::BDS, 1) == 106, "BDS C01 -> 106");
+  check(gnss::prn2sat(gnss::SBS, 158) == gnss::MAXSAT, "SBS S158 is MAXSAT");
   for (int s = 1; s <= gnss::MAXSAT; ++s)
     check(gnss::prn2sat(gnss::sat_sys(s), gnss::sat_prn(s)) == s, "round trip sat " + std::to_string(s));
-  check(gnss::sat_id(69) == "J01", "sat_id J01");
+  for (int s = 2; s <= gnss::MAXSAT; ++s)
+    check(gnss::sat_sys(s) >= gnss::sat_sys(s - 1), "systems ordered by satno at " + std::to_string(s));
+  check(gnss::sat_id(96) == "J01", "sat_id J01");
   check(gnss::sat_id(gnss::prn2sat(gnss::BDS, 59)) == "C59", "sat_id C59");
   check(gnss::is_bds_geo(gnss::prn2sat(gnss::BDS, 3)), "C03 is GEO");
   check(!gnss::is_bds_geo(gnss::prn2sat(gnss::BDS, 19)), "C19 not GEO");
