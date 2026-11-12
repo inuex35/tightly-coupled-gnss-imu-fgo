@@ -26,8 +26,8 @@ pipeline.run_batch   float -> FDE -> AR -> fixed solve -> per-epoch FIX validati
    comes from one forward/backward sweep of a time-chain selected inversion
    (`selinv.py`, Takahashi / RTS form) — ~1-3 s for a whole run instead of
    one Bayes-tree query per epoch.
-4. **Integers.** LAMBDA + ratio test per epoch (RTKLIB `lambda.c`, all
-   epochs in one batched C call). Each accepted DD integer is a relation
+4. **Integers.** LAMBDA + ratio test per epoch (cssrlib `mlambda`, all
+   epochs spread over a process pool, `AR_LAMBDA_WORKERS`). Each accepted DD integer is a relation
    `N_tgt - N_ref = n` between arcs; a union-find with offsets merges them,
    strongest ratio first, rejecting contradictions. A relation then holds
    for the arcs' whole life — forward *and* backward in time, and
@@ -42,9 +42,6 @@ pipeline.run_batch   float -> FDE -> AR -> fixed solve -> per-epoch FIX validati
 ## Usage
 
 ```bash
-# once: C LAMBDA (optional; cssrlib mlambda is used otherwise)
-python -c "from gnss_fgo.batch import lambda_c; lambda_c.build()"
-
 BASE_LLH=35.66633426,139.79220181,59.82 LEVER_ARM=0.31,0,0.55 \
 python examples/run_batch_tc.py rover.obs base.obs base.nav imu.csv reference.csv
 ```

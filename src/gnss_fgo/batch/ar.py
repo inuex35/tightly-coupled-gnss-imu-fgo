@@ -15,7 +15,7 @@ import numpy as np
 from gtsam.symbol_shorthand import N
 
 from . import rows as R
-from .lambda_c import lambda_batch
+from .ils import lambda_batch
 from .selinv import chain_columns, information_matrix, selected_inverse
 
 
@@ -95,14 +95,14 @@ def dd_problems(groups, values, cov):
     return probs
 
 
-def resolve(groups, values, cov, ratio_min=3.0, backend="auto"):
+def resolve(groups, values, cov, ratio_min=3.0, workers=0):
     """Returns (accepted relations [(r, t, n)], sources [(epoch, ratio)],
     ratio-passing epochs, stats dict)."""
     probs = dd_problems(groups, values, cov)
     stats = {"problems": len(probs), "new": 0, "same": 0, "conflict": 0}
     if not probs:
         return [], [], set(), stats
-    best, _, s, info = lambda_batch([p[2] for p in probs], [p[3] for p in probs], backend)
+    best, _, s, info = lambda_batch([p[2] for p in probs], [p[3] for p in probs], workers)
     ratio = np.where(info == 0, s[:, 1] / np.maximum(s[:, 0], 1e-12), 0.0)
     cand = [(ratio[i], p[0], p[1], best[i]) for i, p in enumerate(probs)
             if ratio[i] >= ratio_min]

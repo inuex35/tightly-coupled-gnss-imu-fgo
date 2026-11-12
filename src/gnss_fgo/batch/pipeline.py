@@ -34,7 +34,7 @@ def run_batch(meas, imu, cfg=None, log=print):
     g_flt, _, _ = solve(g_graph, g_init)
     groups = ar.group_epochs(rows)
     cov = ar.arc_covariances(g_graph, g_flt, groups, n_ep, gnss_graph.DIMS)
-    acc, _, _, st = ar.resolve(groups, g_flt, cov, cfg.ratio, cfg.lambda_backend)
+    acc, _, _, st = ar.resolve(groups, g_flt, cov, cfg.ratio, cfg.lambda_workers)
     g_fix, _, _ = solve(gnss_graph.add_fix(g_graph, acc, cfg.sig_fix), g_flt)
     out["gnss_fix"] = gnss_graph.positions(g_fix, n_ep)
     log(f"GNSS-only batch: {len(acc)} integer relations, "
@@ -57,7 +57,7 @@ def run_batch(meas, imu, cfg=None, log=print):
     t0 = time.perf_counter()
     groups = ar.group_epochs(rows[keep_cp])
     cov = ar.arc_covariances(graph, flt, groups, n_ep, tc_graph.DIMS)
-    acc, sources, passed, st = ar.resolve(groups, flt, cov, cfg.ratio, cfg.lambda_backend)
+    acc, sources, passed, st = ar.resolve(groups, flt, cov, cfg.ratio, cfg.lambda_workers)
     log(f"AR: {st['ratio_pass']}/{n_ep} epochs pass ratio >= {cfg.ratio}, "
         f"{len(acc)} integer relations, {st['conflict']} conflicts "
         f"({time.perf_counter() - t0:.1f}s)")

@@ -11,7 +11,7 @@ graph over the entire drive:
   pipeline.run_batch   float -> FDE -> AR -> fixed solve -> FIX validation
 
 The LM solves use gtsam.cuda (cuDSS) when the gtsam build has CUDA, else
-CPU LM. LAMBDA uses lambda_c (RTKLIB lambda.c) once built, else cssrlib.
+CPU LM. LAMBDA is cssrlib's mlambda, run over a process pool.
 """
 from .config import BatchConfig
 from .pipeline import load_imu_csv, run_batch

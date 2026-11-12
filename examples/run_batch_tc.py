@@ -13,7 +13,6 @@ Env (besides the BatchConfig ones, see src/gnss_fgo/batch/config.py):
   OUT_NPZ    write trajectories, FIX flags and integer relations here
 
 The LM solves run on gtsam.cuda (cuDSS) when available, else on the CPU.
-Build the C LAMBDA once for speed: python -c "from gnss_fgo.batch import lambda_c; lambda_c.build()"
 """
 import os
 import sys
