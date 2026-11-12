@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from gnss_fgo.batch import lambda_c
+from gnss_fgo.batch import ils
 from gnss_fgo.batch.ar import ArcUnion
 from gnss_fgo.batch.selinv import selected_inverse
 
@@ -67,28 +67,24 @@ def _lambda_case():
     return np.array([5.45, 3.10, 2.97]), Q
 
 
-def test_lambda_python_known_answer():
+def test_lambda_known_answer():
     a, Q = _lambda_case()
-    best, _, s, info = lambda_c.lambda_batch([a], [Q], backend="python")
+    best, _, s, info = ils.lambda_batch([a], [Q], workers=1)
     assert list(best[0]) == [5, 3, 4]
     assert s[0, 1] >= s[0, 0] and info[0] == 0
 
 
-def test_lambda_c_matches_python():
-    if not (lambda_c.available() or lambda_c.build()):
-        pytest.skip("no C compiler for lambda_c")
+def test_lambda_parallel_matches_serial():
     rng = np.random.default_rng(1)
     ahats, Qs = [], []
-    for n in (3, 6, 10, 17):
+    for i in range(300):   # above the pool threshold
+        n = 3 + i % 15
         A = rng.normal(size=(n, n))
         Qs.append(A @ A.T * 0.05 + np.eye(n) * 0.01)
         ahats.append(rng.normal(size=n) * 20)
-    a, Q = _lambda_case()
-    ahats.append(a)
-    Qs.append(Q)
-    bc, _, sc, ic = lambda_c.lambda_batch(ahats, Qs, backend="c")
-    bp, _, sp_, _ = lambda_c.lambda_batch(ahats, Qs, backend="python")
-    assert np.all(ic == 0)
-    for x, y in zip(bc, bp):
+    b1, _, s1, i1 = ils.lambda_batch(ahats, Qs, workers=1)
+    b2, _, s2, i2 = ils.lambda_batch(ahats, Qs, workers=2)
+    assert np.all(i1 == 0) and np.all(i2 == 0)
+    for x, y in zip(b1, b2):
         assert list(x) == list(y)
-    np.testing.assert_allclose(sc, sp_, rtol=1e-8)
+    np.testing.assert_allclose(s1, s2)

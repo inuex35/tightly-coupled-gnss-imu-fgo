@@ -64,8 +64,8 @@ class BatchConfig:
     # --- ambiguity resolution
     ratio: float = field(default_factory=lambda: env_f("AR_RATIO", 3.0))
     sig_fix: float = 1e-3            # [cyc] integer DD constraint
-    lambda_backend: str = field(
-        default_factory=lambda: os.environ.get("AR_LAMBDA", "auto"))   # auto | c | python
+    lambda_workers: int = field(
+        default_factory=lambda: env_i("AR_LAMBDA_WORKERS", 0))   # 0 = all cores, 1 = serial
 
     # --- per-epoch FIX validation of the fixed solution
     fix_res: float = field(default_factory=lambda: env_f("FIX_RES", 0.05))          # [m]
