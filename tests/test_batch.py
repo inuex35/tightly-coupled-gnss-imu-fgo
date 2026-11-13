@@ -1,6 +1,5 @@
 """gnss_fgo.batch: union-find relations, chain selected inversion, LAMBDA."""
 import numpy as np
-import pytest
 import scipy.sparse as sp
 
 from gnss_fgo.batch import ils
