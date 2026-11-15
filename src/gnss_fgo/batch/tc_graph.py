@@ -55,13 +55,22 @@ def imu_params(cfg):
 
 def initial_trajectory(ant_ecef, tow, R_enu2ecef, rb, lever):
     """Body poses / ENU velocities / speed from GNSS antenna positions
-    (yaw from the course over ground, roll = pitch = 0)."""
+    (yaw from the course over ground, roll = pitch = 0).
+
+    Raises ValueError if no smoothed horizontal speed exceeds 1 m/s,
+    since course over ground cannot provide an initial heading then.
+    """
     ant = (ant_ecef - rb) @ R_enu2ecef
     vel = np.gradient(ant, tow, axis=0)
     kern = np.ones(5) / 5
     vel = np.column_stack([np.convolve(vel[:, i], kern, mode="same") for i in range(3)])
     speed = np.hypot(vel[:, 0], vel[:, 1])
     moving = speed > 1.0
+    if not np.any(moving):
+        raise ValueError(
+            "Cannot initialize heading: no smoothed horizontal GNSS speed "
+            "exceeds 1 m/s. Include a segment with sufficient motion."
+        )
     yaw = np.full(len(tow), np.nan)
     yaw[moving] = np.arctan2(vel[moving, 1], vel[moving, 0])
     idx = np.where(moving, np.arange(len(tow)), -1)
