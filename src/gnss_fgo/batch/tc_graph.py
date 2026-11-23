@@ -14,43 +14,34 @@ import time
 
 import numpy as np
 import gtsam
+from cssrlib.gnss import ecef2pos
 from gtsam.symbol_shorthand import B, N, V, X
 
 from . import rows as R
 from .gnss_graph import add_ambiguities, huber_noise
+from ..utils import make_imu_params
 
 DIMS = {"x": 6, "v": 3, "b": 6, "n": 1, "m": 3}
 MOUNT = gtsam.symbol("m", 0)
 
 
-def ecef2llh(p):
-    a, e2 = 6378137.0, 6.69437999014e-3
-    lon = np.arctan2(p[1], p[0])
-    r = np.hypot(p[0], p[1])
-    lat = np.arctan2(p[2], r * (1 - e2))
-    for _ in range(5):
-        nr = a / np.sqrt(1 - e2 * np.sin(lat) ** 2)
-        h = r / np.cos(lat) - nr
-        lat = np.arctan2(p[2], r * (1 - e2 * nr / (nr + h)))
-    return lat, lon, h
-
-
 def enu_frame(rb):
     """(R_enu2ecef, ecef_T_nav) for the ENU frame at the base."""
-    lat, lon, _ = ecef2llh(rb)
+    lat, lon, _ = ecef2pos(rb)
     sl, cl, sn, cn = np.sin(lat), np.cos(lat), np.sin(lon), np.cos(lon)
     Rm = np.array([[-sn, -sl * cn, cl * cn], [cn, -sl * sn, cl * sn], [0, cl, sl]])
     return Rm, gtsam.Pose3(gtsam.Rot3(Rm), gtsam.Point3(*rb))
 
 
 def imu_params(cfg):
-    p = gtsam.PreintegrationCombinedParams.MakeSharedU(cfg.gravity)
-    p.setAccelerometerCovariance(np.diag(cfg.acc_noise ** 2))
-    p.setGyroscopeCovariance(np.diag(cfg.gyro_noise ** 2))
-    p.setIntegrationCovariance(np.eye(3) * cfg.integ_cov)
-    p.setBiasAccCovariance(np.eye(3) * cfg.acc_bias_rw ** 2)
-    p.setBiasOmegaCovariance(np.eye(3) * cfg.gyro_bias_rw ** 2)
-    return p
+    return make_imu_params(
+        accel_noise=cfg.acc_noise,
+        gyro_noise=cfg.gyro_noise,
+        accel_bias_sigma=cfg.acc_bias_rw,
+        gyro_bias_sigma=cfg.gyro_bias_rw,
+        integ_cov=cfg.integ_cov,
+        gravity=cfg.gravity,
+    )
 
 
 def initial_trajectory(ant_ecef, tow, R_enu2ecef, rb, lever):
@@ -126,7 +117,8 @@ def tropo_correct(rows, rover_ecef, rb):
     out = rows.copy()
     xr = rover_ecef[rows[:, R.EPOCH].astype(int)].copy()
     xr[~np.all(np.isfinite(xr), axis=1)] = rb
-    llh_r, llh_b = np.array(ecef2llh(xr.T)), np.array(ecef2llh(rb))
+    llh_r = np.array([ecef2pos(p) for p in xr]).T
+    llh_b = np.array(ecef2pos(rb))
 
     def delay(sat, x, llh):
         lat, lon = llh[0], llh[1]

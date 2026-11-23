@@ -31,19 +31,20 @@ IMU_GYRO_BIAS_SIGMA = _SPEC_GYRO_BIAS_RW
 
 
 def make_imu_params(
-    accel_noise: float = IMU_ACCEL_NOISE,
-    gyro_noise: float = IMU_GYRO_NOISE,
+    accel_noise: float | np.ndarray = IMU_ACCEL_NOISE,
+    gyro_noise: float | np.ndarray = IMU_GYRO_NOISE,
     accel_bias_sigma: float = IMU_ACCEL_BIAS_SIGMA,
     gyro_bias_sigma: float = IMU_GYRO_BIAS_SIGMA,
-    integ_cov: float = 1e-3) -> gtsam.PreintegrationCombinedParams:
+    integ_cov: float = 1e-3,
+    gravity: float = 9.81) -> gtsam.PreintegrationCombinedParams:
     """Build PreintegrationCombinedParams for GTSAM CombinedImuFactor."""
     # The TC state uses ENU navigation + FLU body. IMU samples are already
-    # in body FLU (see sensor_to_body_flu) so body_P_sensor is identity.
-    p = gtsam.PreintegrationCombinedParams.MakeSharedU(9.81)
+    # in body FLU so body_P_sensor is identity.
+    p = gtsam.PreintegrationCombinedParams.MakeSharedU(gravity)
     p.setBodyPSensor(gtsam.Pose3(gtsam.Rot3(np.eye(3)),
                                  gtsam.Point3(0.0, 0.0, 0.0)))
-    p.setAccelerometerCovariance(accel_noise ** 2 * np.eye(3))
-    p.setGyroscopeCovariance(gyro_noise ** 2 * np.eye(3))
+    p.setAccelerometerCovariance(np.diag(np.broadcast_to(np.asarray(accel_noise, float), 3) ** 2))
+    p.setGyroscopeCovariance(np.diag(np.broadcast_to(np.asarray(gyro_noise, float), 3) ** 2))
     p.setIntegrationCovariance(integ_cov * np.eye(3))
     p.setBiasAccCovariance(accel_bias_sigma ** 2 * np.eye(3))
     p.setBiasOmegaCovariance(gyro_bias_sigma ** 2 * np.eye(3))
