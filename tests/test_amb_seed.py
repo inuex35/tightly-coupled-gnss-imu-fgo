@@ -5,15 +5,10 @@ import pytest
 from gnss_fgo.factors import amb_seed
 
 
-class _Cfg:
-    sigma_amb0 = 30.0
-
-
 class _Tc:
     epoch = 100
 
     def __init__(self):
-        self.cfg = _Cfg()
         from gnss_fgo.state.runtime_state import CurrentEpochState
         self.current_epoch = CurrentEpochState()
 

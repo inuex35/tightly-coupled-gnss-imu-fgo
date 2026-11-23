@@ -16,8 +16,6 @@ from ..integrity import slip_detect as _tc_slip_detect
 from ..utils import (
     build_pim as _utils_build_pim,
     euler_to_R_body2enu,
-    heading_from_pose,
-    sensor_to_body_flu,
 )
 from . import update_smoother as _tc_isam
 
@@ -45,7 +43,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
 
     n_static = max(1, min(500, tc.imu_idx))
     acc_avg = np.mean([im['acc'] for im in tc.imu_data[:n_static]], axis=0)
-    acc_tilt = sensor_to_body_flu(np.array(acc_avg - bias_acc, dtype=float))
+    acc_tilt = np.asarray(acc_avg - bias_acc, dtype=float)
     pitch_rad = float(np.arctan2(
         acc_tilt[0], np.sqrt(acc_tilt[1] ** 2 + acc_tilt[2] ** 2)))
     roll_rad = float(np.arctan2(acc_tilt[1], acc_tilt[2]))
@@ -144,7 +142,6 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     epoch.bias_prev = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx - 1))
     epoch.pred_nav = epoch.pim.predict(
         gtsam.NavState(epoch.pose_p, epoch.vel_prev), epoch.bias_prev)
-    info['pred_heading_deg'] = heading_from_pose(epoch.pred_nav.pose())
     epoch.values.insert(tc.Xpose(epoch.key_idx), epoch.pred_nav.pose())
     epoch.values.insert(tc.Vel(epoch.key_idx), epoch.pred_nav.velocity())
     epoch.values.insert(tc.Bias(epoch.key_idx), epoch.bias_prev)
