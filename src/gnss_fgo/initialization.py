@@ -52,30 +52,31 @@ def _p1_build_and_solve(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
     enu_pp = R.T @ (init_ecef - tc.base_ecef)
     pose0 = gtsam.Pose3(gtsam.Rot3.Identity(), gtsam.Point3(*enu_pp))
     prev_missing = (ep > 0 and tc.Xp(ep - 1) not in tc._isam_p1_inserted)
+    if prev_missing:
+        _p1_fresh_restart(tc)
     fresh_start = ep == 0 or prev_missing
-    if fresh_start:
-        try:
-            ecef_ls, n_ls, res_ls = tc._ddpr_only_position(
-                obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose0)
-            if ecef_ls is not None and n_ls >= 4 and np.isfinite(res_ls):
-                init_ecef = np.asarray(ecef_ls, dtype=float)
-                tc.nav.x[0:3] = init_ecef
-                enu_pp = R.T @ (init_ecef - tc.base_ecef)
-                pose0 = gtsam.Pose3(gtsam.Rot3.Identity(),
-                                    gtsam.Point3(*enu_pp))
-        except (RuntimeError, ValueError):
-            pass
+    try:
+        ecef_ls, n_ls, res_ls = tc._ddpr_only_position(
+            obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose0)
+        if ecef_ls is not None and n_ls >= 4 and np.isfinite(res_ls):
+            init_ecef = np.asarray(ecef_ls, dtype=float)
+            tc.nav.x[0:3] = init_ecef
+            enu_pp = R.T @ (init_ecef - tc.base_ecef)
+            pose0 = gtsam.Pose3(gtsam.Rot3.Identity(),
+                                gtsam.Point3(*enu_pp))
+    except (RuntimeError, ValueError):
+        pass
 
     if fresh_start:
         g.addPriorPose3(tc.Xp(ep), pose0,
                         gtsam.noiseModel.Diagonal.Sigmas(
-                            np.array([0.01, 0.01, 0.01, 3, 3, 3])))
+                            np.array([0.01, 0.01, 0.01, 3.0, 3.0, 3.0])))
     else:
         g.add(gtsam.BetweenFactorPose3(
             tc.Xp(ep - 1), tc.Xp(ep),
             gtsam.Pose3.Identity(),
             gtsam.noiseModel.Diagonal.Sigmas(
-                np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1]))))
+                np.array([0.001, 0.001, 0.001, 3.0, 3.0, 3.0]))))
     v.insert(tc.Xp(ep), pose0)
 
     lever = gtsam.Point3(0, 0, 0)
