@@ -26,14 +26,15 @@ def _solve_isam2(tc, epoch):
     return None
 
 
-_ISAM2_RELINEARIZE_SKIP = 10
-_ISAM2_RELINEARIZE_THRESHOLD = 0.05
+_ISAM2_RELINEARIZE_SKIP = 1
+_ISAM2_RELINEARIZE_THRESHOLD = 0.01
 
 
 def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
                relinearize_threshold=_ISAM2_RELINEARIZE_THRESHOLD):
-    """Build IncrementalFixedLagSmoother with standard ISAM2 parameters."""
+    """Build IncrementalFixedLagSmoother with QR factorization and per-epoch relinearization."""
     params = gtsam.ISAM2Params()
+    params.setFactorization("QR")
     params.setRelinearizeThreshold(float(relinearize_threshold))
     params.relinearizeSkip = int(relinearize_skip)
     return gtsam.IncrementalFixedLagSmoother(lag, params)

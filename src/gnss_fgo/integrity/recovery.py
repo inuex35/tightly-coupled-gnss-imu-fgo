@@ -19,12 +19,13 @@ def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
     return sol, tag, nb, info
 
 
-def warm_reset_phase2(tc, ecef_seed, rot_seed):
+def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None):
     """Rebuild Phase-2 smoother at a new ECEF position after a numerical failure."""
     R = tc.R_enu2ecef
     enu_seed = R.T @ (ecef_seed - tc.base_ecef)
     pose_seed = gtsam.Pose3(rot_seed, gtsam.Point3(*enu_seed))
-    vel_seed = np.zeros(3)
+    vel_seed = (np.zeros(3) if vel_seed is None
+                else np.asarray(vel_seed, dtype=float).reshape(3))
 
     tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.tc_time = 0.0
@@ -61,14 +62,14 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed):
 
 
 def try_ddpr_reset(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-                   pose_init, rot_seed, info, reason):
+                   pose_init, rot_seed, info, reason, vel_seed=None):
     """Try DDPR-only LS + warm Phase-2 reset after a smoother exception."""
     ecef_ddpr, _, res_rms = tc._ddpr_only_position(
         obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_init)
     if ecef_ddpr is None or not np.isfinite(res_rms):
         return None, False
     info[reason] = True
-    warm_reset_phase2(tc, ecef_ddpr, rot_seed)
+    warm_reset_phase2(tc, ecef_ddpr, rot_seed, vel_seed=vel_seed)
     enu_body = tc.R_enu2ecef.T @ (ecef_ddpr - tc.base_ecef)
     ant = tc._antenna_ecef(gtsam.Pose3(rot_seed, gtsam.Point3(*enu_body)), ecef_ddpr)
     return ant, True
@@ -162,7 +163,7 @@ def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
     ecef_ddpr_fb, ok = try_ddpr_reset(
         tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
         pred.pose(), pred.pose().rotation(),
-        info, 'ddpr_exception_recover')
+        info, 'ddpr_exception_recover', vel_seed=pred.velocity())
     if ok:
         return advance_epoch_and_pack(tc, ecef_ddpr_fb, 'FLT', 0, info, obs)
     return advance_epoch_and_pack(tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
