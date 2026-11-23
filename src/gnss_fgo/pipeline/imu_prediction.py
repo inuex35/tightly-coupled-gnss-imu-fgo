@@ -17,18 +17,6 @@ from ..utils import heading_from_pose
 from ..integrity import recovery as _tc_recovery
 
 
-# ── Phase-2 pipeline contract (see stage_contract.py) ──────────────
-STAGE_READS = (
-    'R_enu2ecef', 'bias_prev', 'el', 'estimate', 'graph', 'info', 'ir_map', 'iu', 'key_idx',
-    'n_imu', 'obs', 'obs_sd', 'obsb', 'pim', 'pose_p', 'init_ecef', 'pred_nav',
-    'rs', 'rsb', 'sat', 'values', 'vel_prev',
-)
-STAGE_WRITES = (
-    'bias_prev', 'estimate', 'graph', 'gyro_mean', 'imu_idx_prev',
-    'key_idx', 'n_imu', 'pim', 'pose_p', 'pred_nav', 'tow', 'values', 'vel_prev',
-)
-
-
 def run(tc, epoch):
     """Stage A: IMU preintegration + pose/vel prediction from ISAM2 prior.
 

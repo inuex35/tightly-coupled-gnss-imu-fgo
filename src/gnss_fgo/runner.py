@@ -9,7 +9,6 @@ from .utils import (
     collect_imu_samples as _utils_collect_imu_samples,
     build_pim_from_samples as _utils_build_pim_from_samples,
     estimate_stationary_bias as _utils_estimate_stationary_bias,
-    compute_gdop as _utils_compute_gdop,
     DDPRContext as _DDPRContext,
     ddpr_only_position as _utils_ddpr_only_position,
     heading_from_vel as _utils_heading_from_vel,
@@ -21,7 +20,7 @@ from . import initialization as _initialization
 from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
-    ArDiagnostics, CurrentEpochState, SatFieldView, SatStateMap,
+    ArDiagnostics, CurrentEpochState, SatStateMap,
 )
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
@@ -126,8 +125,6 @@ class ImuGnssTc:
         self.collected_fixes = []
 
         self._sat_states = SatStateMap()
-        self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
-        self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
 
         self.isam2 = None
         self.imu_params = None
@@ -146,7 +143,6 @@ class ImuGnssTc:
         self.fls_lag = None
         self.tc_bias_init = None
         self._ar_cp_visible_sf = set()
-        self._last_ddpr_sat_tags = []
         self._last_sol_ecef = None
         self._last_s0 = 0.0
         self._last_s1 = 0.0
@@ -165,30 +161,6 @@ class ImuGnssTc:
         """Replace epoch-scoped scratch; keep persistent arc amb_gen monotonic."""
         self.current_epoch = CurrentEpochState()
         self.ar_diag = ArDiagnostics()
-
-    def _assign_view(self, view: SatFieldView, value):
-        if value is view:
-            return
-        view.clear()
-        if value:
-            for k, v in value.items():
-                view[k] = v
-
-    @property
-    def amb_keys_tc(self):
-        return self._amb_key_view
-
-    @amb_keys_tc.setter
-    def amb_keys_tc(self, value):
-        self._assign_view(self._amb_key_view, value)
-
-    @property
-    def amb_gen(self):
-        return self._amb_gen_view
-
-    @amb_gen.setter
-    def amb_gen(self, value):
-        self._assign_view(self._amb_gen_view, value)
 
     def _make_imu_params(self):
         return _utils_make_imu_params()
@@ -234,11 +206,6 @@ class ImuGnssTc:
             obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
             pose_init, ctx)
         return ecef_out, n_active, res_rms
-
-    def _compute_gdop(self, pred, ns, rs, iu, R_enu2ecef):
-        return _utils_compute_gdop(
-            np.array(pred.pose().translation()), ns, rs, iu,
-            R_enu2ecef, self.base_ecef)
 
     def process(self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map):
         R, ns, init_ecef = prepare_process_epoch(self, obs, sat)

@@ -20,7 +20,8 @@ def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
         if existing_estimate is not None and existing_estimate.exists(key_n):
             new_amb[key_id] = key_n
             continue
-        if key_id in amb_dict and amb_dict[key_id] == key_n and existing_estimate is None:
+        if (isinstance(amb_dict, dict) and key_id in amb_dict
+                and amb_dict[key_id] == key_n and existing_estimate is None):
             continue
         n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
         seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id,

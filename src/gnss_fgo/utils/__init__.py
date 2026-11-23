@@ -1,7 +1,6 @@
 """Shared helpers (geometry/rotations, IMU, env parsing), re-exported flat."""
 
 from .geometry import (
-    compute_gdop,
     R_ENU2NED,
     R_FLU2FRD,
     R_FRD2FLU,
@@ -34,7 +33,6 @@ __all__ = [
     'build_pim',
     'build_pim_from_samples',
     'collect_imu_samples',
-    'compute_gdop',
     'compute_zupt_stats',
     'DDPRContext',
     'ddpr_only_position',

@@ -2,7 +2,7 @@
 import types
 import numpy as np
 
-from gnss_fgo.pipeline.validate_fix import _decide_fix_or_flt
+from gnss_fgo.pipeline.report import _decide_fix_or_flt
 
 
 def _tc(smode):

@@ -307,25 +307,16 @@ def main():
         if info.get('error'):
             e_msg = info['error'].replace('\n', ' | ').replace('(', '[').replace(')', ']')
             extra += f" ERR[{e_msg[:200]}]"
-        if info['phase'] == 2 and 'bias_acc' in info:
-            slip = info.get('n_slip', 0)
-            if slip > 0:
-                extra += f" slip={slip}"
-            if info.get('gnss_skip'):
-                extra += f" SKIP(gdop={info.get('gdop',0):.1f},ns={info.get('nsat',0)})"
-            if info.get('nhc'):
-                extra += " NHC"
-            if 'lambda_correction' in info:
-                extra += f" λcorr={info['lambda_correction']:.3f}"
-            if 'prev_pose_drift' in info:
-                extra += f" prev_drift={info['prev_pose_drift']:.3f}"
-            if 'main_ddpr_res' in info:
-                extra += f" mres={info['main_ddpr_res']:.2f}"
-                if 'main_ddpr_sat_worst' in info:
-                    sw, rw = info['main_ddpr_sat_worst']
-                    sys_i, prn = sat2prn(sw)
-                    sys_ch = SYS_CHAR.get(sys_i, '?')
-                    extra += f" worst={sys_ch}{prn:02d}:{rw:.1f}"
+            if info['phase'] == 2 and 'bias_acc' in info:
+                slip = info.get('n_slip', 0)
+                if slip > 0:
+                    extra += f" slip={slip}"
+                if info.get('gnss_skip'):
+                    extra += f" SKIP(ns={info.get('nsat',0)})"
+                if info.get('nhc'):
+                    extra += " NHC"
+                if 'lambda_correction' in info:
+                    extra += f" λcorr={info['lambda_correction']:.3f}"
 
         print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
               f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
@@ -422,35 +413,6 @@ def main():
         np.savez(savefile, **out)
         print(f"\nSaved {len(out)} variables to {savefile}: "
               f"{', '.join(sorted(out.keys()))}")
-
-    persatfile = os.environ.get('SAVE_PER_SAT')
-    if persatfile:
-        import pickle
-        per_sat_dump = []
-        sat_el_dump = []
-        sat_snr_dump = []
-        pair_main_dump = []
-        ref_sats_dump = []
-        for r in results:
-            d = r.get('main_ddpr_per_sat', None)
-            per_sat_dump.append(dict(d) if d else None)
-            se = r.get('sat_el_deg', None)
-            sat_el_dump.append(dict(se) if se else None)
-            ss = r.get('sat_snr_dbhz', None)
-            sat_snr_dump.append(dict(ss) if ss else None)
-            pm = r.get('main_ddpr_pairs', None)
-            pair_main_dump.append(list(pm) if pm else None)
-            rs = r.get('ref_sats', None)
-            ref_sats_dump.append(dict(rs) if rs else None)
-        with open(persatfile, 'wb') as f:
-            pickle.dump({'per_sat': per_sat_dump,
-                         'sat_el_deg': sat_el_dump,
-                         'sat_snr_dbhz': sat_snr_dump,
-                         'pair_main': pair_main_dump,
-                         'ref_sats': ref_sats_dump,
-                          'err3d': [r['err'] for r in results],
-                          'smode': [r.get('smode') for r in results]}, f)
-        print(f"Saved per-sat residuals to {persatfile}")
 
 
 if __name__ == '__main__':

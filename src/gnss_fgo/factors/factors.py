@@ -5,9 +5,8 @@ import gtsam
 from cssrlib.gnss import uGNSS, SAT_SYS_ARR
 
 from ..utils.geometry import is_bds_geo as _is_bds_geo
-from ..utils import sorted_sys_ids
+from ..utils import get_wavelengths, sorted_sys_ids
 from . import prefit as _tc_prefit
-from .factors_support import get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 
 
@@ -50,7 +49,6 @@ class DdFactorBuilder:
         self.el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
         self.dt_s = float(tc._epoch_dt)
 
-        tc._last_ddpr_sat_tags = []
         tc._ar_cp_visible_sf = set()
 
         self.nv = 0
@@ -110,8 +108,6 @@ class DdFactorBuilder:
         sigma = self._pair_sigma(1, self.el[ref_idx], self.el[j_idx])
         pr_noise = _dd_noise(self.tc, sigma)
         ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
-        self.tc._last_ddpr_sat_tags.append(
-            (self.graph.size(), ref_sat, j_sat, f))
         self.graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
             self.key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
             ref_pt, j_pt, ref_base_pt, j_base_pt,
@@ -165,7 +161,7 @@ class DdFactorBuilder:
             if len(idx_sys) < 2:
                 continue
             ref_idx, ref_sat = self._select_ref_for_system(sys_id, idx_sys)
-            lams = get_wavelengths(self.tc, self.obs_sd, ref_sat)
+            lams = get_wavelengths(self.obs_sd, ref_sat, glo_ch=self.tc.nav.glo_ch)
             ref_pt, ref_base_pt = self._sat_pts(ref_idx, ref_sat)
             for j_idx in idx_sys:
                 if j_idx == ref_idx:
@@ -184,7 +180,11 @@ class DdFactorBuilder:
                     nv += self._build_cp_for_pair(
                         sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                         lams, sat_pts, pr_obs)
-        self.amb_dict.update(self.new_amb)
+        for (s, f), k in self.new_amb.items():
+            if self.amb_dict is self.tc._sat_states:
+                self.tc._sat_states.get(s, f).amb_key = k
+            else:
+                self.amb_dict[(s, f)] = k
         self.nv = nv
         return nv
 

@@ -44,35 +44,23 @@ def build(tc, sat_list, amb_dict):
     if key_pose is None or not est.exists(key_pose):
         return None
 
-    cache = tc.current_epoch.ar_joint_cache
-    if (cache is not None and cache['key_pose'] == key_pose
-            and all(sf in cache['pos'] for sf in keys)):
-        idx = [cache['pos'][sf] for sf in keys]
-        cov = cache['cov'][np.ix_(idx, idx)]
-        cross = cache['cross'][:, idx]
-    else:
-        kv = gtsam.KeyVector()
-        kv.append(key_pose)
-        for sf in keys:
-            kv.append(key_of[sf])
-        try:
-            jm = isam2.jointMarginalCovariance(kv)
-        except (RuntimeError, IndexError):
-            return None
-        m = len(keys)
-        cov = np.empty((m, m))
-        cross = np.empty((3, m))
-        for i, a in enumerate(keys):
-            ka = key_of[a]
-            for j, b in enumerate(keys):
-                cov[i, j] = jm.at(ka, key_of[b])[0, 0]
-            cross[:, i] = jm.at(key_pose, ka)[3:6, 0]
-        cross = est.atPose3(key_pose).rotation().matrix() @ cross
-        tc.current_epoch.ar_joint_cache = {
-            'key_pose': key_pose,
-            'pos': {sf: i for i, sf in enumerate(keys)},
-            'cov': cov, 'cross': cross,
-        }
+    kv = gtsam.KeyVector()
+    kv.append(key_pose)
+    for sf in keys:
+        kv.append(key_of[sf])
+    try:
+        jm = isam2.jointMarginalCovariance(kv)
+    except (RuntimeError, IndexError):
+        return None
+    m = len(keys)
+    cov = np.empty((m, m))
+    cross = np.empty((3, m))
+    for i, a in enumerate(keys):
+        ka = key_of[a]
+        for j, b in enumerate(keys):
+            cov[i, j] = jm.at(ka, key_of[b])[0, 0]
+        cross[:, i] = jm.at(key_pose, ka)[3:6, 0]
+    cross = est.atPose3(key_pose).rotation().matrix() @ cross
 
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
         return None

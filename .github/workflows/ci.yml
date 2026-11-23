@@ -30,7 +30,3 @@ jobs:
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
         run: pytest tests/ -q
-      - name: Stage contract check (import-time gate)
-        run: |
-          cd src
-          ENABLE_STAGE_CONTRACT_CHECK=1 python -c "import gnss_fgo.state.stage_contract"

@@ -330,7 +330,6 @@ def transition_to_tc(tc, collected_fixes):
             roll_rad, pitch_rad, heading_series[i],
             body_rot_std_rad, lever_arr)
 
-    tc.amb_keys_tc = {}
     for i in range(n):
         fix = collected_fixes[i]
         if 'gnss' in fix:
@@ -339,7 +338,7 @@ def transition_to_tc(tc, collected_fixes):
                 tc, g, v, gd['obs'], gd['obsb'], gd['obs_sd'],
                 gd['rs'], gd['rsb'], gd['sat'], gd['el'],
                 gd['iu'], gd['ir_map'],
-                tc.Xpose(i), tc.lever_arm_tc, tc.amb_keys_tc,
+                tc.Xpose(i), tc.lever_arm_tc, tc._sat_states,
                 existing_estimate=None)
 
     dt = tc._epoch_dt

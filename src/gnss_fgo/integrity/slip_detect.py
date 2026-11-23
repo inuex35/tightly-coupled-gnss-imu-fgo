@@ -1,6 +1,6 @@
 """Cycle slip detection (LLI + geometry-free) and outage arc expiry."""
 
-from ..factors.factors_support import get_wavelengths as _get_wavelengths
+from ..utils import get_wavelengths as _get_wavelengths
 
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
@@ -12,7 +12,7 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
 
     for i in range(ns):
         s = sat[i]
-        lams = _get_wavelengths(tc, obs_sd, s)
+        lams = _get_wavelengths(obs_sd, s, glo_ch=tc.nav.glo_ch)
         for f in range(nf):
             current_sats.add((s, f))
             sat_state = tc._sat_states.get(s, f)
