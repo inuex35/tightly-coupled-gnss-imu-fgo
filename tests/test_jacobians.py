@@ -24,9 +24,9 @@ def enu_frame(base):
 
 
 def test_nhc_factor():
-    noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([1e3, 0.3, 0.1]))
+    noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.3, 0.1]))
     f = gtsam.NhcFactor(1, 2, np.array([0.02, -0.01, 0.3]),
-                        np.array([0.5, 0.1, -0.3]), 8.0, noise, np.zeros(3))
+                        np.array([0.5, 0.1, -0.3]), noise)
     v = gtsam.Values()
     v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.3, -0.2, 1.1),
                             gtsam.Point3(1, 2, 3)))

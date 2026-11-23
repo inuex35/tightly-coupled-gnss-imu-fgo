@@ -1,7 +1,5 @@
 """Stage C1 — assemble measurement factors (DDPR, DDCP, SD Doppler, NHC, ZUPT)."""
 
-import numpy as np
-
 from ..factors import doppler_sd as _tc_doppler_sd
 from ..factors import factors as _tc_factors
 from ..factors import nhc as _tc_nhc
@@ -21,17 +19,7 @@ def _build_factor_block(tc, epoch):
     _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
 
     if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
-                              _horizontal_speed(tc, epoch),
                               gyro_mean_rh=epoch.gyro_mean):
         info['nhc'] = True
 
     _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
-
-
-def _horizontal_speed(tc, epoch):
-    try:
-        return float(np.linalg.norm(
-            np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
-    except RuntimeError:
-        return float(np.linalg.norm(
-            np.array(epoch.pred_nav.velocity())[:2]))

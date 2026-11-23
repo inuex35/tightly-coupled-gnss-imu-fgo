@@ -183,6 +183,7 @@ def compute_zupt_stats(
         'gyro_std': float(np.sqrt(max(gyro_var, 0.0))),
         'gyro_median': float(np.median(gyro_resid_norm)),
         'acc_norm_mean': float(np.linalg.norm(acc_mean_corr)),
+        'gyro_mean': gyro.mean(axis=0),
     }
 
 

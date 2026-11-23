@@ -54,12 +54,12 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info):
         info['zupt'] = True
         any_added = True
     sig_r = float(cfg.zupt_sigma_zero_rotation)
-    if sig_r > 0 and key_idx > 0:
-        sigmas_pose = np.array([sig_r, sig_r, sig_r, 1e3, 1e3, 1e3])
-        graph.add(gtsam.BetweenFactorPose3(
-            tc.Xpose(key_idx - 1), tc.Xpose(key_idx),
-            gtsam.Pose3(),
-            gtsam.noiseModel.Diagonal.Sigmas(sigmas_pose)))
+    if sig_r > 0:
+        sigmas_bias = np.array([np.inf, np.inf, np.inf, sig_r, sig_r, sig_r])
+        graph.add(gtsam.PriorFactorConstantBias(
+            tc.Bias(key_idx),
+            gtsam.imuBias.ConstantBias(np.zeros(3), stats['gyro_mean']),
+            gtsam.noiseModel.Diagonal.Sigmas(sigmas_bias)))
         info['zaru'] = True
         any_added = True
     return any_added
