@@ -29,7 +29,7 @@ def _collect():
         for m in fpat.findall(s):
             dynamic_suffixes.add(m.split('}')[-1])   # f'cp_hold_{reason}'
             dynamic_suffixes.add(m.split('{')[0])
-        if 'make_epoch_diagnostics' in s or 'epoch_context' in p.name:
+        if 'make_epoch_diagnostics' in s or '_make_imu_only_diagnostics' in s:
             writes.update(litpat.findall(s))
         reads.update(rpat.findall(s))
     return writes, dynamic_suffixes, reads

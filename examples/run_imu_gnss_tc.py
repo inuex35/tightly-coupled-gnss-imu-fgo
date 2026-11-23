@@ -23,9 +23,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import cssrlib.rinex as rn
 import cssrlib.gnss as gn
-from cssrlib.gnss import uTYP, ecef2pos, sat2prn
+from cssrlib.gnss import uTYP, ecef2pos
 from gnss_fgo import ImuGnssTc, load_imu_csv
-from gnss_fgo.utils import R_ENU2NED, R_FRD2FLU
 from gnss_fgo.utils.sig_autodetect import auto_detect_signals
 
 
@@ -35,52 +34,6 @@ def parse_args():
         sys.exit(1)
     return (sys.argv[1], sys.argv[2], sys.argv[3],
             sys.argv[4], sys.argv[5])
-
-
-SYS_CHAR = {0: 'G', 1: 'E', 2: 'J', 3: 'C', 4: 'R'}
-
-
-def _format_sat(sat):
-    sys_i, prn = sat2prn(int(sat))
-    sys_ch = SYS_CHAR.get(sys_i, '?')
-    return f"{sys_ch}{prn:02d}"
-
-
-def _format_sat_freq(sat, freq):
-    return f"{_format_sat(sat)}f{int(freq)}"
-
-
-def _pose_rph_deg(tc):
-    """Current Phase-2 pose attitude in the reference NED/FRD convention."""
-    if tc.phase != 2 or tc.isam2 is None or tc.tc_epoch < 0:
-        return (np.nan, np.nan, np.nan)
-    try:
-        est = tc.isam2.calculateEstimate()
-        pose = est.atPose3(tc.Xpose(tc.tc_epoch))
-        r_body2enu = pose.rotation().matrix()
-        r_body2ned = R_ENU2NED @ r_body2enu @ R_FRD2FLU
-        roll = np.degrees(np.arctan2(r_body2ned[2, 1], r_body2ned[2, 2]))
-        pitch = np.degrees(np.arcsin(np.clip(-r_body2ned[2, 0], -1.0, 1.0)))
-        heading = np.degrees(np.arctan2(r_body2ned[1, 0], r_body2ned[0, 0]))
-        return (float(roll), float(pitch), float(heading))
-    except Exception:
-        return (np.nan, np.nan, np.nan)
-
-
-def _pose_axis_headings_deg(tc):
-    """Current Phase-2 body-axis headings from the internal FLU pose."""
-    if tc.phase != 2 or tc.isam2 is None or tc.tc_epoch < 0:
-        return (np.nan, np.nan, np.nan)
-    try:
-        est = tc.isam2.calculateEstimate()
-        pose = est.atPose3(tc.Xpose(tc.tc_epoch))
-        r_body2enu = pose.rotation().matrix()
-        h_fwd = np.degrees(np.arctan2(r_body2enu[0, 0], r_body2enu[1, 0]))
-        h_left = np.degrees(np.arctan2(r_body2enu[0, 1], r_body2enu[1, 1]))
-        h_up = np.degrees(np.arctan2(r_body2enu[0, 2], r_body2enu[1, 2]))
-        return (float(h_fwd), float(h_left), float(h_up))
-    except Exception:
-        return (np.nan, np.nan, np.nan)
 
 
 def main():
@@ -187,8 +140,6 @@ def main():
         if obsb is None:
             # Base missing: advance graph by IMU only (keeps chain coherent).
             sol, tag, nb, info = tc.process_imu_only(obs)
-            roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
-            axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
             _, tow_obs = gn.time2gpst(obs.t)
             ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
             ref_ecef = ref[ri_ref]['ecef']
@@ -202,12 +153,6 @@ def main():
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'sol_xyz': np.array(sol, copy=True),
-                            'roll_deg': roll_deg,
-                            'pitch_deg': pitch_deg,
-                            'heading_deg': heading_deg,
-                            'axis_heading_fwd_deg': axis_heading_fwd_deg,
-                            'axis_heading_right_deg': axis_heading_right_deg,
-                            'axis_heading_down_deg': axis_heading_down_deg,
                             'pred_heading_deg': info.get('pred_heading_deg', np.nan),
                             'post_heading_deg': info.get('post_heading_deg', np.nan),
                             'forced_gnss_cut': forced_gnss_cut,
@@ -259,8 +204,6 @@ def main():
 
         sol, tag, nb, info = tc.process(
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map)
-        roll_deg, pitch_deg, heading_deg = _pose_rph_deg(tc)
-        axis_heading_fwd_deg, axis_heading_right_deg, axis_heading_down_deg = _pose_axis_headings_deg(tc)
 
         enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
         err_3d = np.linalg.norm(sol - ref_ecef)
@@ -268,12 +211,6 @@ def main():
             'ep': ne, 'tag': tag, 'nb': nb, 'err': err_3d,
             'enu': enu_err, 'phase': info['phase'],
             'sol_xyz': np.array(sol, copy=True),
-            'roll_deg': roll_deg,
-            'pitch_deg': pitch_deg,
-            'heading_deg': heading_deg,
-            'axis_heading_fwd_deg': axis_heading_fwd_deg,
-            'axis_heading_right_deg': axis_heading_right_deg,
-            'axis_heading_down_deg': axis_heading_down_deg,
             'pred_heading_deg': info.get('pred_heading_deg', np.nan),
             'post_heading_deg': info.get('post_heading_deg', np.nan),
             'forced_gnss_cut': forced_gnss_cut,

@@ -13,9 +13,6 @@ class SatState:
     amb_gen: int = 0                 # monotonic arc generation (++ on slip / reset)
 
 
-_EMPTY_SAT_STATE = SatState()
-
-
 @dataclass
 class SatStateMap:
     """Per-(sat, freq) ``SatState`` map + per-sat GF slip state."""
@@ -32,22 +29,11 @@ class SatStateMap:
             self.track[key] = st
         return st
 
-    def at(self, sat: int, freq: int) -> SatState:
-        return self.track.get((int(sat), int(freq)), _EMPTY_SAT_STATE)
-
-    def items(self):
-        return self.track.items()
-
     def keys(self):
         return self.track.keys()
 
     def values(self):
         return self.track.values()
-
-    def amb_items(self):
-        for k, st in self.track.items():
-            if st.amb_key is not None:
-                yield k, st.amb_key
 
     def amb_keys_dict(self) -> dict:
         return {k: st.amb_key for k, st in self.track.items()
@@ -67,15 +53,3 @@ class CurrentEpochState:
 
     ref_sats: dict = field(default_factory=dict)
     seeded_amb_keys: set = field(default_factory=set)
-
-
-@dataclass
-class ArDiagnostics:
-    """Per-AR-call diagnostic counters."""
-
-    outcome: str = 'not_called'
-    exception: Optional[str] = None
-    amb_not_in_obs: Optional[int] = None
-    sat_in_obs_size: Optional[int] = None
-    resamb_raw_nb: Optional[int] = None
-    partial_dropped: Optional[int] = None

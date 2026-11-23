@@ -5,11 +5,21 @@ import gtsam
 
 from cssrlib.gnss import time2gpst
 
-from ..factors.epoch_context import make_epoch_diagnostics
 from ..factors.nhc import add_nhc_factor as _add_nhc_factor
 from ..factors.zupt import add_zupt_factors as _add_zupt_factor_inplace
 from ..factors import imu_preintegration as _tc_pim
 from ..pipeline import update_smoother as _tc_isam
+
+
+def _make_imu_only_diagnostics(tc):
+    return {
+        'phase': tc.phase,
+        'tc_epoch': 0,
+        'collecting': tc.collecting,
+        'n_collected': len(tc.collected_fixes),
+        'imu_only': True,
+        'gnss_skip': True,
+    }
 
 
 def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
@@ -99,8 +109,7 @@ def process_imu_only(tc, obs):
     tc._update_epoch_dt(obs)
     tc._reset_current_epoch()
     R = tc.R_enu2ecef
-    info = make_epoch_diagnostics(tc, imu_only=True)
-    info['gnss_skip'] = True
+    info = _make_imu_only_diagnostics(tc)
     _, tow_obs = time2gpst(obs.t)
 
     if tc.phase == 1:

@@ -27,7 +27,6 @@ def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
                                      rsb, sat, el, iu, ir_map,
                                      sol, info, R)
-    tc._last_sol_ecef = np.array(sol)
     return _tc_recovery.advance_epoch_and_pack(tc, sol, tag, nb, info, obs)
 
 
@@ -147,13 +146,11 @@ def _p1_emit_and_run_ar(tc, est, sat, el, R):
     enu_e = np.array(est.atPose3(tc.Xp(ep)).translation())
     tc.nav.x[0:3] = R @ enu_e + tc.base_ecef
 
-    _tc_ar.nav_bridge.publish_marginals(tc, est, tc.Xp(ep), tc.amb_keys)
-
     tc.nav.smode = 5
     nb = 0
     xa = None
     if ep >= 5:
-        nb, xa = _tc_ar.run_ar(tc, sat, el, tc.amb_keys)
+        nb, xa = _tc_ar.run_ar(tc, sat, el, tc.amb_keys, key_pose=tc.Xp(ep))
 
     sol = xa[0:3] if nb > 0 and tc.nav.smode == 4 else tc.nav.x[0:3]
     tag = 'FIX' if tc.nav.smode == 4 else 'FLT'
@@ -360,8 +357,7 @@ def transition_to_tc(tc, collected_fixes):
     last = collected_fixes[-1]
     if 'gnss' in last:
         est_init = tc.isam2.calculateEstimate()
-        _tc_ar.nav_bridge.publish_marginals(
-            tc, est_init, tc.Xpose(n - 1), tc._sat_states.amb_keys_dict())
+        tc._ar_key_pose = tc.Xpose(n - 1)
         pose_last = est_init.atPose3(tc.Xpose(n - 1))
         enu_last = np.array(pose_last.translation())
         ecef_last = R @ enu_last + tc.base_ecef

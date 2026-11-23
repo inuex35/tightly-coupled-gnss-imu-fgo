@@ -87,11 +87,11 @@ Packages are the roles:
 
 | Package | Role |
 |---|---|
-| `pipeline/` | the epoch flow: `imu_prediction` → `quality_gate` → `solve` (`measurement_factors` / `update_smoother` / `fix_ambiguities`) → `report` |
+| `pipeline/` | Phase-2 epoch flow (`imu_prediction` → `slip_detect` → `factors` → `update_smoother` → `run_ar`) |
 | `factors/` | measurement → GTSAM factor builders, one file per family |
 | `ar/` | LAMBDA + partial AR with dimension-adaptive FFRT |
-| `integrity/` | cycle-slip detection (LLI + GF + MW) and warm-reset recovery |
-| `state/` | records (`SatState`, `EpochData`) and the stage I/O contract |
+| `integrity/` | cycle-slip detection (LLI + GF) and warm-reset recovery |
+| `state/` | records (`SatState`, `EpochData`) |
 
 Phase 1 bootstrap (GNSS-only init) is `initialization.py`;
 `runner.py` owns state and the cssrlib boundary.
