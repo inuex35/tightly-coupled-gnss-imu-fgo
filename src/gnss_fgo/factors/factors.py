@@ -161,13 +161,11 @@ class DdFactorBuilder:
         key_n_ref = self._persistent_key(ref_sat, f)
         key_n_j = self._persistent_key(j_sat, f)
         pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
-        sigma_pr = self._pair_sigma(1, self.el[ref_idx], self.el[j_idx])
         _init_dd_ambiguity_priors(
             tc, self.graph, self.values, self.amb_dict, self.new_amb,
             self.existing_estimate, f, lam,
             ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
-             (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)),
-            sigma_pr=sigma_pr)
+             (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
 
         sigma = self._pair_sigma(0, self.el[ref_idx], self.el[j_idx])
         cp_noise = _dd_noise(tc, sigma)

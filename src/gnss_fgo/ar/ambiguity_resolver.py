@@ -40,10 +40,11 @@ class ResolverResult:
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
-    #: Partial AR: fewest z-components a partial fix may keep, the
-    #: bootstrapped success rate that picks the first subset, and the
-    #: reduced searches allowed per epoch.
+    #: Partial AR: minimum distinct integer-fixed satellites (4 = 3D GNSS
+    #: geometry minimum), bootstrapped success rate that picks the first
+    #: subset, and reduced searches allowed per epoch.
     min_fix = 4
+    min_sats = 4
     par_p0 = 0.995
     par_trials = 8
 
@@ -158,7 +159,7 @@ class AmbiguityResolver:
             return result
         # s0 <= 0 means mlambda could not form a ratio (exact fit).
         if not (s0 <= 0.0 or ratio >= thres):
-            par = self._partial(y, Q) if allow_partial else None
+            par = self._partial(y, Q, pairs) if allow_partial else None
             if par is None:
                 return result
             bvec, nb, s0, s1, thres, k = par
@@ -184,14 +185,12 @@ class AmbiguityResolver:
             fixed[tgt] = fixed[ref] - float(bvec[row])
         return fixed
 
-    def _partial(self, y, Q):
+    def _partial(self, y, Q, pairs=None):
         """Partial AR: fix the well-determined z-components, condition
         the rest on them, and accept by the reduced problem's own
-        FFRT ratio test.
+        FFRT ratio test while requiring >= min_sats distinct satellites.
 
-        Returns (dd_vector, nb, s0, s1, thres, dropped) or None. The
-        DD vector mixes integer-fixed and conditioned-float content;
-        the caller publishes it whole but must not hold it."""
+        Returns (dd_vector, nb, s0, s1, thres, dropped) or None."""
         n = len(y)
         if n <= self.min_fix:
             return None
@@ -210,6 +209,14 @@ class AmbiguityResolver:
         for _ in range(self.par_trials):
             if k > kmax:
                 return None
+            if pairs is not None:
+                int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
+                fixed_sats = {
+                    s for row, (ref, tgt) in enumerate(pairs)
+                    if int_rows[row] for s in (ref[0], tgt[0])
+                }
+                if len(fixed_sats) < self.min_sats:
+                    return None
             zpar, sq = estimILS(L[k:, k:], d[k:], z[k:], 2)
             s0, s1 = float(sq[0]), float(sq[1])
             nb = n - k
