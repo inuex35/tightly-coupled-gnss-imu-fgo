@@ -78,7 +78,7 @@ class DdFactorBuilder:
             return self.new_amb[sf]
         st = tc._sat_states.get(sat_id, freq)
         rw = float(tc.cfg.amb_rw_sigma)
-        if (tc.phase == 2 and rw > 0.0 and st.amb_key is not None
+        if (rw > 0.0 and st.amb_key is not None
                 and self.existing_estimate is not None
                 and self.existing_estimate.exists(st.amb_key)):
             k_old = st.amb_key
@@ -181,10 +181,7 @@ class DdFactorBuilder:
                         sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                         lams, sat_pts, pr_obs)
         for (s, f), k in self.new_amb.items():
-            if self.amb_dict is self.tc._sat_states:
-                self.tc._sat_states.get(s, f).amb_key = k
-            else:
-                self.amb_dict[(s, f)] = k
+            self.tc._sat_states.get(s, f).amb_key = k
         self.nv = nv
         return nv
 

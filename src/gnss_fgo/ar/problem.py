@@ -19,9 +19,9 @@ class ArProblem:
     elevations: dict = field(default_factory=dict)
 
 
-def build(tc, sat_list, amb_dict):
+def build(tc, sat_list, amb_dict, key_pose=None):
     """Assemble ArProblem from live smoother variables, or None if unposed."""
-    smoother = tc.isam2 if tc.phase == 2 else tc.isam
+    smoother = tc.isam2
     if smoother is None:
         return None
     isam2 = smoother.getISAM2()
@@ -29,19 +29,25 @@ def build(tc, sat_list, amb_dict):
         return None
     est = smoother.calculateEstimate()
 
+    if key_pose is not None:
+        tc._ar_key_pose = key_pose
+    key_pose = tc._ar_key_pose
+    if key_pose is None or not est.exists(key_pose):
+        return None
+
     key_of = dict(sorted_amb_items(amb_dict))
     present = {int(s) for s in sat_list}
+    seeded = tc.current_epoch.seeded_amb_keys
+    cp_visible = tc._ar_cp_visible_sf
     keys, values = [], {}
     for (s, f), k in sorted_amb_items(key_of):
         sf = (int(s), int(f))
-        if int(s) in present and est.exists(k) and tc.nav.vsat[s - 1, f] == 1:
+        if (int(s) in present and est.exists(k)
+                and (s, f) not in seeded
+                and (not cp_visible or sf in cp_visible)):
             keys.append(sf)
             values[sf] = est.atDouble(k)
     if len(keys) < 2:
-        return None
-
-    key_pose = tc._ar_key_pose
-    if key_pose is None or not est.exists(key_pose):
         return None
 
     kv = gtsam.KeyVector()

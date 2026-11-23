@@ -1,23 +1,19 @@
 """Integer ambiguity resolution (pure LAMBDA + optional partial AR)."""
 
-from . import nav_bridge
 from . import problem as ar_problem
 from .ambiguity_resolver import AmbiguityResolver
 
-__all__ = ['nav_bridge', 'ar_problem', 'AmbiguityResolver', 'run_ar']
+__all__ = ['ar_problem', 'AmbiguityResolver', 'run_ar']
 
 _FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
 _FFRT_MAX_RATIO = 3.0  # Teunissen FFRT upper clamp (P_f = 0.1%)
 
 
 def _resolve(tc, sat_list, amb_dict, allow_partial=False):
-    """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa, res, problem)."""
+    """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa)."""
     problem = ar_problem.build(tc, sat_list, amb_dict)
     if problem is None:
-        tc.ar_diag.outcome = 'problem_unposed'
-        tc._last_s0 = 0.0
-        tc._last_s1 = 0.0
-        return 0, None, None, None
+        return 0, None
     resolver = AmbiguityResolver(
         thresar=_FFRT_MAX_RATIO,
         el_mask=float(tc.nav.elmaskar),
@@ -25,55 +21,33 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
         thresar_max=_FFRT_MAX_RATIO)
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations, allow_partial=allow_partial)
-    tc._last_ar_thres = float(res.thres_used) or _FFRT_MAX_RATIO
-    nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
-        if 0 < len(res.pairs) < resolver.min_pairs:
-            tc.ar_diag.outcome = 'min_pairs_declined'
-        return 0, None, res, problem
-    tc.ar_diag.partial_dropped = int(res.dropped)
-    xa = ar_problem.fixed_state(tc, problem, res)
-    return res.nb, xa, res, problem
-
-
-def run_ar(tc, sat, el, amb_dict):
-    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (nb, xa)."""
-    tc._last_ar_result = None
-    tc.ar_diag.outcome = 'not_called'
-    if tc.nav.armode == 0:
-        tc.ar_diag.outcome = 'armode_off'
         return 0, None
+    xa = ar_problem.fixed_state(tc, problem, res)
+    return res.nb, xa
+
+
+def run_ar(tc, sat, el, amb_dict, key_pose=None):
+    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (nb, xa)."""
+    if tc.nav.armode == 0:
+        return 0, None
+    if key_pose is not None:
+        tc._ar_key_pose = key_pose
 
     sat_list = [int(x) for x in sat]
-    sat_in_obs = set(sat_list)
-    tc.ar_diag.amb_not_in_obs = sum(
-        1 for (ss, _ff) in amb_dict.keys() if int(ss) not in sat_in_obs)
-    tc.ar_diag.sat_in_obs_size = len(sat_in_obs)
-    tc.ar_diag.outcome = 'entered'
-    tc.ar_diag.resamb_raw_nb = -1
-
     try:
-        nb, xa, res, _prob = _resolve(tc, sat_list, amb_dict, allow_partial=False)
-    except Exception as ex:
-        tc.ar_diag.outcome = 'lambda_exception'
-        tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
+        nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=False)
+    except Exception:
         return 0, None
 
-    tc.ar_diag.resamb_raw_nb = int(nb)
     if nb <= 0:
         try:
-            nb, xa, res, _prob = _resolve(tc, sat_list, amb_dict, allow_partial=True)
-        except Exception as ex:
-            tc.ar_diag.outcome = 'lambda_exception'
-            tc.ar_diag.exception = f'{type(ex).__name__}: {ex}'
+            nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=True)
+        except Exception:
             return 0, None
 
     if nb <= 0 or xa is None:
-        if tc.ar_diag.outcome != 'min_pairs_declined':
-            tc.ar_diag.outcome = 'lambda_zero'
         return 0, None
 
-    tc._last_ar_result = res
-    tc.ar_diag.outcome = 'success'
     tc.nav.smode = 4
     return nb, xa
