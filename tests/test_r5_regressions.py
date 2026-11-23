@@ -5,7 +5,7 @@ import types
 import gtsam
 import pytest
 
-from gnss_fgo.factors.prefit import varerr_dd_sigma
+from gnss_fgo.factors.factors import varerr_dd_sigma
 
 
 def _cfg():

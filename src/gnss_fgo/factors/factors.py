@@ -6,8 +6,40 @@ from cssrlib.gnss import uGNSS, SAT_SYS_ARR
 
 from ..utils.geometry import is_bds_geo as _is_bds_geo
 from ..utils import get_wavelengths, sorted_sys_ids
-from . import prefit as _tc_prefit
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
+
+
+_CLIGHT = 299792458.0
+_SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
+
+
+def varerr_dd_sigma(tc, code, el_rad, dt_s):
+    """RTKLIB varerr formula returning DD σ in metres."""
+    cfg = tc.cfg
+    fact = cfg.err_eratio_pr if code else 1.0
+    a = fact * cfg.err_a
+    d = _CLIGHT * _SCLKSTAB * dt_s
+    sinel = max(np.sin(el_rad), 0.05)
+    var_sd = 2.0 * (a * a * (1.0 + 1.0 / (sinel * sinel))) + d * d
+    return float(np.sqrt(2.0 * var_sd))
+
+
+def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
+    """Select the highest-elevation non-BDS-GEO reference satellite."""
+    prev_ref = tc.current_epoch.ref_sats.get(sys_id)
+    sats_in_sys = [sat[i] for i in idx_sys]
+    prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
+                   and _is_bds_geo(prev_ref))
+    if prev_ref is not None and prev_ref in sats_in_sys and not prev_is_geo:
+        return idx_sys[sats_in_sys.index(prev_ref)], prev_ref
+
+    pool = [i for i in idx_sys
+            if not (sys_id == uGNSS.BDS and _is_bds_geo(sat[i]))]
+    if not pool:
+        pool = idx_sys
+    pool_arr = np.array(pool)
+    ref_idx = int(pool_arr[np.argmax(el[pool_arr])])
+    return ref_idx, sat[ref_idx]
 
 
 def _dd_noise(tc, sigma):
@@ -55,7 +87,7 @@ class DdFactorBuilder:
         self.new_amb = {}
 
     def _select_ref_for_system(self, sys_id, idx_sys):
-        ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
+        ref_idx, ref_sat = _pick_ref_sat_idx(
             self.tc, sys_id, idx_sys, self.sat, self.el)
         self.tc.current_epoch.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
@@ -68,7 +100,7 @@ class DdFactorBuilder:
 
     def _pair_sigma(self, code, el_ref_rad, el_j_rad):
         el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
-        return _tc_prefit.varerr_dd_sigma(self.tc, code, el_pair, self.dt_s)
+        return varerr_dd_sigma(self.tc, code, el_pair, self.dt_s)
 
     def _persistent_key(self, sat_id, freq):
         """Return arc key for (sat_id, freq); chain per-epoch random walk in Phase 2."""
