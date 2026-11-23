@@ -6,11 +6,7 @@ from typing import Optional
 
 
 class SatFieldView(MutableMapping):
-    """``MutableMapping`` view of one ``SatState`` field across all entries.
-
-    Entries whose field still equals the absent marker are invisible to
-    iteration/lookup, so the view behaves like a dict of set values only.
-    """
+    """``MutableMapping`` view of one ``SatState`` field across all entries."""
 
     __slots__ = ('_map', '_field', '_absent')
 
@@ -78,38 +74,11 @@ class SatFieldView(MutableMapping):
 
 @dataclass
 class SatState:
-    """All bookkeeping for a single (sat, freq) pair."""
+    """Bookkeeping for a single (sat, freq) continuous carrier-phase arc."""
 
-    # Slip-detector memory
-    outc: int = 0                            # epochs since last seen
-    # Ambiguity bookkeeping
-    amb_key: Optional[int] = None            # GTSAM symbol for N
-    amb_gen: int = 0                         # generation counter (++ on slip / reset)
-    held_value: Optional[float] = None       # conditioned-out held integer [cyc]
-    last_held_value: Optional[float] = None  # last held integer for float re-seed [cyc]
-    release_seed_pending: bool = False       # one-shot unary prior on first float epoch
-    # Per-(sat, freq) quality counters
-    fix_streak: int = 0                      # consecutive Fix epochs
-
-    def activate_hold(self, value: float) -> None:
-        """Move this ambiguity out of the graph and pin its integer externally."""
-        held = float(value)
-        self.held_value = held
-        self.last_held_value = held
-        self.release_seed_pending = False
-
-    def release_hold(self, seed: bool = True) -> None:
-        """Drop active hold, optionally queue a one-shot float re-seed prior."""
-        if self.held_value is not None:
-            self.last_held_value = float(self.held_value)
-        self.held_value = None
-        self.release_seed_pending = bool(seed and self.last_held_value is not None)
-
-    def clear_hold(self) -> None:
-        """Forget all held-integer state (slip / reset / outage path)."""
-        self.held_value = None
-        self.last_held_value = None
-        self.release_seed_pending = False
+    outc: int = 0                    # epochs since last seen
+    amb_key: Optional[int] = None    # persistent GTSAM symbol for this arc's N
+    amb_gen: int = 0                 # monotonic arc generation (++ on slip / reset)
 
 
 _EMPTY_SAT_STATE = SatState()
@@ -117,14 +86,13 @@ _EMPTY_SAT_STATE = SatState()
 
 @dataclass
 class SatStateMap:
-    """Per-(sat, freq) ``SatState`` map + per-sat GF / MW state."""
+    """Per-(sat, freq) ``SatState`` map + per-sat GF slip state."""
 
     track: dict = field(default_factory=dict)            # {(sat,f): SatState}
     gf: dict = field(default_factory=dict)               # {sat: gf [m]}
     maxout: int = 5
 
     def get(self, sat: int, freq: int) -> SatState:
-        """Get-or-create the ``SatState`` for ``(sat, freq)``."""
         key = (int(sat), int(freq))
         st = self.track.get(key)
         if st is None:
@@ -133,7 +101,6 @@ class SatStateMap:
         return st
 
     def at(self, sat: int, freq: int) -> SatState:
-        """Return ``SatState`` for ``(sat, freq)`` *without* creating."""
         return self.track.get((int(sat), int(freq)), _EMPTY_SAT_STATE)
 
     def items(self):
@@ -145,132 +112,39 @@ class SatStateMap:
     def values(self):
         return self.track.values()
 
-    # --- Ambiguity convenience views (for hot-loop iteration) ---
-
     def amb_items(self):
-        """Iterate ``((sat, f), amb_key)`` for entries with non-None amb_key."""
         for k, st in self.track.items():
             if st.amb_key is not None:
                 yield k, st.amb_key
 
     def amb_keys_dict(self) -> dict:
-        """Snapshot ``{(sat, f): amb_key}`` for entries with non-None amb_key."""
         return {k: st.amb_key for k, st in self.track.items()
                 if st.amb_key is not None}
 
     def amb_count(self) -> int:
-        """Number of entries with non-None amb_key."""
         return sum(1 for st in self.track.values() if st.amb_key is not None)
 
-    def held_items(self):
-        """Iterate ``((sat, f), held_value)`` for active conditioned-out holds."""
-        for k, st in self.track.items():
-            if st.held_value is not None:
-                yield k, st.held_value
-
     def amb_key_values(self) -> list:
-        """List of all non-None amb_key values (for FLS keep_keys)."""
         return [st.amb_key for st in self.track.values()
                 if st.amb_key is not None]
 
+
 @dataclass
 class CurrentEpochState:
-    """State that lives exactly one epoch (vs EpochData, which is the
-    stage-to-stage I/O record for one process() call).
+    """State that lives exactly one epoch."""
 
-    Replaced WHOLESALE at each epoch start (prepare_process_epoch /
-    process_imu_only) — never wiped field-by-field. The A-1/A-2 root
-    cause was epoch-lifetime state living on the runner behind manual
-    per-field wipes; object replacement makes the lifetime structural.
-    """
-
-    # First AR attempt's joint-marginal extraction; same-epoch retry/
-    # subset attempts slice it instead of re-reading the smoother.
     ar_joint_cache: Optional[dict] = None
-
-    # sys_id -> reference sat. Written by the main DD build, read by
-    # the later same-epoch DD solves (LS fallback, sanity anchor, FDE
-    # re-solve) so their DD definitions stay comparable.
     ref_sats: dict = field(default_factory=dict)
-    # (sat, freq) ambiguities (re)seeded THIS epoch -> excluded from AR.
     seeded_amb_keys: set = field(default_factory=set)
 
 
 @dataclass
 class ArDiagnostics:
-    """Per-AR-call diagnostic counters (drained into epoch info by
-    _record_ar_diagnostics; None = not produced this call)."""
+    """Per-AR-call diagnostic counters."""
 
     outcome: str = 'not_called'
-    exception: Optional[str] = None   # type name of a swallowed AR exception
-    orphan_cp_count: Optional[int] = None
-    amb_dict_size: Optional[int] = None
-    held_size: Optional[int] = None
-    cp_visible_size: Optional[int] = None
-    amb_estimate_missing: Optional[int] = None
-    amb_vsat1: Optional[int] = None
-    amb_vsat0_young: Optional[int] = None
+    exception: Optional[str] = None
     amb_not_in_obs: Optional[int] = None
-    held_not_in_obs: Optional[int] = None
     sat_in_obs_size: Optional[int] = None
     resamb_raw_nb: Optional[int] = None
-    exact_fit_accept: Optional[int] = None   # fix accepted with s0<=0 (ratio undefined)
-    amb_el_min_deg: Optional[int] = None
-    amb_el_median_deg: Optional[int] = None
-    amb_el_above15: Optional[int] = None
-    amb_el_above25: Optional[int] = None
-    partial_dropped: Optional[int] = None  # z-components left float (0 = full fix)
-
-
-@dataclass
-class RecoveryState:
-    """Cross-cutting recovery / degradation flags."""
-
-    recov_cp_hold: int = 0
-    cp_hold_retrigger_streak: int = 0   # consecutive re-arms while active (loop audit)
-    pim_discontinuity: bool = False
-    ddpr_bad_count: int = 0
-    zupt_anchor_pose: object = None
-    zupt_anchor_start_ep: int | None = None
-
-    def start_cp_hold(self, hold_n, reason, info, value=None,
-                      skip_if_active=False):
-        """Engage global CP-hold for ``hold_n`` epochs (idempotent max).
-
-        skip_if_active prevents re-trigger during an active hold —
-        fde/innovation would otherwise fire every epoch of the recovery
-        and loop forever.
-        """
-        if hold_n <= 0:
-            return False   # suppressed (bootstrap window) — not a firing
-        if self.recov_cp_hold > 0:
-            self.cp_hold_retrigger_streak += 1
-            info['cp_hold_retrigger_streak'] = self.cp_hold_retrigger_streak
-        else:
-            self.cp_hold_retrigger_streak = 0
-        if skip_if_active and self.recov_cp_hold > 0:
-            return False
-        self.recov_cp_hold = max(self.recov_cp_hold, hold_n)
-        info[f'cp_hold_{reason}'] = value if value is not None else True
-        return True
-
-    def tick_cp_hold(self, info):
-        """One CP-hold countdown step (call only while the hold is active)."""
-        self.recov_cp_hold -= 1
-        info['recov_cp_hold'] = self.recov_cp_hold + 1
-
-
-@dataclass
-class MresSignalsState:
-    """Snapshot of the previous-epoch main DDPR residuals."""
-
-    last_res: float = 0.0
-    per_sat: dict = field(default_factory=dict)
-
-    def update(self, last_res: float, per_sat: dict) -> None:
-        self.last_res = last_res
-        self.per_sat = per_sat
-
-    def reset(self) -> None:
-        self.last_res = 0.0
-        self.per_sat = {}
+    partial_dropped: Optional[int] = None

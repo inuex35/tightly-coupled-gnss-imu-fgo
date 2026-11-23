@@ -1,13 +1,4 @@
-"""Non-Holonomic Constraint factor (C++ gtsam.NhcFactor).
-
-Body lateral & vertical velocity ~ 0 at the rear-axle pivot:
-  error = R^T v + gyro x lever - [wheelSpeed, 0, 0]
-evaluated by ``gtsam.NhcFactor`` (custom/develop wheel). There is no
-wheel odometry in this pipeline, so the forward component is released
-with a huge sigma and only lateral/vertical constrain the solution.
-When a non-zero ``cfg.nhc_lever`` is configured the constraint acts at
-that lever-arm offset from the IMU origin via the gyro term.
-"""
+"""Non-Holonomic Constraint factor (C++ gtsam.NhcFactor)."""
 
 import numpy as np
 import gtsam
@@ -15,9 +6,11 @@ import gtsam
 from ..utils import parse_lever
 
 
-def add_nhc_factor(tc, graph, key_idx, speed, gyro_mean_rh=None):
-    """Non-Holonomic Constraint at rear-axle center in the FLU body frame."""
-    if not tc.cfg.nhc_enable or speed < tc.cfg.nhc_min_speed:
+def add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=None):
+    """Non-Holonomic Constraint at rear-axle pivot in the FLU body frame."""
+    sig_lat = float(tc.cfg.nhc_sigma_lat)
+    sig_vert = float(tc.cfg.nhc_sigma_vert)
+    if sig_lat <= 0 or sig_vert <= 0:
         return False
     lever = tc._nhc_lever_cache
     if lever is None or tc._nhc_lever_src != tc.cfg.nhc_lever:
@@ -25,17 +18,14 @@ def add_nhc_factor(tc, graph, key_idx, speed, gyro_mean_rh=None):
         tc._nhc_lever_cache = lever
         tc._nhc_lever_src = tc.cfg.nhc_lever
     if gyro_mean_rh is not None:
-        bias_gyro = tc.tc_bias.gyroscope() if tc.tc_bias is not None \
-            else np.zeros(3)
+        bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
+                     else np.zeros(3))
         omega = np.asarray(gyro_mean_rh - bias_gyro, dtype=float)
     else:
         omega = np.zeros(3)
     noise = gtsam.noiseModel.Diagonal.Sigmas(
-        np.array([1e3,
-                  float(tc.cfg.nhc_sigma_lat),
-                  float(tc.cfg.nhc_sigma_vert)]))
+        np.array([sig_lat, sig_vert]))
     graph.add(gtsam.NhcFactor(
         tc.Xpose(key_idx), tc.Vel(key_idx), omega,
-        np.asarray(lever, dtype=float),
-        float(speed), noise, np.zeros(3)))
+        np.asarray(lever, dtype=float), noise))
     return True

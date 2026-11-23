@@ -1,4 +1,4 @@
-"""Ambiguity seeding: the clock-free property that run1 ep1619 proved vital."""
+"""Clock-free persistent-arc ambiguity seeding tests."""
 import gtsam
 import pytest
 
@@ -6,25 +6,7 @@ from gnss_fgo.factors import amb_seed
 
 
 class _Cfg:
-    sigma_cont = 1.0
     sigma_amb0 = 30.0
-
-
-class _SatState:
-    def __init__(self):
-        self.held_value = None
-        self.last_held_value = None
-        self.release_seed_pending = False
-
-    def clear_hold(self):
-        self.held_value = None
-        self.last_held_value = None
-        self.release_seed_pending = False
-
-
-class _SatMap(dict):
-    def get(self, sat, freq):
-        return self.setdefault((sat, freq), _SatState())
 
 
 class _Tc:
@@ -33,7 +15,6 @@ class _Tc:
 
     def __init__(self):
         self.cfg = _Cfg()
-        self._sat_states = _SatMap()
         from gnss_fgo.state.runtime_state import CurrentEpochState
         self.current_epoch = CurrentEpochState()
 
@@ -45,49 +26,35 @@ class _Tc:
 LAM = 0.1903
 
 
-def _seed(tc, cp_r, cp_b, pr_r, pr_b, prev=None):
+def _seed(tc, cp_r, cp_b, pr_r, pr_b, existing_estimate=None):
     graph, values, amb, new = gtsam.NonlinearFactorGraph(), gtsam.Values(), {}, {}
     amb_seed.init_dd_ambiguity_priors(
-        tc, graph, values, amb, new, prev, 0, LAM,
+        tc, graph, values, amb, new, existing_estimate, 0, LAM,
         ((7, gtsam.symbol('n', 7), cp_r, cp_b, pr_r, pr_b),))
-    return values.atDouble(gtsam.symbol('n', 7))
+    return graph, values, new
 
 
 def test_seed_is_clock_free():
     """Adding a receiver clock term to BOTH phase and code must not move N."""
     tc = _Tc()
-    base = _seed(tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0)
+    _, v0, _ = _seed(tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0)
+    base = v0.atDouble(gtsam.symbol('n', 7))
     for clk_m in (150.0, -3000.0, 45678.9):
         tc2 = _Tc()
-        shifted = _seed(tc2, cp_r=1000.0 + clk_m, cp_b=400.0,
-                        pr_r=990.0 + clk_m, pr_b=395.0)
-        assert shifted == pytest.approx(base, abs=1e-9)
+        _, v2, _ = _seed(tc2, cp_r=1000.0 + clk_m, cp_b=400.0,
+                         pr_r=990.0 + clk_m, pr_b=395.0)
+        assert v2.atDouble(gtsam.symbol('n', 7)) == pytest.approx(base, abs=1e-9)
 
 
-def test_held_sat_is_skipped():
+def test_existing_smoother_key_is_reused_without_reprior():
+    """A persistent arc key already in the smoother must not be re-inserted or re-priored."""
     tc = _Tc()
-    st = tc._sat_states.get(7, 0)
-    st.held_value = -1234.0
-    graph, values, amb, new = gtsam.NonlinearFactorGraph(), gtsam.Values(), {}, {}
-    amb_seed.init_dd_ambiguity_priors(
-        tc, graph, values, amb, new, None, 0, LAM,
-        ((7, gtsam.symbol('n', 7), 1000.0, 400.0, 990.0, 395.0),))
+    existing = gtsam.Values()
+    existing.insert(gtsam.symbol('n', 7), 55.25)
+    graph, values, new = _seed(
+        tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0,
+        existing_estimate=existing)
+    assert graph.size() == 0
     assert not values.exists(gtsam.symbol('n', 7))
-    assert st.held_value == -1234.0
-
-
-def test_release_reseeds_at_held_integer():
-    tc = _Tc()
-    st = tc._sat_states.get(7, 0)
-    st.release_seed_pending = True
-    st.last_held_value = -777.0
-    n0 = _seed(tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0)
-    assert n0 == pytest.approx(-777.0)
-    assert st.release_seed_pending is False
-
-
-def test_continuing_prior_reuses_previous_value():
-    tc = _Tc()
-    prev = {(7, 0): (None, 55.25)}
-    n0 = _seed(tc, cp_r=1000.0, cp_b=400.0, pr_r=990.0, pr_b=395.0, prev=prev)
-    assert n0 == pytest.approx(55.25)
+    assert new[(7, 0)] == gtsam.symbol('n', 7)
+    assert (7, 0) not in tc.current_epoch.seeded_amb_keys

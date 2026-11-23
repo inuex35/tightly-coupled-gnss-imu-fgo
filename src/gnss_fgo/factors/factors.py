@@ -1,174 +1,33 @@
-"""DD pseudorange / carrier-phase factor builder for the TC graph."""
+"""Pure C++ DD pseudorange / carrier-phase factor builder with persistent arcs and Huber noise."""
 
 import numpy as np
 import gtsam
-from cssrlib.gnss import uGNSS, geodist, SAT_SYS_ARR, rCST
-from ..utils.geometry import is_bds_geo as _is_bds_geo
+from cssrlib.gnss import uGNSS, SAT_SYS_ARR
 
+from ..utils.geometry import is_bds_geo as _is_bds_geo
+from ..utils import sorted_sys_ids
 from . import prefit as _tc_prefit
 from .factors_support import get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
-from ..utils import sorted_sys_ids
 
 
-def _add_ddpr_factor(tc, graph, key_pose, lever,
-                      pr_obs, sat_pts, pair_id,
-                      pair_sigma_base):
-    """Add one DDPR factor for a (ref, j, freq) triple to ``graph``."""
-    pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
-    ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
-    ref_sat, j_sat, freq = pair_id
-    pr_noise = tc._noise1(pair_sigma_base)
-    tc._last_ddpr_sat_tags.append(
-        (graph.size(), ref_sat, j_sat, freq))
-    graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
-        key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
-        ref_pt, j_pt, ref_base_pt, j_base_pt,
-        tc.base_pt, lever, tc.ecef_T_nav, pr_noise))
-
-
-
-def _make_ddcp_factor_with_held_n(key_pose, key_float, noise,
-                                  sat_ref_rov, sat_j_rov,
-                                  sat_ref_base, sat_j_base,
-                                  base_ecef, dd_obs_cp,
-                                  lever_arr, ecef_T_nav,
-                                  offset_m, coeff_m):
-    """Custom DDCP factor with 0/1 N-variable arity (held N folded into ``offset_m``)."""
-    keys = [key_pose] if key_float is None else [key_pose, key_float]
-    has_float = key_float is not None
-
-    # Per-factor constants — fold base→sat ranges + offset_m + dd_obs_cp into
-    # a single scalar so error_fn does only the rover-side geodist work.
-    rho_base_ref, _ = geodist(sat_ref_base, base_ecef)
-    rho_base_j, _ = geodist(sat_j_base, base_ecef)
-    err_const = offset_m - (rho_base_ref - rho_base_j) - dd_obs_cp
-
-    # Earth-rotation correction terms for each rover satellite (constants).
-    omc = rCST.OMGE / rCST.CLIGHT
-    sr0, sr1 = float(sat_ref_rov[0]), float(sat_ref_rov[1])
-    sj0, sj1 = float(sat_j_rov[0]), float(sat_j_rov[1])
-    omc_diff_x = omc * (sr1 - sj1)
-    omc_diff_y = omc * (sr0 - sj0)
-
-    lx, ly, lz = float(lever_arr[0]), float(lever_arr[1]), float(lever_arr[2])
-    lever_arr_local = lever_arr  # closure capture
-
-    err_arr = np.empty(1, dtype=float)
-    coeff_jac = np.array([[coeff_m]], dtype=float) if has_float else None
-
-    def error_fn(this, values, jacobians):
-        pose = values.atPose3(this.keys()[0])
-        pose_ecef = ecef_T_nav.compose(pose) if ecef_T_nav is not None else pose
-        R = pose_ecef.rotation().matrix()
-        t = pose_ecef.translation()
-        antenna_ecef = t + R @ lever_arr_local
-
-        rho_rov_ref, e_ref = geodist(sat_ref_rov, antenna_ecef)
-        rho_rov_j, e_j = geodist(sat_j_rov, antenna_ecef)
-
-        err = (rho_rov_ref - rho_rov_j) + err_const
-        if has_float:
-            err += coeff_m * values.atDouble(this.keys()[1])
-
-        if jacobians is not None:
-            # H_ant = D(e_ref, sat_ref_rov) - D(e_j, sat_j_rov), inlined.
-            h0 = -(e_ref[0] - e_j[0]) - omc_diff_x
-            h1 = -(e_ref[1] - e_j[1]) + omc_diff_y
-            h2 = -(e_ref[2] - e_j[2])
-
-            # h_R = H_ant @ R  (rotation-frame antenna sensitivity).
-            h_R0 = h0 * R[0, 0] + h1 * R[1, 0] + h2 * R[2, 0]
-            h_R1 = h0 * R[0, 1] + h1 * R[1, 1] + h2 * R[2, 1]
-            h_R2 = h0 * R[0, 2] + h1 * R[1, 2] + h2 * R[2, 2]
-
-            # H_rot = H_ant @ (-R @ skew(lever)) = lever × h_R  (cross product).
-            H_pose = np.empty((1, 6))
-            H_pose[0, 0] = ly * h_R2 - lz * h_R1
-            H_pose[0, 1] = lz * h_R0 - lx * h_R2
-            H_pose[0, 2] = lx * h_R1 - ly * h_R0
-            H_pose[0, 3] = h_R0
-            H_pose[0, 4] = h_R1
-            H_pose[0, 5] = h_R2
-
-            jacobians[0] = H_pose
-            if has_float:
-                jacobians[1] = coeff_jac
-
-        err_arr[0] = err
-        return err_arr.copy()
-
-    return gtsam.CustomFactor(noise, keys, error_fn)
-
-
-def _emit_held_ddcp_factor(tc, graph, pair_id, key_pose, key_float,
-                             cp_noise, sat_xyz, rb, dd_obs_cp,
-                             lever_arr, offset_m, coeff_m):
-    """Add a held-N variant DDCP factor (``_make_ddcp_factor_with_held_n``) and stamp it into ``tc._last_custom_ddcp_local`` / ``tc._last_custom_ddcp_global`` so the post-fit FDE evaluates it via the custom-factor accessor instead of reading aN()/cN()."""
-    ref_xyz, j_xyz, ref_base_xyz, j_base_xyz = sat_xyz
-    graph.add(_make_ddcp_factor_with_held_n(
-        key_pose, key_float, cp_noise,
-        ref_xyz, j_xyz, ref_base_xyz, j_base_xyz,
-        rb, dd_obs_cp, lever_arr, tc.ecef_T_nav,
-        offset_m=offset_m, coeff_m=coeff_m))
-    tc._last_custom_ddcp_local.add(graph.size() - 1)
-    # Keyed by the factor's key tuple, NOT its slot index: per-epoch
-    # counter arithmetic cannot name a slot reliably across recovery
-    # paths. When both ambiguities are held the factor is pose-only and
-    # its key tuple is not unique (every such factor shares the pose
-    # key) — those factors are deliberately outside post-fit FDE's
-    # sight: a wrong integer in a held-held pair is caught by
-    # xvalidate at fix time and by the sanity ladder when the
-    # residuals stay bad, not by per-factor exclusion.
-    if key_float is not None:
-        tc._last_custom_ddcp_global[
-            (int(key_pose), int(key_float))] = pair_id
-
-
-def _add_ddcp_factor(tc, graph, key_pose, cp_noise, dd_obs_cp, lam,
-                      sat_pts, sat_xyz, cp_obs,
-                      lever, lever_arr, rb,
-                      keys_n, held, pair_id):
-    """Add the DDCP factor for one (ref, j, freq) triple to ``graph``."""
-    key_n_ref, key_n_j = keys_n
-    ref_held_value, j_held_value = held
-    held_kw = dict(
-        tc=tc, graph=graph, pair_id=pair_id,
-        key_pose=key_pose, cp_noise=cp_noise, sat_xyz=sat_xyz,
-        rb=rb, dd_obs_cp=dd_obs_cp, lever_arr=lever_arr)
-    if ref_held_value is not None and j_held_value is not None:
-        _emit_held_ddcp_factor(
-            **held_kw, key_float=None,
-            offset_m=lam * (ref_held_value - j_held_value), coeff_m=0.0)
-    elif ref_held_value is not None:
-        _emit_held_ddcp_factor(
-            **held_kw, key_float=key_n_j,
-            offset_m=lam * ref_held_value, coeff_m=-lam)
-    elif j_held_value is not None:
-        _emit_held_ddcp_factor(
-            **held_kw, key_float=key_n_ref,
-            offset_m=-lam * j_held_value, coeff_m=lam)
-    else:
-        ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
-        cp_ref_r, cp_ref_b, cp_j_r, cp_j_b = cp_obs
-        graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
-            key_pose, key_n_ref, key_n_j,
-            cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
-            ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
-            lever, tc.ecef_T_nav, cp_noise))
-    return 1
-
+def _dd_noise(tc, sigma):
+    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
+    base = tc._noise1(sigma)
+    k = float(tc.cfg.huber_k)
+    if k <= 0.0:
+        return base
+    return gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(k), base)
 
 
 class DdFactorBuilder:
-    """Per-call state bag for ``build_dd_factors``."""
+    """Build all C++ DDPR + DDCP factors for one epoch using persistent arc keys."""
 
     def __init__(self, tc, graph, values, obs, obsb, obs_sd,
                  rs, rsb, sat, el, iu, ir_map,
                  key_pose, lever, amb_dict,
-                 dd_epoch=0, prev_amb_values=None,
-                 skip_cp=False):
-        # Inputs
+                 existing_estimate=None):
         self.tc = tc
         self.graph = graph
         self.values = values
@@ -184,168 +43,118 @@ class DdFactorBuilder:
         self.key_pose = key_pose
         self.lever = lever
         self.amb_dict = amb_dict
-        self.dd_epoch = dd_epoch
-        self.prev_amb_values = prev_amb_values
-        self.skip_cp = skip_cp
+        self.existing_estimate = existing_estimate
 
-        # Derived constants
         self.nf = tc.nav.nf
         self.ns = len(sat)
-        self.rb = np.array(tc.nav.rb)
-        self.lever_arr = np.asarray(lever, dtype=float)
+        self.el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
+        self.dt_s = float(tc._epoch_dt)
 
-        # Reset per-epoch DDPR / DDCP tags so consumers see this epoch only.
         tc._last_ddpr_sat_tags = []
-        tc._last_custom_ddcp_local = set()
-        tc._last_custom_ddcp_global = {}
         tc._ar_cp_visible_sf = set()
 
-        # Elevation + SNR / cfg constants used by pair_sigma + bad scaling
-        self.el_min_rad = np.radians(max(1.0, tc.cfg.el_mask_deg))
-        self.dt_s = float(tc._epoch_dt)
-        self.use_varerr = bool(tc.cfg.varerr_enable)
-
-
-        # Mutable accumulators
         self.nv = 0
         self.new_amb = {}
 
-    # --- closures-as-methods ---
-
-    def _select_ref_for_system(self, sys_id, idx_sys, sat, el):
-        """Pick the reference sat for one system and record it in
-        the epoch scratch for the later same-epoch DD solves (see
-        prefit.pick_ref_sat_idx)."""
-        tc = self.tc
+    def _select_ref_for_system(self, sys_id, idx_sys):
         ref_idx, ref_sat = _tc_prefit.pick_ref_sat_idx(
-            tc, sys_id, idx_sys, sat, el)
-        tc.current_epoch.ref_sats[sys_id] = ref_sat
+            self.tc, sys_id, idx_sys, self.sat, self.el)
+        self.tc.current_epoch.ref_sats[sys_id] = ref_sat
         return ref_idx, ref_sat
 
-    def _compute_ref_geometry(self, ref_idx, ref_sat):
-        """Reference-sat ``Point3`` + xyz hoisted outside the j loop (pybind ``Point3()`` isn't free). Returns ``(ref_pt, ref_base_pt, ref_xyz, ref_base_xyz)``."""
-        rs = self.rs
-        rsb = self.rsb
-        iu = self.iu
-        ir_map = self.ir_map
-        ref_pt = gtsam.Point3(*rs[iu[ref_idx], :3])
-        ref_base_pt = (gtsam.Point3(*rsb[ir_map[ref_sat], :3])
-                       if ref_sat in ir_map else ref_pt)
-        ref_xyz = np.asarray(rs[iu[ref_idx], :3], dtype=float)
-        ref_base_xyz = (np.asarray(rsb[ir_map[ref_sat], :3], dtype=float)
-                        if ref_sat in ir_map else ref_xyz)
-        return ref_pt, ref_base_pt, ref_xyz, ref_base_xyz
+    def _sat_pts(self, idx, sat_id):
+        pt = gtsam.Point3(*self.rs[self.iu[idx], :3])
+        base_pt = (gtsam.Point3(*self.rsb[self.ir_map[sat_id], :3])
+                   if sat_id in self.ir_map else pt)
+        return pt, base_pt
 
-    def _build_pr_for_pair(self, ref_idx, j_idx, ref_sat, j_sat, f,
-                            sat_pts):
-        """Build the DDPR factor for one (ref, j, f) and return the 4-tuple of PR observations on success, ``None`` when any of the four PR values is zero (skip)."""
-        obs = self.obs
-        obsb = self.obsb
-        iu = self.iu
-        ir_map = self.ir_map
+    def _pair_sigma(self, code, el_ref_rad, el_j_rad):
+        el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
+        return _tc_prefit.varerr_dd_sigma(self.tc, code, el_pair, self.dt_s)
+
+    def _persistent_key(self, sat_id, freq):
+        """Return arc key for (sat_id, freq); chain per-epoch random walk in Phase 2."""
+        tc = self.tc
+        sf = (int(sat_id), int(freq))
+        if sf in self.new_amb:
+            return self.new_amb[sf]
+        st = tc._sat_states.get(sat_id, freq)
+        rw = float(tc.cfg.amb_rw_sigma)
+        if (tc.phase == 2 and rw > 0.0 and st.amb_key is not None
+                and self.existing_estimate is not None
+                and self.existing_estimate.exists(st.amb_key)):
+            k_old = st.amb_key
+            st.amb_gen += 1
+            k_new = tc.N(sat_id, freq, st.amb_gen)
+            self.values.insert(k_new, self.existing_estimate.atDouble(k_old))
+            self.graph.add(gtsam.BetweenFactorDouble(
+                k_old, k_new, 0.0, tc._noise1(rw)))
+            self.new_amb[sf] = k_new
+            return k_new
+        if st.amb_key is not None:
+            if (self.existing_estimate is None
+                    or self.existing_estimate.exists(st.amb_key)):
+                return st.amb_key
+            st.amb_key = None
+            st.amb_gen += 1
+        return tc.N(sat_id, freq, st.amb_gen)
+
+    def _build_pr_for_pair(self, ref_idx, j_idx, ref_sat, j_sat, f, sat_pts):
+        obs, obsb, iu, ir_map = self.obs, self.obsb, self.iu, self.ir_map
         pr_ref_r = obs.P[iu[ref_idx], f]
         pr_ref_b = obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0
         pr_j_r = obs.P[iu[j_idx], f]
         pr_j_b = obsb.P[ir_map[j_sat], f] if j_sat in ir_map else 0
         if pr_ref_r == 0 or pr_ref_b == 0 or pr_j_r == 0 or pr_j_b == 0:
             return None
-        _add_ddpr_factor(
-            self.tc, self.graph, self.key_pose, self.lever,
-            pr_obs=(pr_ref_r, pr_ref_b, pr_j_r, pr_j_b),
-            sat_pts=sat_pts,
-            pair_id=(ref_sat, j_sat, f),
-            pair_sigma_base=self.pair_sigma(
-                1, self.el[ref_idx], self.el[j_idx]),
-            )
+        sigma = self._pair_sigma(1, self.el[ref_idx], self.el[j_idx])
+        pr_noise = _dd_noise(self.tc, sigma)
+        ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
+        self.tc._last_ddpr_sat_tags.append(
+            (self.graph.size(), ref_sat, j_sat, f))
+        self.graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
+            self.key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
+            ref_pt, j_pt, ref_base_pt, j_base_pt,
+            self.tc.base_pt, self.lever, self.tc.ecef_T_nav, pr_noise))
         return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
 
     def _build_cp_for_pair(self, sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
-                            lams, sat_pts, sat_xyz, pr_obs,
-                            amb_dict, new_amb, dd_epoch):
-        """Build the DDCP factor for one (ref, j, f) — handles N init, σ computation, and the actual ``_add_ddcp_factor`` call. Returns ``1`` on success, ``0`` when skipped (GLO PR-only / missing λ / zero CP / CP-hold)."""
-        tc = self.tc
-        if sys_id == uGNSS.GLO:
-            return 0
-        if f >= len(lams) or lams[f] <= 0:
+                           lams, sat_pts, pr_obs):
+        if sys_id == uGNSS.GLO or f >= len(lams) or lams[f] <= 0:
             return 0
         lam = lams[f]
-        obs = self.obs
-        obsb = self.obsb
-        iu = self.iu
-        ir_map = self.ir_map
+        obs, obsb, iu, ir_map = self.obs, self.obsb, self.iu, self.ir_map
         cp_ref_r = obs.L[iu[ref_idx], f] * lam
-        cp_ref_b = (obsb.L[ir_map[ref_sat], f] * lam
-                    if ref_sat in ir_map else 0)
+        cp_ref_b = obsb.L[ir_map[ref_sat], f] * lam if ref_sat in ir_map else 0
         cp_j_r = obs.L[iu[j_idx], f] * lam
-        cp_j_b = (obsb.L[ir_map[j_sat], f] * lam
-                  if j_sat in ir_map else 0)
+        cp_j_b = obsb.L[ir_map[j_sat], f] * lam if j_sat in ir_map else 0
         if cp_ref_r == 0 or cp_ref_b == 0 or cp_j_r == 0 or cp_j_b == 0:
             return 0
+
+        tc = self.tc
         tc._ar_cp_visible_sf.add((int(ref_sat), int(f)))
         tc._ar_cp_visible_sf.add((int(j_sat), int(f)))
 
-        ref_state = tc._sat_states.get(ref_sat, f)
-        j_state = tc._sat_states.get(j_sat, f)
-        # amb_gen is redundant for uniqueness (dd_epoch already isolates
-        # epochs and it resets to 0 every epoch) but it is part of the
-        # key VALUE: slip resets bump it before this build, and removing
-        # it would renumber those keys and change ISAM2's elimination
-        # order. Kept for key stability.
-        key_n_ref = tc.N(ref_sat, f, dd_epoch * 100 + ref_state.amb_gen)
-        key_n_j = tc.N(j_sat, f, dd_epoch * 100 + j_state.amb_gen)
-        # N初期化: hybrid (continuing prior / release-seed / fresh)
+        key_n_ref = self._persistent_key(ref_sat, f)
+        key_n_j = self._persistent_key(j_sat, f)
         pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
         _init_dd_ambiguity_priors(
-            tc, self.graph, self.values, amb_dict, new_amb,
-            self.prev_amb_values, f, lam,
+            tc, self.graph, self.values, self.amb_dict, self.new_amb,
+            self.existing_estimate, f, lam,
             ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
              (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
-        # Read held state AFTER seeding: the gauge gate above may have
-        # just released a stale hold, and that must be visible here.
-        ref_held_value = ref_state.held_value
-        j_held_value = j_state.held_value
 
-        if self.skip_cp:
-            return 0
-        cp_sigma = self.pair_sigma(0, self.el[ref_idx], self.el[j_idx])
-        cp_noise = tc._noise1(cp_sigma)
-        dd_obs_cp = (cp_ref_r - cp_j_r) - (cp_ref_b - cp_j_b)
-        return _add_ddcp_factor(
-            tc, self.graph, self.key_pose, cp_noise, dd_obs_cp, lam,
-            sat_pts=sat_pts, sat_xyz=sat_xyz,
-            cp_obs=(cp_ref_r, cp_ref_b, cp_j_r, cp_j_b),
-            lever=self.lever, lever_arr=self.lever_arr, rb=self.rb,
-            keys_n=(key_n_ref, key_n_j),
-            held=(ref_held_value, j_held_value),
-            pair_id=(ref_sat, j_sat, f))
-
-    def _compute_pair_geometry(self, j_idx, j_sat):
-        """j-sat SD geometry: rover/base ``Point3`` + xyz arrays. Returns ``(j_pt, j_base_pt, j_xyz, j_base_xyz)``."""
-        rs = self.rs
-        rsb = self.rsb
-        iu = self.iu
-        ir_map = self.ir_map
-        j_pt = gtsam.Point3(*rs[iu[j_idx], :3])
-        j_base_pt = (gtsam.Point3(*rsb[ir_map[j_sat], :3])
-                     if j_sat in ir_map else j_pt)
-        j_xyz = np.asarray(rs[iu[j_idx], :3], dtype=float)
-        j_base_xyz = (np.asarray(rsb[ir_map[j_sat], :3], dtype=float)
-                      if j_sat in ir_map else j_xyz)
-        return j_pt, j_base_pt, j_xyz, j_base_xyz
-
-    def pair_sigma(self, code, el_ref_rad, el_j_rad):
-        """DD σ for the (code, freq, ref/j) pair — RTKLIB-demo5 ``varerr`` when use_varerr, else the flat sigma_pr/sigma_cp base × √2."""
-        if self.use_varerr:
-            el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
-            return _tc_prefit.varerr_dd_sigma(
-                self.tc, code, el_pair, self.dt_s)
-        sigma_base = self.tc.cfg.sigma_pr if code else self.tc.cfg.sigma_cp
-        return sigma_base * np.sqrt(2)
+        sigma = self._pair_sigma(0, self.el[ref_idx], self.el[j_idx])
+        cp_noise = _dd_noise(tc, sigma)
+        ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
+        self.graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
+            self.key_pose, key_n_ref, key_n_j,
+            cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
+            ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
+            self.lever, tc.ecef_T_nav, cp_noise))
+        return 1
 
     def run(self):
-        """Build all DD factors: one constellation at a time, one
-        (ref, target) pair per remaining satellite, PR + CP per band.
-        Returns the factor count."""
         nv = 0
         sat_sys_for_obs = SAT_SYS_ARR[
             np.asarray(self.sat[:self.ns], dtype=np.int32)]
@@ -353,63 +162,38 @@ class DdFactorBuilder:
             idx_sys = np.where(sat_sys_for_obs == int(sys_id))[0].tolist()
             if len(idx_sys) < 2:
                 continue
-            nv += self._build_system(sys_id, idx_sys)
+            ref_idx, ref_sat = self._select_ref_for_system(sys_id, idx_sys)
+            lams = get_wavelengths(self.tc, self.obs_sd, ref_sat)
+            ref_pt, ref_base_pt = self._sat_pts(ref_idx, ref_sat)
+            for j_idx in idx_sys:
+                if j_idx == ref_idx:
+                    continue
+                j_sat = self.sat[j_idx]
+                if SAT_SYS_ARR[j_sat] == uGNSS.BDS and _is_bds_geo(j_sat):
+                    continue
+                j_pt, j_base_pt = self._sat_pts(j_idx, j_sat)
+                sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
+                for f in range(self.nf):
+                    pr_obs = self._build_pr_for_pair(
+                        ref_idx, j_idx, ref_sat, j_sat, f, sat_pts)
+                    if pr_obs is None:
+                        continue
+                    nv += 1
+                    nv += self._build_cp_for_pair(
+                        sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
+                        lams, sat_pts, pr_obs)
         self.amb_dict.update(self.new_amb)
         self.nv = nv
         return nv
 
-    def _build_system(self, sys_id, idx_sys):
-        """All DD pairs of one constellation against its reference sat."""
-        tc = self.tc
-        ref_idx, ref_sat = self._select_ref_for_system(
-            sys_id, idx_sys, self.sat, self.el)
-        lams = get_wavelengths(tc, self.obs_sd, ref_sat)
-        ref_geom = self._compute_ref_geometry(ref_idx, ref_sat)
-        skip_bds_geo = bool(tc.cfg.exclude_bds_geo)
-        nv = 0
-        for j_idx in idx_sys:
-            if j_idx == ref_idx:
-                continue
-            j_sat = self.sat[j_idx]
-            if (skip_bds_geo
-                    and SAT_SYS_ARR[j_sat] == uGNSS.BDS
-                    and _is_bds_geo(j_sat)):
-                continue
-            nv += self._build_pair(sys_id, ref_idx, ref_sat, ref_geom,
-                                   lams, j_idx, j_sat)
-        return nv
-
-    def _build_pair(self, sys_id, ref_idx, ref_sat, ref_geom, lams,
-                    j_idx, j_sat):
-        """PR + CP factors for one (ref, j) pair across all bands."""
-        ref_pt, ref_base_pt, ref_xyz, ref_base_xyz = ref_geom
-        (j_pt, j_base_pt, j_xyz,
-         j_base_xyz) = self._compute_pair_geometry(j_idx, j_sat)
-        sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
-        sat_xyz = (ref_xyz, j_xyz, ref_base_xyz, j_base_xyz)
-        nv = 0
-        for f in range(self.nf):
-            # PR factor: added even without CP (no L signal present)
-            pr_obs = self._build_pr_for_pair(
-                ref_idx, j_idx, ref_sat, j_sat, f, sat_pts)
-            if pr_obs is None:
-                continue
-            nv += 1
-            nv += self._build_cp_for_pair(
-                sys_id, ref_idx, j_idx, ref_sat, j_sat, f, lams,
-                sat_pts, sat_xyz, pr_obs,
-                self.amb_dict, self.new_amb, self.dd_epoch)
-        return nv
-
 
 def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
-                          rs, rsb, sat, el, iu, ir_map,
-                          key_pose, lever, amb_dict,
-                          dd_epoch=0, prev_amb_values=None,
-                          skip_cp=False):
-    """Build DD pseudorange + carrier phase factors (Arm version)."""
+                     rs, rsb, sat, el, iu, ir_map,
+                     key_pose, lever, amb_dict,
+                     existing_estimate=None):
+    """Build pure C++ DDPR + DDCP factors on persistent ambiguity arc keys."""
     builder = DdFactorBuilder(
         tc, graph, values, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
         ir_map, key_pose, lever, amb_dict,
-        dd_epoch, prev_amb_values, skip_cp)
+        existing_estimate=existing_estimate)
     return builder.run()
