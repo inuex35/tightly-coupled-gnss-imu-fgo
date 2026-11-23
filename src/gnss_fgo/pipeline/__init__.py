@@ -1,5 +1,7 @@
 """Single-phase tightly-coupled epoch pipeline: bootstrap/IMU prediction -> slip check -> solve -> AR -> report."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import gtsam
 from cssrlib.gnss import time2gpst
@@ -7,13 +9,16 @@ from cssrlib.gnss import time2gpst
 from .. import ar as _tc_ar
 from ..factors import doppler_sd as _tc_doppler_sd
 from ..factors import factors as _tc_factors
-from ..factors import imu_preintegration as _tc_pim
 from ..factors import nhc as _tc_nhc
 from ..factors import zupt as _tc_zupt
 from ..integrity import recovery as _tc_recovery
 from ..integrity import slip_detect as _tc_slip_detect
-from ..state.epoch_data import EpochData
-from ..utils import euler_to_R_body2enu, heading_from_pose, sensor_to_body_flu
+from ..utils import (
+    build_pim as _utils_build_pim,
+    euler_to_R_body2enu,
+    heading_from_pose,
+    sensor_to_body_flu,
+)
 from . import update_smoother as _tc_isam
 
 
@@ -32,7 +37,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
                       init_ecef, R_enu2ecef, info):
     """Initialize the single smoother at the first valid GNSS epoch."""
     _, tow_obs = time2gpst(obs.t)
-    tc._collect_imu_samples(target_tow=tow_obs)
+    _tc_recovery._outage_drain_imu(tc, tow_obs)
     bias_acc, bias_gyro = tc._estimate_stationary_bias()
     bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
     tc.tc_bias = bias0
@@ -101,10 +106,15 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
             tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
             init_ecef, R_enu2ecef, info)
 
-    epoch = EpochData(
+    epoch = SimpleNamespace(
         obs=obs, obsb=obsb, rs=rs, vs=vs, rsb=rsb,
         sat=sat, el=el, iu=iu, obs_sd=obs_sd, ir_map=ir_map,
-        info=info, ns=ns, init_ecef=init_ecef, R_enu2ecef=R_enu2ecef)
+        info=info, ns=ns, init_ecef=init_ecef, R_enu2ecef=R_enu2ecef,
+        key_idx=None, tow=None, imu_idx_prev=None, pim=None, n_imu=0,
+        gyro_mean=None, graph=None, values=None, estimate=None,
+        pose_p=None, vel_prev=None, bias_prev=None, pred_nav=None,
+        pred_ecef=None, nv=0, pose_tc=None, ecef_tc=None,
+        nb=0, xa=None, sol=None, tag=None)
 
     # 1. IMU preintegration & state prediction
     tc.tc_epoch += 1
@@ -113,8 +123,8 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     epoch.imu_idx_prev = tc.imu_idx
     _, tow_obs = time2gpst(obs.t)
     epoch.tow = tow_obs
-    epoch.pim, epoch.n_imu, epoch.gyro_mean = _tc_pim.build_pim(
-        tc, tc.tc_bias, target_tow=tow_obs)
+    epoch.pim, epoch.n_imu, epoch.gyro_mean, tc.imu_idx = _utils_build_pim(
+        tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
     info['n_imu'] = epoch.n_imu
     if epoch.n_imu == 0:
         return _tc_recovery.advance_epoch_and_pack(
@@ -138,8 +148,10 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     epoch.values.insert(tc.Xpose(epoch.key_idx), epoch.pred_nav.pose())
     epoch.values.insert(tc.Vel(epoch.key_idx), epoch.pred_nav.velocity())
     epoch.values.insert(tc.Bias(epoch.key_idx), epoch.bias_prev)
-    _tc_pim.add_imu_chain(tc, epoch.graph, epoch.values, epoch.key_idx,
-                          epoch.pim, epoch.pose_p, epoch.vel_prev, info)
+    epoch.graph.add(gtsam.CombinedImuFactor(
+        tc.Xpose(epoch.key_idx - 1), tc.Vel(epoch.key_idx - 1),
+        tc.Xpose(epoch.key_idx), tc.Vel(epoch.key_idx),
+        tc.Bias(epoch.key_idx - 1), tc.Bias(epoch.key_idx), epoch.pim))
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
@@ -161,7 +173,9 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
                               gyro_mean_rh=epoch.gyro_mean):
         info['nhc'] = True
-    _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
+    _tc_zupt.add_zupt_factors(
+        tc, epoch.graph, epoch.key_idx,
+        int(epoch.imu_idx_prev), int(epoch.n_imu), info)
 
     # 4. Fixed-lag smoother update
     early = _tc_isam._solve_isam2(tc, epoch)

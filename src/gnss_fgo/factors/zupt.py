@@ -60,13 +60,3 @@ def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info):
         gtsam.noiseModel.Diagonal.Sigmas(sigmas_bias)))
     info['zaru'] = True
     return True
-
-
-def add_zupt_factors_for_stage(tc, epoch):
-    """Phase-2 Stage C1 wrapper around add_zupt_factors."""
-    return add_zupt_factors(
-        tc, epoch.graph, epoch.key_idx,
-        int(epoch.imu_idx_prev if epoch.imu_idx_prev is not None
-            else tc.imu_idx),
-        int(epoch.n_imu),
-        epoch.info)

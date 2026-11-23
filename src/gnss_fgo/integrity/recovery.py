@@ -7,13 +7,12 @@ from cssrlib.gnss import time2gpst
 
 from ..factors.nhc import add_nhc_factor as _add_nhc_factor
 from ..factors.zupt import add_zupt_factors as _add_zupt_factor_inplace
-from ..factors import imu_preintegration as _tc_pim
 from ..pipeline import update_smoother as _tc_isam
+from ..utils import build_pim as _utils_build_pim
 
 
 def _make_imu_only_diagnostics(tc):
     return {
-        'phase': 2,
         'tc_epoch': tc.tc_epoch,
         'imu_only': True,
         'gnss_skip': True,
@@ -65,7 +64,8 @@ def process_imu_only(tc, obs):
     _outage_tick_sat_outc(tc, info)
 
     imu_idx_prev = tc.imu_idx
-    pim, n_imu, gyro_mean = _tc_pim.build_pim(tc, tc.tc_bias, target_tow=tow_obs)
+    pim, n_imu, gyro_mean, tc.imu_idx = _utils_build_pim(
+        tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
     if n_imu == 0:
         return advance_epoch_and_pack(tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
     info['n_imu'] = n_imu
@@ -83,7 +83,10 @@ def process_imu_only(tc, obs):
     values.insert(tc.Xpose(key_idx), pred.pose())
     values.insert(tc.Vel(key_idx), pred.velocity())
     values.insert(tc.Bias(key_idx), bias_prev)
-    _tc_pim.add_imu_chain(tc, graph, values, key_idx, pim, pose_p, vel_prev, info)
+    graph.add(gtsam.CombinedImuFactor(
+        tc.Xpose(key_idx - 1), tc.Vel(key_idx - 1),
+        tc.Xpose(key_idx), tc.Vel(key_idx),
+        tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
 
     if _add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=gyro_mean):
         info['nhc'] = True

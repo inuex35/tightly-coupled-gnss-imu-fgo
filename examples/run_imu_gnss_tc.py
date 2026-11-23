@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Two-phase IMU/GNSS tight coupling example.
+"""IMU/GNSS tight coupling example.
 
-Phase 1: GNSS-only Pose3 RTK (stationary, DDFactorArm lever=0)
-Phase 2: CombinedImuFactor + DDFactorArm (moving, progressive lever arm)
+CombinedImuFactor + DDFactorArm + SD Doppler + NHC + ZUPT.
 
 Usage:
   python run_imu_gnss_tc.py <rover.obs> <base.obs> <nav_file> <imu.csv> <reference.csv>
@@ -149,7 +148,7 @@ def main():
             print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
                   f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
                   f"3D={err_3d:.4f}m {reason}")
-            results.append({'ne': ne, 'tag': tag, 'phase': tc.phase,
+            results.append({'ne': ne, 'tag': tag,
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'sol_xyz': np.array(sol, copy=True),
@@ -177,7 +176,7 @@ def main():
             print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
                   f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
                   f"3D={err_3d:.4f}m SKIP_FEWSATS(ns={ns})")
-            results.append({'ne': ne, 'tag': tag, 'phase': tc.phase,
+            results.append({'ne': ne, 'tag': tag,
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'roll_deg': np.nan, 'pitch_deg': np.nan,
@@ -209,7 +208,7 @@ def main():
         err_3d = np.linalg.norm(sol - ref_ecef)
         rec = {
             'ep': ne, 'tag': tag, 'nb': nb, 'err': err_3d,
-            'enu': enu_err, 'phase': info['phase'],
+            'enu': enu_err,
             'sol_xyz': np.array(sol, copy=True),
             'pred_heading_deg': info.get('pred_heading_deg', np.nan),
             'post_heading_deg': info.get('post_heading_deg', np.nan),
@@ -222,7 +221,6 @@ def main():
         results.append(rec)
 
         vel_mag = np.linalg.norm(ref_vel[:2])
-        phase_tag = f"P{info['phase']}"
         extra = ""
         if 'prev_pose_missing' in info:
             extra += f" PREV_MISSING(k={info['prev_pose_missing']})"
@@ -240,7 +238,7 @@ def main():
             if 'lambda_correction' in info:
                 extra += f" λcorr={info['lambda_correction']:.3f}"
 
-        print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
+        print(f"Ep {ne:3d}: {tag} E={enu_err[0]:+.4f} "
               f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
               f"3D={err_3d:.4f}m nb={nb} vel={vel_mag:.2f}{extra}")
 
@@ -256,25 +254,19 @@ def main():
     if not results:
         return
 
-    p1 = [r for r in results if r['phase'] == 1]
-    p2 = [r for r in results if r['phase'] == 2]
-
-    for label, subset in [("Phase 1", p1), ("Phase 2", p2), ("All", results)]:
-        if not subset:
-            continue
-        fix = [r for r in subset if r['tag'] == 'FIX']
-        flt = [r for r in subset if r['tag'] == 'FLT']
-        enu_all = np.array([r['enu'] for r in subset])
-        err_all = np.array([r['err'] for r in subset])
-        print(f"\n{label} ({len(subset)} ep, {len(fix)} fix, {len(flt)} flt):")
-        print(f"  3D RMS: {np.sqrt(np.mean(err_all**2)):.4f}m, "
-              f"median: {np.median(err_all):.4f}m")
-        print(f"  E RMS:  {np.sqrt(np.mean(enu_all[:,0]**2)):.4f}m")
-        print(f"  N RMS:  {np.sqrt(np.mean(enu_all[:,1]**2)):.4f}m")
-        print(f"  U RMS:  {np.sqrt(np.mean(enu_all[:,2]**2)):.4f}m")
-        if fix:
-            e3f = np.array([r['err'] for r in fix])
-            print(f"  Fix 3D RMS: {np.sqrt(np.mean(e3f**2)):.4f}m")
+    fix = [r for r in results if r['tag'] == 'FIX']
+    flt = [r for r in results if r['tag'] == 'FLT']
+    enu_all = np.array([r['enu'] for r in results])
+    err_all = np.array([r['err'] for r in results])
+    print(f"\nAll ({len(results)} ep, {len(fix)} fix, {len(flt)} flt):")
+    print(f"  3D RMS: {np.sqrt(np.mean(err_all**2)):.4f}m, "
+          f"median: {np.median(err_all):.4f}m")
+    print(f"  E RMS:  {np.sqrt(np.mean(enu_all[:,0]**2)):.4f}m")
+    print(f"  N RMS:  {np.sqrt(np.mean(enu_all[:,1]**2)):.4f}m")
+    print(f"  U RMS:  {np.sqrt(np.mean(enu_all[:,2]**2)):.4f}m")
+    if fix:
+        e3f = np.array([r['err'] for r in fix])
+        print(f"  Fix 3D RMS: {np.sqrt(np.mean(e3f**2)):.4f}m")
 
     savefile = os.environ.get('SAVE_NPZ')
     out = {}
@@ -288,7 +280,6 @@ def main():
             'smode': np.array([4 if r['tag'] == 'FIX' else
                                5 if r['tag'] == 'FLT' else 0
                                for r in results]),
-            'phase': np.array([r['phase'] for r in results]),
             'nb': np.array([r.get('nb', 0) for r in results]),
             'sol_xyz': np.array([r.get('sol_xyz', np.full(3, np.nan))
                                  for r in results]),
@@ -303,10 +294,9 @@ def main():
         all_keys = set()
         for r in results:
             all_keys.update(r.keys())
-        skip = set(out.keys()) | {'ep', 'ne', 'tag', 'err', 'phase',
+        skip = set(out.keys()) | {'ep', 'ne', 'tag', 'err',
                                   'enu', 'sol_xyz', 'truth_xyz', 'ref_vel',
-                                  'smode', 'main_ddpr_per_sat',
-                                  'main_ddpr_sat_worst', 'error'}
+                                  'smode', 'error'}
         for k in sorted(all_keys - skip):
             samples = [r[k] for r in results if k in r and r[k] is not None]
             if not samples:
