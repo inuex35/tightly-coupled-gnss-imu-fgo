@@ -2,7 +2,6 @@
 import math
 import types
 
-import numpy as np
 import gtsam
 import pytest
 
