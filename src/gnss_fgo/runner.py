@@ -89,11 +89,6 @@ class ImuGnssTc:
 
         self.cfg = cfg if cfg is not None else TcConfig.from_env()
         self._apply_nav_config()
-        self.accel_noise = self.cfg.accel_noise
-        self.gyro_noise = self.cfg.gyro_noise
-        self.accel_bias_sigma = self.cfg.accel_bias_sigma
-        self.gyro_bias_sigma = self.cfg.gyro_bias_sigma
-
         self._init_runtime_state()
 
     def _init_base_frame(self):
@@ -112,7 +107,7 @@ class ImuGnssTc:
         self.nav.armode = 1
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
-        self.nav.thresar = self.cfg.ar_ratio
+        self.nav.thresar = 3.0
         self.nav.minfixsats = 4
         self.nav.sat_band_plan = True
 
@@ -196,12 +191,7 @@ class ImuGnssTc:
         self._assign_view(self._amb_gen_view, value)
 
     def _make_imu_params(self):
-        return _utils_make_imu_params(
-            accel_noise=self.accel_noise,
-            gyro_noise=self.gyro_noise,
-            accel_bias_sigma=self.accel_bias_sigma,
-            gyro_bias_sigma=self.gyro_bias_sigma,
-            integ_cov=1e-3)
+        return _utils_make_imu_params()
 
     def _antenna_ecef(self, pose, ecef_body):
         lever_arr = np.array(self.lever_arm_tc)

@@ -15,7 +15,7 @@ _INIT_WARMUP_EPOCHS = 8
 
 
 def _run_lambda_ar(tc, epoch):
-    """Stage C4 — publish marginals, check GDOP, and run continuous LAMBDA AR."""
+    """Stage C4 — publish marginals and run continuous LAMBDA AR."""
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None
@@ -28,13 +28,7 @@ def _run_lambda_ar(tc, epoch):
     _tc_ar.nav_bridge.publish_marginals(
         tc, epoch.estimate, tc.Xpose(epoch.key_idx), amb_snapshot)
 
-    ar_gdop = float(tc.cfg.ar_gdop_max)
-    gdop_now = float(info.get('gdop', 0.0) or 0.0)
-    if ar_gdop > 0.0 and gdop_now > ar_gdop:
-        info['ar_gdop_skip'] = True
-        tc.ar_diag.outcome = 'gdop_gate'
-    else:
-        epoch.nb, epoch.xa = _tc_ar.run_ar(tc, epoch.sat, epoch.el, amb_snapshot)
+    epoch.nb, epoch.xa = _tc_ar.run_ar(tc, epoch.sat, epoch.el, amb_snapshot)
 
     if tc.ar_diag.exception:
         info['ar_exception'] = tc.ar_diag.exception

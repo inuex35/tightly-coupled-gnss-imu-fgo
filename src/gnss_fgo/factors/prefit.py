@@ -16,10 +16,9 @@ def varerr_dd_sigma(tc, code, el_rad, dt_s):
     cfg = tc.cfg
     fact = cfg.err_eratio_pr if code else 1.0
     a = fact * cfg.err_a
-    b = fact * cfg.err_b
     d = _CLIGHT * _SCLKSTAB * dt_s
     sinel = max(np.sin(el_rad), 0.05)
-    var_sd = 2.0 * (a * a + b * b / (sinel * sinel)) + d * d
+    var_sd = 2.0 * (a * a * (1.0 + 1.0 / (sinel * sinel))) + d * d
     return float(np.sqrt(2.0 * var_sd))
 
 

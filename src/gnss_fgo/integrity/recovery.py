@@ -133,8 +133,7 @@ def process_imu_only(tc, obs):
     values.insert(tc.Bias(key_idx), bias_prev)
     _tc_pim.add_imu_chain(tc, graph, values, key_idx, pim, pose_p, vel_prev, info)
 
-    speed_for_nhc = float(np.linalg.norm(np.asarray(vel_prev, dtype=float)[:2]))
-    if _add_nhc_factor(tc, graph, key_idx, speed_for_nhc, gyro_mean_rh=gyro_mean):
+    if _add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=gyro_mean):
         info['nhc'] = True
     _add_zupt_factor_inplace(tc, graph, key_idx, imu_idx_prev, n_imu, info)
 
