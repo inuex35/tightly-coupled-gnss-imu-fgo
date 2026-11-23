@@ -89,7 +89,6 @@ class ImuGnssTc:
 
         self.cfg = cfg if cfg is not None else TcConfig.from_env()
         self._apply_nav_config()
-        self.body_rot_std = self.cfg.body_rot_std
         self.accel_noise = self.cfg.accel_noise
         self.gyro_noise = self.cfg.gyro_noise
         self.accel_bias_sigma = self.cfg.accel_bias_sigma
@@ -113,8 +112,8 @@ class ImuGnssTc:
         self.nav.armode = self.cfg.ar_mode
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
-        self.nav.thresar = self.cfg.ar_thresar_max
-        self.nav.minfixsats = self.cfg.ar_minfixsats
+        self.nav.thresar = self.cfg.ar_ratio
+        self.nav.minfixsats = 4
         self.nav.sat_band_plan = True
 
     def _init_runtime_state(self):
@@ -124,9 +123,7 @@ class ImuGnssTc:
         self.tc_epoch = 0
 
         self.phase1_t = 0.0
-        self.isam = self._make_isam2(self.cfg.fls_lag,
-                                     self.cfg.isam2_relinearize_skip,
-                                     self.cfg.isam2_relinearize_threshold)
+        self.isam = self._make_isam2(self.cfg.fls_lag)
         self.amb_keys = {}
         self._isam_p1_inserted = set()
 
@@ -205,7 +202,7 @@ class ImuGnssTc:
             gyro_noise=self.gyro_noise,
             accel_bias_sigma=self.accel_bias_sigma,
             gyro_bias_sigma=self.gyro_bias_sigma,
-            integ_cov=self.cfg.imu_integ_cov)
+            integ_cov=1e-3)
 
     def _antenna_ecef(self, pose, ecef_body):
         lever_arr = np.array(self.lever_arm_tc)

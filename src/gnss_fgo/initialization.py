@@ -10,6 +10,10 @@ from . import ar as _tc_ar
 from .integrity import recovery as _tc_recovery
 from .factors import factors as _tc_factors
 
+_INIT_VEL_THRESH = 1.0       # motion detection for Phase 1 -> 2 [m/s]
+_INIT_N_COLLECT = 5          # Phase 1 FIX epochs collected before Phase 2
+_INIT_HEADING_STD_DEG = 1.0  # initial heading uncertainty [deg]
+
 
 def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                    obs_sd, ir_map, info, init_ecef, R):
@@ -29,9 +33,7 @@ def run_init_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
 def _p1_fresh_restart(tc):
     """Rebuild Phase-1 smoother from scratch after a numerical failure."""
-    tc.isam = tc._make_isam2(tc.cfg.fls_lag,
-                             tc.cfg.isam2_relinearize_skip,
-                             tc.cfg.isam2_relinearize_threshold)
+    tc.isam = tc._make_isam2(tc.cfg.fls_lag)
     tc.amb_keys.clear()
     tc._isam_p1_inserted = set()
     tc._held_dd_pairs.clear()
@@ -180,7 +182,7 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
             est_vel_enu = R.T @ (s1 - s0) / dt
 
     vel_mag = np.linalg.norm(est_vel_enu[:2])
-    if not tc.collecting and vel_mag > tc.cfg.vel_thresh and tc.nav.smode == 4:
+    if not tc.collecting and vel_mag > _INIT_VEL_THRESH and tc.nav.smode == 4:
         tc.collecting = True
 
     if tc.collecting and tc.nav.smode == 4:
@@ -197,12 +199,12 @@ def _p1_collect_and_maybe_transition(tc, obs, obsb, obs_sd, rs,
         })
         info['n_collected'] = len(tc.collected_fixes)
 
-        if len(tc.collected_fixes) > tc.cfg.n_collect:
+        if len(tc.collected_fixes) > _INIT_N_COLLECT:
             tc.collected_fixes.pop(0)
         disp = (np.linalg.norm(tc.collected_fixes[-1]['ecef']
                                - tc.collected_fixes[0]['ecef'])
                 if len(tc.collected_fixes) >= 2 else 0.0)
-        if len(tc.collected_fixes) >= tc.cfg.n_collect and disp > 2.0:
+        if len(tc.collected_fixes) >= _INIT_N_COLLECT and disp > 2.0:
             p, r, h, ba0, bg0 = transition_to_tc(tc, tc.collected_fixes)
             info['transition'] = True
             info['pitch'] = np.degrees(p)
@@ -306,7 +308,7 @@ def transition_to_tc(tc, collected_fixes):
         acc_tilt[0], np.sqrt(acc_tilt[1]**2 + acc_tilt[2]**2))
     roll_rad = np.arctan2(acc_tilt[1], acc_tilt[2])
 
-    body_rot_std_rad = tc.body_rot_std * np.pi / 180
+    body_rot_std_rad = np.deg2rad(_INIT_HEADING_STD_DEG)
     heading_rad, heading_series = _init_tc_heading_series(tc, collected_fixes)
 
     tc.imu_params = tc._make_imu_params()
@@ -314,9 +316,7 @@ def transition_to_tc(tc, collected_fixes):
     lever_arr = tc.lever_arm
 
     tc.fls_lag = tc.cfg.fls_lag
-    tc.isam2 = tc._make_isam2(tc.fls_lag,
-                              tc.cfg.isam2_relinearize_skip,
-                              tc.cfg.isam2_relinearize_threshold)
+    tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.tc_time = 0.0
     tc._held_dd_pairs.clear()
 
@@ -358,9 +358,7 @@ def transition_to_tc(tc, collected_fixes):
     tc.tc_time = float(n - 1) * dt
     if tc.fls_lag < float(n) * dt:
         tc.fls_lag = float(n) * dt + dt
-        tc.isam2 = tc._make_isam2(tc.fls_lag,
-                                  tc.cfg.isam2_relinearize_skip,
-                                  tc.cfg.isam2_relinearize_threshold)
+        tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.isam2.update(g, v, ts)
 
     last = collected_fixes[-1]

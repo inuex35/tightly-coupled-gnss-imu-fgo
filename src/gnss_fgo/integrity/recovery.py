@@ -26,9 +26,7 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed):
     pose_seed = gtsam.Pose3(rot_seed, gtsam.Point3(*enu_seed))
     vel_seed = np.zeros(3)
 
-    tc.isam2 = tc._make_isam2(tc.fls_lag,
-                              tc.cfg.isam2_relinearize_skip,
-                              tc.cfg.isam2_relinearize_threshold)
+    tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.tc_time = 0.0
     tc.tc_epoch = 0
     tc._held_dd_pairs.clear()
@@ -45,7 +43,7 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed):
     v.insert(tc.Xpose(0), pose_seed)
     v.insert(tc.Vel(0), vel_seed)
     v.insert(tc.Bias(0), bias0)
-    rot_sigma = tc.body_rot_std * np.pi / 180
+    rot_sigma = np.deg2rad(1.0)
     g.addPriorPose3(tc.Xpose(0), pose_seed,
                     gtsam.noiseModel.Diagonal.Sigmas(
                         np.array([rot_sigma, rot_sigma, 0.3, 2.0, 2.0, 3.0])))

@@ -11,12 +11,15 @@ _AR_OUTCOME_CODES = {
 }
 
 
+_INIT_WARMUP_EPOCHS = 8
+
+
 def _run_lambda_ar(tc, epoch):
     """Stage C4 — publish marginals, check GDOP, run LAMBDA, optionally add DD hold."""
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None
-    if epoch.key_idx < tc.cfg.n_collect + 3:
+    if epoch.key_idx < _INIT_WARMUP_EPOCHS:
         return None
 
     info = epoch.info

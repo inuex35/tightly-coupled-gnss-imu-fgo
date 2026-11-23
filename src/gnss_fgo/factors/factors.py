@@ -1,4 +1,4 @@
-"""Pure C++ DD pseudorange / carrier-phase factor builder with persistent arcs and GTSAM Robust noise."""
+"""Pure C++ DD pseudorange / carrier-phase factor builder with persistent arcs and Huber noise."""
 
 import numpy as np
 import gtsam
@@ -11,22 +11,14 @@ from .factors_support import get_wavelengths
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 
 
-def _dd_noise(tc, sigma, code):
-    """Build 1-D Gaussian or GTSAM native Robust noise model for DDPR/DDCP."""
+def _dd_noise(tc, sigma):
+    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
     base = tc._noise1(sigma)
-    kind = str(tc.cfg.dd_robust_kind or 'none').lower()
-    k = float(tc.cfg.ddpr_robust_k if code else tc.cfg.ddcp_robust_k)
-    if kind == 'none' or k <= 0.0:
+    k = float(tc.cfg.huber_k)
+    if k <= 0.0:
         return base
-    if kind == 'huber':
-        est = gtsam.noiseModel.mEstimator.Huber.Create(k)
-    elif kind == 'dcs':
-        est = gtsam.noiseModel.mEstimator.DCS.Create(k)
-    elif kind == 'cauchy':
-        est = gtsam.noiseModel.mEstimator.Cauchy.Create(k)
-    else:
-        raise ValueError(f"Unknown dd_robust_kind: {kind!r}")
-    return gtsam.noiseModel.Robust.Create(est, base)
+    return gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(k), base)
 
 
 class DdFactorBuilder:
@@ -55,7 +47,7 @@ class DdFactorBuilder:
 
         self.nf = tc.nav.nf
         self.ns = len(sat)
-        self.el_min_rad = np.radians(max(1.0, tc.cfg.el_mask_deg))
+        self.el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
         self.dt_s = float(tc._epoch_dt)
 
         tc._last_ddpr_sat_tags = []
@@ -88,7 +80,6 @@ class DdFactorBuilder:
             if (self.existing_estimate is None
                     or self.existing_estimate.exists(st.amb_key)):
                 return st.amb_key
-            # Marginalized out of FLS window: start a fresh arc generation.
             st.amb_key = None
             st.amb_gen += 1
         return tc.N(sat_id, freq, st.amb_gen)
@@ -102,7 +93,7 @@ class DdFactorBuilder:
         if pr_ref_r == 0 or pr_ref_b == 0 or pr_j_r == 0 or pr_j_b == 0:
             return None
         sigma = self._pair_sigma(1, self.el[ref_idx], self.el[j_idx])
-        pr_noise = _dd_noise(self.tc, sigma, code=1)
+        pr_noise = _dd_noise(self.tc, sigma)
         ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
         self.tc._last_ddpr_sat_tags.append(
             (self.graph.size(), ref_sat, j_sat, f))
@@ -139,7 +130,7 @@ class DdFactorBuilder:
              (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
 
         sigma = self._pair_sigma(0, self.el[ref_idx], self.el[j_idx])
-        cp_noise = _dd_noise(tc, sigma, code=0)
+        cp_noise = _dd_noise(tc, sigma)
         ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
         self.graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
             self.key_pose, key_n_ref, key_n_j,

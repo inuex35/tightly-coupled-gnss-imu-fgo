@@ -1,16 +1,13 @@
-"""Optional in-graph DD integer constraints (ar_mode == 3) via pure C++ BetweenFactorDouble."""
+"""In-graph DD integer constraints (ar_mode == 3) via pure C++ BetweenFactorDouble."""
 
-import numpy as np
+import math
 import gtsam
+
+_HOLD_SIGMA = math.sqrt(0.001)  # RTKLIB standard varholdamb = 0.001 cyc²
 
 
 def apply_fix_and_hold(tc, amb_dict, xa):
-    """Add once-per-arc C++ DD integer BetweenFactorDouble(k_tgt, k_ref, z_int) with DCS robust loss.
-
-    In GTSAM, BetweenFactorDouble(k1, k2, measured) constrains (x2 - x1) == measured.
-    So BetweenFactorDouble(k_tgt, k_ref, z_dd) constrains (N_ref - N_tgt) == z_dd,
-    which is the physically integer double-differenced ambiguity.
-    """
+    """Add once-per-arc C++ DD integer BetweenFactorDouble(k_tgt, k_ref, z_int) with Huber."""
     res = getattr(tc, '_last_ar_result', None)
     if res is None or res.dropped or not res.pairs:
         return False
@@ -19,12 +16,11 @@ def apply_fix_and_hold(tc, amb_dict, xa):
     if smoother is None:
         return False
 
-    hold_sigma = float(np.sqrt(max(tc.cfg.varholdamb, 1e-8)))
-    base_noise = tc._noise1(hold_sigma)
-    # Quadratic within ±0.5 cycles (snaps normal float ambiguities cleanly in
-    # one step), Huber-bounded beyond 0.5 cycles (caps wrong-integer conflicts).
+    base_noise = tc._noise1(_HOLD_SIGMA)
+    # Quadratic within ±0.5 cycles (snaps normal float ambiguities in one step),
+    # Huber-bounded beyond 0.5 cycles (caps wrong-integer conflicts).
     hold_noise = gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(0.5 / hold_sigma), base_noise)
+        gtsam.noiseModel.mEstimator.Huber.Create(0.5 / _HOLD_SIGMA), base_noise)
 
     hg = gtsam.NonlinearFactorGraph()
     ts = gtsam.FixedLagSmootherKeyTimestampMap()

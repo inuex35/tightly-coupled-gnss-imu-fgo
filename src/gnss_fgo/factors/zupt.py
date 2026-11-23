@@ -5,6 +5,8 @@ import gtsam
 
 from ..utils import compute_zupt_stats as _utils_compute_zupt_stats
 
+_ZUPT_MIN_SAMPLES = 5  # minimum IMU samples for valid sample std
+
 
 def _zupt_should_fire(tc, n_imu, info, imu_idx_prev):
     """Run IMU stillness check and return stats dict on hit, else None."""
@@ -12,7 +14,7 @@ def _zupt_should_fire(tc, n_imu, info, imu_idx_prev):
     if (float(cfg.zupt_sigma_zero_velocity) <= 0
             and float(cfg.zupt_sigma_zero_rotation) <= 0):
         return None
-    if int(n_imu) < int(cfg.zupt_min_samples):
+    if int(n_imu) < _ZUPT_MIN_SAMPLES:
         return None
     bias_init = tc.tc_bias_init
     if bias_init is not None:

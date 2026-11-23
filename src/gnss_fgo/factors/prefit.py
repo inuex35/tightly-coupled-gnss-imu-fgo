@@ -8,6 +8,7 @@ from ..utils import is_bds_geo as _utils_is_bds_geo
 
 
 _CLIGHT = 299792458.0
+_SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
 
 
 def varerr_dd_sigma(tc, code, el_rad, dt_s):
@@ -16,7 +17,7 @@ def varerr_dd_sigma(tc, code, el_rad, dt_s):
     fact = cfg.err_eratio_pr if code else 1.0
     a = fact * cfg.err_a
     b = fact * cfg.err_b
-    d = _CLIGHT * cfg.err_sclkstab * dt_s
+    d = _CLIGHT * _SCLKSTAB * dt_s
     sinel = max(np.sin(el_rad), 0.05)
     var_sd = 2.0 * (a * a + b * b / (sinel * sinel)) + d * d
     return float(np.sqrt(2.0 * var_sd))

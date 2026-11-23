@@ -8,6 +8,10 @@ from cssrlib.gnss import sat2prn, uGNSS
 from ..utils import get_wavelengths
 
 
+_DOPPLER_MAD_K = 4.0     # standard 4σ MAD outlier screen
+_SNR_REF_DBHZ = 42.0     # open-sky C/N0 reference [dB-Hz]
+
+
 def _doppler_rows(tc, epoch):
     """Collect (sat, sat_pos, sat_vel, doppler_hz, wavelength_m, el_rad, snr)."""
     rows = []
@@ -35,7 +39,7 @@ def _doppler_rows(tc, epoch):
 
 
 def screen_rows(tc, epoch, rows):
-    """Robust MAD screen on epoch Doppler residuals; returns (kept_rows, scale)."""
+    """Robust 4σ MAD screen on epoch Doppler residuals; returns (kept_rows, scale)."""
     if len(rows) < 5:
         return rows, 0.0
     v_pred = np.asarray(epoch.R_enu2ecef, dtype=float) @ np.asarray(
@@ -62,9 +66,8 @@ def screen_rows(tc, epoch, rows):
         return rows, 0.0
     r = A @ x - b
     scale = 1.4826 * float(np.median(np.abs(r - np.median(r))))
-    k = float(tc.cfg.doppler_fde_k)
-    if k > 0 and scale > 0:
-        kept = [row for row, ri in zip(keep, r) if abs(ri) <= k * scale]
+    if scale > 0:
+        kept = [row for row, ri in zip(keep, r) if abs(ri) <= _DOPPLER_MAD_K * scale]
         if len(kept) >= 4:
             n_drop = len(keep) - len(kept)
             if n_drop:
@@ -84,13 +87,11 @@ def add_sd_doppler_factors(tc, epoch):
     if len(rows) < 2:
         return
 
-    snr_ref_db = float(tc.cfg.snr_ref_dbhz)
-
     def _sigma_of(el, snr):
         s = max(sigma, scale)
         s /= max(np.sin(el), 0.1)
         if snr > 0:
-            s *= float(np.clip(10.0 ** ((snr_ref_db - snr) / 20.0), 1.0, 10.0))
+            s *= float(np.clip(10.0 ** ((_SNR_REF_DBHZ - snr) / 20.0), 1.0, 10.0))
         return s
 
     sigmas = [_sigma_of(r[5], r[6]) for r in rows]
@@ -107,7 +108,7 @@ def add_sd_doppler_factors(tc, epoch):
     lever = np.asarray(tc.lever_arm_tc, dtype=float)
     rr = np.asarray(epoch.pred_ecef, dtype=float)
     n = 0
-    huber = float(tc.cfg.doppler_huber)
+    huber = float(tc.cfg.huber_k)
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue

@@ -12,8 +12,7 @@ from gnss_fgo.ar.hold import apply_fix_and_hold
 
 def _cfg():
     return types.SimpleNamespace(
-        err_eratio_pr=100.0, err_a=0.001, err_b=0.001, err_sclkstab=5e-12,
-        varholdamb=0.001)
+        err_eratio_pr=100.0, err_a=0.001, err_b=0.001)
 
 
 def test_varerr_zenith_values():

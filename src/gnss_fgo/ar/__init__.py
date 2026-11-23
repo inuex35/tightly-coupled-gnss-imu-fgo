@@ -7,6 +7,8 @@ from .ambiguity_resolver import AmbiguityResolver
 
 __all__ = ['ar_hold', 'nav_bridge', 'ar_problem', 'AmbiguityResolver', 'run_ar']
 
+_FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
+
 
 def _resolve(tc, sat_list, amb_dict, allow_partial=False):
     """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa, res, problem)."""
@@ -16,14 +18,15 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
         tc._last_s0 = 0.0
         tc._last_s1 = 0.0
         return 0, None, None, None
+    ratio_max = float(tc.cfg.ar_ratio)
     resolver = AmbiguityResolver(
-        thresar=float(tc.cfg.ar_thresar_max),
+        thresar=ratio_max,
         el_mask=float(tc.nav.elmaskar),
-        thresar_min=float(tc.cfg.ar_thresar_min),
-        thresar_max=float(tc.cfg.ar_thresar_max))
+        thresar_min=min(_FFRT_MIN_RATIO, ratio_max),
+        thresar_max=ratio_max)
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations, allow_partial=allow_partial)
-    tc._last_ar_thres = float(res.thres_used) or float(tc.cfg.ar_thresar_max)
+    tc._last_ar_thres = float(res.thres_used) or ratio_max
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         if 0 < len(res.pairs) < resolver.min_pairs:
