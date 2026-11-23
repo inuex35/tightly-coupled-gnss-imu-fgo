@@ -65,8 +65,6 @@ an RTX 4060 (cuDSS) + 28-thread CPU.
 | nagoya run2 |  9451  | 47.0 % | 0.217 m | 3.883 m | 0.253 m | 59.8 % | 88.2 % | 13.56 m | 20 s  |
 | nagoya run3 |  5201  | 12.1 % | 0.139 m | 1.167 m | 0.620 m | 42.4 % | 96.7 % | 3.06 m  | 10 s  |
 
-For reference, the sequential pipeline (top-level README): AllRMS 14.10 /
-6.28 / 8.83 m (tokyo run1-3), 14.65 / 27.07 / 19.43 m (nagoya run1-3).
 **The batch is a smoother**: it uses future measurements and carries
 integers backward in time, so it is not comparable to a real-time result,
 and its FIX definition (step 6) differs from the sequential one.
