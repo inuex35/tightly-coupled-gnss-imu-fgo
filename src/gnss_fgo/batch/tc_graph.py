@@ -182,15 +182,17 @@ def build(meas, imu, ant_ecef, cfg):
         # Shared mounting angle; its effect needs a forward speed, for which
         # the GNSS speed stands in (forward sigma stays loose). Roll about the
         # forward axis is unobservable from NHC -> tight prior.
+        calib_noise = gtsam.noiseModel.Diagonal.Sigmas(
+            np.array((1e3, *cfg.nhc_sigmas)))
         init.insert(MOUNT, np.zeros(3))
         graph.add(gtsam.PriorFactorVector(MOUNT, np.zeros(3), gtsam.noiseModel.Diagonal.Sigmas(
             np.array([0.01, 0.1, 0.1]))))
         for k in range(n_ep):
             graph.add(gtsam.NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
-                                           float(speed[k]), nhc_noise))
+                                           float(speed[k]), calib_noise))
     else:
         for k in range(n_ep):
-            graph.add(gtsam.NhcFactor(X(k), V(k), omega[k], np.zeros(3), 0.0, nhc_noise))
+            graph.add(gtsam.NhcFactor(X(k), V(k), omega[k], np.zeros(3), nhc_noise))
 
     # ZUPT: IMU stillness test (thresholds of the sequential pipeline) AND a
     # speed gate -- the IMU test alone also fires at constant speed.

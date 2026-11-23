@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..utils import env_f, env_i
+from ..utils.imu import (
+    IMU_ACCEL_BIAS_SIGMA, IMU_ACCEL_NOISE, IMU_GYRO_BIAS_SIGMA, IMU_GYRO_NOISE,
+)
 
 
 def _env_vec(name, default):
@@ -34,15 +37,15 @@ class BatchConfig:
     huber_dop: float = 1.0
     tropo: int = field(default_factory=lambda: env_i("TROPO", 0))   # Saastamoinen DD tropo
 
-    # --- IMU (ADIS16505-2 'tactical' preset of the sequential pipeline)
+    # --- IMU (datasheet + vehicle vibration PSD from utils.imu)
     lever: np.ndarray = field(default_factory=lambda: _env_vec("LEVER_ARM", "0.31,0,0.55"))
-    acc_noise: np.ndarray = field(default_factory=lambda: _env_vec("IMU_ACC_NOISE", "2.84e-3"))
-    gyro_noise: np.ndarray = field(default_factory=lambda: _env_vec("IMU_GYRO_NOISE", "4.01e-3"))
-    acc_bias_rw: float = field(default_factory=lambda: env_f("IMU_ACC_BIAS_RW", 3.14e-4))
-    gyro_bias_rw: float = field(default_factory=lambda: env_f("IMU_GYRO_BIAS_RW", 9.70e-6))
+    acc_noise: np.ndarray = field(default_factory=lambda: _env_vec("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}"))
+    gyro_noise: np.ndarray = field(default_factory=lambda: _env_vec("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}"))
+    acc_bias_rw: float = field(default_factory=lambda: env_f("IMU_ACC_BIAS_RW", IMU_ACCEL_BIAS_SIGMA))
+    gyro_bias_rw: float = field(default_factory=lambda: env_f("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA))
     integ_cov: float = 1e-3
     gravity: float = field(default_factory=lambda: env_f("BATCH_GRAVITY", 9.81))
-    nhc_sigmas: tuple = (1e3, 0.3, 0.2)   # forward, lateral, vertical [m/s]
+    nhc_sigmas: tuple = (0.3, 0.2)         # lateral, vertical [m/s] (2D NhcFactor)
     nhc_calib: int = field(default_factory=lambda: env_i("NHC_CALIB", 0))   # mount angle state
 
     # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)
