@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import os
 import numpy as np
-from cssrlib.gnss import sat2prn, ecef2pos
+from cssrlib.gnss import sat2prn
 
 
 def env_f(name: str, default) -> float:
@@ -107,33 +107,3 @@ def heading_from_vel(vel: np.ndarray, fallback: float,
     if disp_enu is not None and np.linalg.norm(disp_enu[:2]) > disp_min:
         return float(np.arctan2(disp_enu[0], disp_enu[1]))
     return float(fallback)
-
-
-def compute_gdop(pred_pose_trans_enu: np.ndarray, ns: int, rs: np.ndarray,
-                 iu, R_enu2ecef: np.ndarray, base_ecef: np.ndarray) -> float:
-    """GDOP at a predicted pose. Guards against NaN / absurd positions.
-
-    pred_pose_trans_enu : 3-vec, pose.translation() in ENU (base-relative)
-    rs : sat_positions ECEF array [N, >=3]
-    iu : indices of observed sats into `rs`
-    R_enu2ecef : 3x3 rotation (nav→ECEF)
-    base_ecef : 3-vec base station ECEF
-    """
-    from cssrlib.gnss import dops, satazel
-    if ns < 4:
-        return 999.0
-    pp_gate = R_enu2ecef @ np.asarray(pred_pose_trans_enu) + base_ecef
-    if np.linalg.norm(pp_gate) > 1e7 or not np.all(np.isfinite(pp_gate)):
-        return 999.0
-    az_all = np.zeros(ns)
-    el_all = np.zeros(ns)
-    pos_geo = ecef2pos(pp_gate)
-    for i in range(ns):
-        diff = rs[iu[i], :3] - pp_gate
-        norm = np.linalg.norm(diff)
-        if norm < 1.0:
-            return 999.0
-        e_ij = diff / norm
-        az_all[i], el_all[i] = satazel(pos_geo, e_ij)
-    d = dops(az_all, el_all)
-    return d[0] if d is not None else 999.0

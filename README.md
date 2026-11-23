@@ -99,8 +99,8 @@ Phase 1 bootstrap (GNSS-only init) is `initialization.py`;
 ## Configuration
 
 Every `config.py` field is an env var (`ERR_A`, `HUBER_K`,
-`DOPPLER_SD_SIGMA`, `AMB_RW_SIGMA`, `IMU_GRADE`, …) — see `config.py`
-for the complete 25-parameter list. The example script adds its own
+`DOPPLER_SD_SIGMA`, `AMB_RW_SIGMA`, `FLS_LAG`, …) — see `config.py`
+for the complete 12-parameter list. The example script adds its own
 env switches (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
 
 ## License

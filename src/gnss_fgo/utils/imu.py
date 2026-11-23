@@ -6,10 +6,28 @@ already expressed in the body FLU frame.
 
 from __future__ import annotations
 
+import math
 from typing import Optional, Tuple, List
 
 import numpy as np
 import gtsam
+
+
+# 1. Sensor datasheet specs (Tamagawa TAG300N1 / ADIS16505-2)
+_SPEC_ACCEL_NOISE = 2.84e-4      # VRW 0.017 m/s/√hr  -> [m/s²/√Hz]
+_SPEC_GYRO_NOISE = 4.01e-5       # ARW 0.138 °/√hr    -> [rad/s/√Hz]
+_SPEC_ACCEL_BIAS_RW = 3.14e-4    # In-run bias stability 32 µg
+_SPEC_GYRO_BIAS_RW = 9.70e-6     # In-run bias stability 2.0 °/hr
+
+# 2. Measured vehicle chassis vibration PSD (idling / urban driving)
+_VIB_ACCEL_NOISE = 2.83e-3       # [m/s²/√Hz]
+_VIB_GYRO_NOISE = 4.01e-3        # [rad/s/√Hz]
+
+# 3. Combined effective white noise PSD: σ_eff = √(σ_spec² + σ_vib²)
+IMU_ACCEL_NOISE = math.hypot(_SPEC_ACCEL_NOISE, _VIB_ACCEL_NOISE)
+IMU_GYRO_NOISE = math.hypot(_SPEC_GYRO_NOISE, _VIB_GYRO_NOISE)
+IMU_ACCEL_BIAS_SIGMA = _SPEC_ACCEL_BIAS_RW
+IMU_GYRO_BIAS_SIGMA = _SPEC_GYRO_BIAS_RW
 
 
 def sensor_to_body_flu(vec_sensor: np.ndarray) -> np.ndarray:
@@ -19,11 +37,11 @@ def sensor_to_body_flu(vec_sensor: np.ndarray) -> np.ndarray:
 
 
 def make_imu_params(
-    accel_noise: float,
-    gyro_noise: float,
-    accel_bias_sigma: float,
-    gyro_bias_sigma: float,
-    integ_cov: float) -> gtsam.PreintegrationCombinedParams:
+    accel_noise: float = IMU_ACCEL_NOISE,
+    gyro_noise: float = IMU_GYRO_NOISE,
+    accel_bias_sigma: float = IMU_ACCEL_BIAS_SIGMA,
+    gyro_bias_sigma: float = IMU_GYRO_BIAS_SIGMA,
+    integ_cov: float = 1e-3) -> gtsam.PreintegrationCombinedParams:
     """Build PreintegrationCombinedParams for GTSAM CombinedImuFactor."""
     # The TC state uses ENU navigation + FLU body. IMU samples are already
     # in body FLU (see sensor_to_body_flu) so body_P_sensor is identity.

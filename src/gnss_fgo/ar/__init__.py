@@ -7,6 +7,7 @@ from .ambiguity_resolver import AmbiguityResolver
 __all__ = ['nav_bridge', 'ar_problem', 'AmbiguityResolver', 'run_ar']
 
 _FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
+_FFRT_MAX_RATIO = 3.0  # Teunissen FFRT upper clamp (P_f = 0.1%)
 
 
 def _resolve(tc, sat_list, amb_dict, allow_partial=False):
@@ -17,15 +18,14 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
         tc._last_s0 = 0.0
         tc._last_s1 = 0.0
         return 0, None, None, None
-    ratio_max = float(tc.cfg.ar_ratio)
     resolver = AmbiguityResolver(
-        thresar=ratio_max,
+        thresar=_FFRT_MAX_RATIO,
         el_mask=float(tc.nav.elmaskar),
-        thresar_min=min(_FFRT_MIN_RATIO, ratio_max),
-        thresar_max=ratio_max)
+        thresar_min=_FFRT_MIN_RATIO,
+        thresar_max=_FFRT_MAX_RATIO)
     res = resolver.resolve(problem.values, problem.cov, problem.keys,
                            problem.elevations, allow_partial=allow_partial)
-    tc._last_ar_thres = float(res.thres_used) or ratio_max
+    tc._last_ar_thres = float(res.thres_used) or _FFRT_MAX_RATIO
     nav_bridge.publish_attempt(tc, sat_list, res)
     if res.nb <= 0:
         if 0 < len(res.pairs) < resolver.min_pairs:

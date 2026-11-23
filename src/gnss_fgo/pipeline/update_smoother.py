@@ -1,8 +1,9 @@
 """Stage C2 — IncrementalFixedLagSmoother update keeping live arc ambiguities alive."""
 
+import numpy as np
 import gtsam
 
-from ..utils import sorted_amb_items
+from ..utils import heading_from_pose, sorted_amb_items
 from ..integrity import recovery as _tc_recovery
 
 
@@ -23,6 +24,12 @@ def _solve_isam2(tc, epoch):
             tc, ex, epoch.pred_nav, epoch.bias_prev, epoch.key_idx,
             epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
             epoch.sat, epoch.el, epoch.iu, epoch.ir_map, info)
+
+    epoch.pose_tc = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
+    info['post_heading_deg'] = heading_from_pose(epoch.pose_tc)
+    tc.tc_bias = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx))
+    enu_tc = np.array(epoch.pose_tc.translation())
+    epoch.ecef_tc = epoch.R_enu2ecef @ enu_tc + tc.base_ecef
     return None
 
 

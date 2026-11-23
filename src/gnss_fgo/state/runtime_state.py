@@ -1,75 +1,7 @@
 """Structured runtime state for the TC pipeline."""
 
-from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from typing import Optional
-
-
-class SatFieldView(MutableMapping):
-    """``MutableMapping`` view of one ``SatState`` field across all entries."""
-
-    __slots__ = ('_map', '_field', '_absent')
-
-    def __init__(self, sat_map, field_name, absent=None):
-        self._map = sat_map
-        self._field = field_name
-        self._absent = absent
-
-    def _is_set(self, v):
-        return v != self._absent
-
-    def _reset(self, st):
-        setattr(st, self._field, self._absent)
-
-    def __getitem__(self, key):
-        st = self._map.track.get(key)
-        if st is None:
-            raise KeyError(key)
-        v = getattr(st, self._field)
-        if not self._is_set(v):
-            raise KeyError(key)
-        return v
-
-    def __setitem__(self, key, value):
-        s, f = key
-        setattr(self._map.get(s, f), self._field, value)
-
-    def __delitem__(self, key):
-        raise TypeError('SatFieldView entries are reset via clear()')
-
-    def __iter__(self):
-        for k, st in self._map.track.items():
-            if self._is_set(getattr(st, self._field)):
-                yield k
-
-    def __len__(self):
-        return sum(1 for _ in iter(self))
-
-    def __contains__(self, key):
-        st = self._map.track.get(key)
-        return st is not None and self._is_set(getattr(st, self._field))
-
-    def get(self, key, default=None):
-        st = self._map.track.get(key)
-        if st is None:
-            return default
-        v = getattr(st, self._field)
-        return v if self._is_set(v) else default
-
-    def values(self):
-        return [getattr(st, self._field) for st in self._map.track.values()
-                if self._is_set(getattr(st, self._field))]
-
-    def items(self):
-        return [(k, getattr(st, self._field)) for k, st in self._map.track.items()
-                if self._is_set(getattr(st, self._field))]
-
-    def keys(self):
-        return list(iter(self))
-
-    def clear(self):
-        for st in self._map.track.values():
-            self._reset(st)
 
 
 @dataclass
@@ -133,7 +65,6 @@ class SatStateMap:
 class CurrentEpochState:
     """State that lives exactly one epoch."""
 
-    ar_joint_cache: Optional[dict] = None
     ref_sats: dict = field(default_factory=dict)
     seeded_amb_keys: set = field(default_factory=set)
 

@@ -10,7 +10,7 @@ from gnss_fgo.factors.prefit import varerr_dd_sigma
 
 def _cfg():
     return types.SimpleNamespace(
-        err_eratio_pr=100.0, err_a=0.001, err_b=0.001, amb_rw_sigma=0.001)
+        err_eratio_pr=100.0, err_a=0.001, amb_rw_sigma=0.001)
 
 
 def test_varerr_zenith_values():
