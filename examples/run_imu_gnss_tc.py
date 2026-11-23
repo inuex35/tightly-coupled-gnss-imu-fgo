@@ -152,8 +152,6 @@ def main():
                             'enu': enu_err, 'err': err_3d,
                             'nb': nb, 'smode': tc.nav.smode,
                             'sol_xyz': np.array(sol, copy=True),
-                            'pred_heading_deg': info.get('pred_heading_deg', np.nan),
-                            'post_heading_deg': info.get('post_heading_deg', np.nan),
                             'forced_gnss_cut': forced_gnss_cut,
                             'truth_xyz': np.asarray(ref_ecef)})
             continue
@@ -210,8 +208,6 @@ def main():
             'ep': ne, 'tag': tag, 'nb': nb, 'err': err_3d,
             'enu': enu_err,
             'sol_xyz': np.array(sol, copy=True),
-            'pred_heading_deg': info.get('pred_heading_deg', np.nan),
-            'post_heading_deg': info.get('post_heading_deg', np.nan),
             'forced_gnss_cut': forced_gnss_cut,
             'truth_xyz': np.asarray(ref_ecef),
             'ref_vel': np.asarray(ref_vel),

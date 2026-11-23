@@ -30,12 +30,6 @@ IMU_ACCEL_BIAS_SIGMA = _SPEC_ACCEL_BIAS_RW
 IMU_GYRO_BIAS_SIGMA = _SPEC_GYRO_BIAS_RW
 
 
-def sensor_to_body_flu(vec_sensor: np.ndarray) -> np.ndarray:
-    """Pass-through retained as an explicit boundary marker between the
-    raw IMU sample and the body FLU frame used downstream."""
-    return np.asarray(vec_sensor, dtype=np.float64)
-
-
 def make_imu_params(
     accel_noise: float = IMU_ACCEL_NOISE,
     gyro_noise: float = IMU_GYRO_NOISE,
@@ -79,7 +73,7 @@ def build_pim(
                 break
         elif n >= max_samples:
             break
-        gyro = sensor_to_body_flu(im['gyro'])
+        gyro = np.asarray(im['gyro'], dtype=np.float64)
         # Real per-sample timestep from the IMU clock; rounded to 0.1 ms
         # so a perfectly-uniform log integrates with exactly the nominal
         # dt (float Δ of large tow values is 0.01±1e-11), while dropped
@@ -115,7 +109,7 @@ def estimate_stationary_bias(
     if n_max <= n_min:
         return np.zeros(3), np.zeros(3)
     acc = np.array([im['acc'] for im in imu_data[:n_max]])
-    gyro = np.array([sensor_to_body_flu(im['gyro']) for im in imu_data[:n_max]])
+    gyro = np.array([im['gyro'] for im in imu_data[:n_max]], dtype=np.float64)
     acc_mean = np.mean(acc, axis=0)
     gyro_mean = np.mean(gyro, axis=0)
     g_norm = np.linalg.norm(acc_mean)
@@ -149,8 +143,7 @@ def compute_zupt_stats(
     if n == 0:
         return None
     acc = np.array([im['acc'] for im in imu_samples], dtype=np.float64)
-    gyro = np.array([sensor_to_body_flu(im['gyro']) for im in imu_samples],
-                    dtype=np.float64)
+    gyro = np.array([im['gyro'] for im in imu_samples], dtype=np.float64)
     acc_mean = acc.mean(axis=0)
     acc_dev = acc - acc_mean
     gyro_dev = gyro - gyro.mean(axis=0)

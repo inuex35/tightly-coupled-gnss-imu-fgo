@@ -26,21 +26,12 @@ def env_i(name: str, default) -> int:
         raise ValueError(f'{name}={raw!r} is not an int') from None
 
 
-R_ENU2NED = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]])
-R_NED2ENU = R_ENU2NED.T
-R_FRD2FLU = np.diag([1.0, -1.0, -1.0])
-R_FLU2FRD = R_FRD2FLU.T
+_R_NED2ENU = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]]).T
+_R_FLU2FRD = np.diag([1.0, -1.0, -1.0])
 
 
-def _euler_frd_to_R_body2ned_ref(
-    roll: float, pitch: float, heading: float) -> np.ndarray:
-    """Reference NED/FRD Euler angles (rad) -> FRD body-to-NED matrix.
-
-    The input convention is:
-    - navigation frame: NED
-    - body frame: FRD
-    - heading: 0=north, 90=east
-    """
+def euler_to_R_body2enu(roll: float, pitch: float, heading: float) -> np.ndarray:
+    """Reference NED/FRD Euler angles -> internal FLU body-to-ENU matrix."""
     cr, sr = np.cos(roll), np.sin(roll)
     cp, sp = np.cos(pitch), np.sin(pitch)
     ch, sh = np.cos(heading), np.sin(heading)
@@ -48,22 +39,7 @@ def _euler_frd_to_R_body2ned_ref(
         [cp * ch, cp * sh, -sp],
         [sr * sp * ch - cr * sh, sr * sp * sh + cr * ch, sr * cp],
         [cr * sp * ch + sr * sh, cr * sp * sh - sr * ch, cr * cp]])
-    return R_ned2body.T
-
-
-def euler_to_R_body2ned(roll: float, pitch: float, heading: float) -> np.ndarray:
-    """Reference NED/FRD Euler angles -> internal FLU body-to-NED matrix.
-
-    Internally we use a FLU body frame, but the dataset/reference attitude
-    convention is NED/FRD. This function is therefore the single bridge from
-    the reference convention into the internal body frame.
-    """
-    return _euler_frd_to_R_body2ned_ref(roll, pitch, heading) @ R_FLU2FRD
-
-
-def euler_to_R_body2enu(roll: float, pitch: float, heading: float) -> np.ndarray:
-    """Reference NED/FRD Euler angles -> internal FLU body-to-ENU matrix."""
-    return R_NED2ENU @ euler_to_R_body2ned(roll, pitch, heading)
+    return _R_NED2ENU @ R_ned2body.T @ _R_FLU2FRD
 
 
 def parse_lever(s: str) -> np.ndarray:
