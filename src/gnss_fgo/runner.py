@@ -64,7 +64,7 @@ class ImuGnssTc:
         self.base_pt = gtsam.Point3(*self.base_ecef)
 
     def _apply_nav_config(self):
-        self.nav.armode = 1
+        self.nav.armode = int(self.cfg.armode)
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
         self.nav.thresar = 3.0

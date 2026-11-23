@@ -23,9 +23,10 @@ class TcConfig:
     nhc_sigma_vert: float = 0.2    # body vertical velocity σ [m/s] (0 = off)
     nhc_lever: str = '0,0,0'       # IMU -> rear-axle lever arm [m]
 
-    # 3. Cycle slip, ambiguity random walk & sliding window (3)
+    # 3. Cycle slip, ambiguity random walk, AR & sliding window (4)
     thres_slip: float = 0.15       # geometry-free cycle slip threshold [m]
     amb_rw_sigma: float = 0.001    # carrier-phase ambiguity random walk σ [cyc/epoch]
+    armode: int = 2                # AR mode (0=off, 1=continuous, 2=fix-and-hold)
     fls_lag: float = 1.0           # FixedLagSmoother window [s]
 
     @classmethod
