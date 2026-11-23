@@ -18,8 +18,9 @@ from cssrlib.gnss import ecef2pos
 from gtsam.symbol_shorthand import B, N, V, X
 
 from . import rows as R
-from .gnss_graph import add_ambiguities, huber_noise
-from ..utils import make_imu_params
+from .gnss_graph import add_ambiguities
+from ..factors.zupt import is_still_imu_window
+from ..utils import huber_noise, make_imu_params
 
 DIMS = {"x": 6, "v": 3, "b": 6, "n": 1, "m": 3}
 MOUNT = gtsam.symbol("m", 0)
@@ -197,13 +198,7 @@ def build(meas, imu, ant_ecef, cfg):
             [cfg.zupt_rot_sigma] * 3 + [cfg.zupt_pos_sigma] * 3))
         for k in range(1, n_ep):
             a, g = acc[cut[k - 1]:cut[k]], gyr[cut[k - 1]:cut[k]]
-            if len(a) < 5:
-                continue
-            acc_std = np.sqrt(np.mean(np.sum((a - a.mean(axis=0)) ** 2, axis=1)))
-            gyr_std = np.sqrt(np.mean(np.sum((g - g.mean(axis=0)) ** 2, axis=1)))
-            gyr_med = np.median(np.linalg.norm(g - bg0, axis=1))
-            if (acc_std <= 0.55 and gyr_std <= 0.030 and gyr_med <= 0.020
-                    and gate[k] < cfg.zupt_speed):
+            if is_still_imu_window(a, g, bg0) and gate[k] < cfg.zupt_speed:
                 graph.add(gtsam.PriorFactorVector(V(k), np.zeros(3), zv))
                 graph.add(gtsam.BetweenFactorPose3(X(k - 1), X(k), gtsam.Pose3(), zp))
                 n_zupt += 1

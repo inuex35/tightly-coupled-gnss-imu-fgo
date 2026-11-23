@@ -4,10 +4,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..config import TcConfig
 from ..utils import env_f, env_i
 from ..utils.imu import (
     IMU_ACCEL_BIAS_SIGMA, IMU_ACCEL_NOISE, IMU_GYRO_BIAS_SIGMA, IMU_GYRO_NOISE,
 )
+
+_TC_DEFAULTS = TcConfig()
 
 
 def _env_vec(name, default):
@@ -25,10 +28,10 @@ class BatchConfig:
     #   auto: gtsam.cuda (cuDSS) when the gtsam build has it, else CPU LM
     max_iters: int = field(default_factory=lambda: env_i("BATCH_MAX_ITERS", 200))
 
-    # --- GNSS measurement model (sigmas at zenith, scaled by 1/sin(el))
+    # --- GNSS measurement model (defaults shared with TcConfig)
     sig_pr: float = field(default_factory=lambda: env_f("BATCH_SIG_PR", 0.5))     # [m]
     sig_cp: float = field(default_factory=lambda: env_f("BATCH_SIG_CP", 0.01))    # [m]
-    huber: float = field(default_factory=lambda: env_f("BATCH_HUBER", 1.345))
+    huber: float = field(default_factory=lambda: env_f("BATCH_HUBER", _TC_DEFAULTS.huber_k))
     sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
     sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
     # SD Doppler at zenith; residuals at the reference trajectory are
@@ -45,7 +48,7 @@ class BatchConfig:
     gyro_bias_rw: float = field(default_factory=lambda: env_f("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA))
     integ_cov: float = 1e-3
     gravity: float = field(default_factory=lambda: env_f("BATCH_GRAVITY", 9.81))
-    nhc_sigmas: tuple = (0.3, 0.2)         # lateral, vertical [m/s] (2D NhcFactor)
+    nhc_sigmas: tuple = (_TC_DEFAULTS.nhc_sigma_lat, _TC_DEFAULTS.nhc_sigma_vert)
     nhc_calib: int = field(default_factory=lambda: env_i("NHC_CALIB", 0))   # mount angle state
 
     # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)

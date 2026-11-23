@@ -5,7 +5,7 @@ import gtsam
 from cssrlib.gnss import uGNSS, SAT_SYS_ARR
 
 from ..utils.geometry import is_bds_geo as _is_bds_geo
-from ..utils import get_wavelengths, sorted_sys_ids
+from ..utils import get_wavelengths, huber_noise, sorted_sys_ids
 from .amb_seed import init_dd_ambiguity_priors as _init_dd_ambiguity_priors
 
 
@@ -44,12 +44,7 @@ def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
 
 def _dd_noise(tc, sigma):
     """Build 1-D Gaussian or GTSAM Huber robust noise model."""
-    base = tc._noise1(sigma)
-    k = float(tc.cfg.huber_k)
-    if k <= 0.0:
-        return base
-    return gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(k), base)
+    return huber_noise(sigma, float(tc.cfg.huber_k))
 
 
 class DdFactorBuilder:

@@ -1,4 +1,15 @@
-"""Small deterministic sort helpers shared across the gnss_fgo pipeline."""
+"""Small shared helpers across the gnss_fgo sequential and batch pipelines."""
+
+import gtsam
+
+
+def huber_noise(sigma: float, k: float):
+    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
+    base = gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))
+    if float(k) <= 0.0:
+        return base
+    return gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(float(k)), base)
 
 
 def sorted_sys_ids(sig_map):

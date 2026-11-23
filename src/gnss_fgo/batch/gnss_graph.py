@@ -11,14 +11,9 @@ import gtsam
 from gtsam.symbol_shorthand import N, X
 
 from . import rows as R
+from ..utils import huber_noise
 
 DIMS = {"x": 3, "n": 1}
-
-
-def huber_noise(sigma, k):
-    return gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(k),
-        gtsam.noiseModel.Isotropic.Sigma(1, sigma))
 
 
 def add_ambiguities(graph, init, rows, sig_amb, seen=None):

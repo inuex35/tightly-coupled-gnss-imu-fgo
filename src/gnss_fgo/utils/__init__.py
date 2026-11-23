@@ -14,6 +14,7 @@ from .imu import (
     estimate_stationary_bias,
     make_imu_params)
 from .pipeline_helpers import (
+    huber_noise,
     sorted_amb_items,
     sorted_sys_ids,
 )
@@ -26,6 +27,7 @@ __all__ = [
     'estimate_stationary_bias',
     'euler_to_R_body2enu',
     'get_wavelengths',
+    'huber_noise',
     'is_bds_geo',
     'load_imu_csv',
     'make_imu_params',

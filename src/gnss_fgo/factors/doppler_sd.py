@@ -5,7 +5,7 @@ import gtsam
 
 from cssrlib.gnss import sat2prn, uGNSS
 
-from ..utils import get_wavelengths
+from ..utils import get_wavelengths, huber_noise
 
 
 def _doppler_rows(tc, epoch):
@@ -60,11 +60,7 @@ def add_sd_doppler_factors(tc, epoch):
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue
-        noise = gtsam.noiseModel.Isotropic.Sigma(
-            1, float(np.hypot(sig, sigma_ref)))
-        if huber > 0:
-            noise = gtsam.noiseModel.Robust.Create(
-                gtsam.noiseModel.mEstimator.Huber.Create(huber), noise)
+        noise = huber_noise(np.hypot(sig, sigma_ref), huber)
         epoch.graph.add(gtsam.SingleDifferenceDopplerFactorArm(
             tc.Xpose(key_idx), tc.Vel(key_idx),
             row[3], ref[3],

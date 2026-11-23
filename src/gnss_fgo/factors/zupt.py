@@ -13,6 +13,20 @@ _ZUPT_SIGMA_VEL = 0.5         # zero-velocity prior σ [m/s]
 _ZARU_SIGMA_GYRO_BIAS = 0.010 # stationary gyro-bias prior σ [rad/s]
 
 
+def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
+                        bias_gyro_ref: np.ndarray | None = None) -> bool:
+    """Shared IMU stillness check for both sequential and batch pipelines."""
+    if len(acc) < _ZUPT_MIN_SAMPLES:
+        return False
+    acc_std = float(np.sqrt(np.mean(np.sum((acc - acc.mean(axis=0)) ** 2, axis=1))))
+    gyro_std = float(np.sqrt(np.mean(np.sum((gyro - gyro.mean(axis=0)) ** 2, axis=1))))
+    resid = gyro if bias_gyro_ref is None else (gyro - bias_gyro_ref)
+    gyro_med = float(np.median(np.linalg.norm(resid, axis=1)))
+    return (acc_std <= _ZUPT_MAX_ACC_STD
+            and gyro_std <= _ZUPT_MAX_GYRO_STD
+            and gyro_med <= _ZUPT_MAX_GYRO_MEDIAN)
+
+
 def _zupt_should_fire(tc, n_imu, info, imu_idx_prev):
     """Run IMU stillness check and return stats dict on hit, else None."""
     if int(n_imu) < _ZUPT_MIN_SAMPLES:
