@@ -15,7 +15,6 @@ from .geometry import (
 from .ambiguity import get_wavelengths
 from .imu import (
     build_pim,
-    collect_imu_samples,
     compute_zupt_stats,
     estimate_stationary_bias,
     make_imu_params,
@@ -28,7 +27,6 @@ from .pipeline_helpers import (
 
 __all__ = [
     'build_pim',
-    'collect_imu_samples',
     'compute_zupt_stats',
     'env_f',
     'env_i',

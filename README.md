@@ -91,7 +91,7 @@ Packages are the roles:
 | `factors/` | measurement → GTSAM factor builders, one file per family |
 | `ar/` | LAMBDA + partial AR with dimension-adaptive FFRT |
 | `integrity/` | cycle-slip detection (LLI + GF) and IMU-only outage bridging |
-| `state/` | records (`SatState`, `EpochData`) |
+| `state/` | records (`SatState`) |
 
 `runner.py` owns state and the cssrlib boundary.
 

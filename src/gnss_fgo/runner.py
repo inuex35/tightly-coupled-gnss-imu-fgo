@@ -6,7 +6,6 @@ from cssrlib.rtk import rtkpos
 from cssrlib.gnss import ecef2pos, timediff
 
 from .utils import (
-    collect_imu_samples as _utils_collect_imu_samples,
     estimate_stationary_bias as _utils_estimate_stationary_bias,
     make_imu_params as _utils_make_imu_params,
 )
@@ -15,16 +14,6 @@ from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
 from .state.runtime_state import CurrentEpochState, SatStateMap
 from .pipeline import update_smoother as _tc_isam
-
-
-def make_epoch_diagnostics(tc, **extra):
-    """Create the default diagnostics payload for a new process epoch."""
-    info = {
-        'phase': 2,
-        'tc_epoch': tc.tc_epoch,
-    }
-    info.update(extra)
-    return info
 
 
 class ImuGnssTc:
@@ -83,7 +72,6 @@ class ImuGnssTc:
         self.nav.sat_band_plan = True
 
     def _init_runtime_state(self):
-        self.phase = 2
         self.epoch = 0
         self.imu_idx = 0
         self.tc_epoch = 0
@@ -129,12 +117,6 @@ class ImuGnssTc:
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
         return ecef_body + R_body @ lever_arr
 
-    def _collect_imu_samples(self, n_samples=100, target_tow=None):
-        samples, self.imu_idx = _utils_collect_imu_samples(
-            self.imu_data, self.imu_idx,
-            n_samples=n_samples, target_tow=target_tow)
-        return samples
-
     def _estimate_stationary_bias(self):
         return _utils_estimate_stationary_bias(
             self.imu_data, n_max=min(3000, self.imu_idx))
@@ -143,7 +125,7 @@ class ImuGnssTc:
         self._update_epoch_dt(obs)
         self._reset_current_epoch()
         R, ns, init_ecef = self.R_enu2ecef, len(sat), self.nav.x[0:3].copy()
-        info = make_epoch_diagnostics(self)
+        info = {'tc_epoch': self.tc_epoch}
 
         if ns < 4:
             return _tc_recovery.advance_epoch_and_pack(

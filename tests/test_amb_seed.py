@@ -10,7 +10,6 @@ class _Cfg:
 
 
 class _Tc:
-    phase = 2
     epoch = 100
 
     def __init__(self):

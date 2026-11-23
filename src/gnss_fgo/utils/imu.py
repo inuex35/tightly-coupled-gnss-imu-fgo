@@ -173,29 +173,3 @@ def compute_zupt_stats(
         'acc_norm_mean': float(np.linalg.norm(acc_mean_corr)),
         'gyro_mean': gyro.mean(axis=0),
     }
-
-
-def collect_imu_samples(
-    imu_data: List[dict],
-    imu_idx: int,
-    n_samples: int = 100,
-    target_tow: Optional[float] = None) -> Tuple[List[dict], int]:
-    """Collect raw IMU samples (no integration).
-
-    Returns (samples, new_imu_idx). Used by Phase 1 to bundle samples with
-    each collected Fix for later Phase 2 init.
-    """
-    samples = []
-    count = 0
-    idx = imu_idx
-    while idx < len(imu_data):
-        im = imu_data[idx]
-        if target_tow is not None:
-            if im['tow'] > target_tow + 1e-6:
-                break
-        elif count >= n_samples:
-            break
-        samples.append(im)
-        idx += 1
-        count += 1
-    return samples, idx
