@@ -11,16 +11,11 @@ _AR_OUTCOME_CODES = {
 }
 
 
-_INIT_WARMUP_EPOCHS = 8
-
-
 def _run_lambda_ar(tc, epoch):
     """Stage C4 — publish marginals and run continuous LAMBDA AR."""
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None
-    if epoch.key_idx < _INIT_WARMUP_EPOCHS:
-        return None
 
     info = epoch.info
     tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
