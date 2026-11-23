@@ -1,4 +1,4 @@
-"""Phase-2 tightly-coupled epoch pipeline: IMU prediction -> slip check -> solve -> AR -> report."""
+"""Single-phase tightly-coupled epoch pipeline: bootstrap/IMU prediction -> slip check -> solve -> AR -> report."""
 
 import numpy as np
 import gtsam
@@ -13,7 +13,7 @@ from ..factors import zupt as _tc_zupt
 from ..integrity import recovery as _tc_recovery
 from ..integrity import slip_detect as _tc_slip_detect
 from ..state.epoch_data import EpochData
-from ..utils import heading_from_pose
+from ..utils import euler_to_R_body2enu, heading_from_pose, sensor_to_body_flu
 from . import update_smoother as _tc_isam
 
 
@@ -28,9 +28,79 @@ def _decide_fix_or_flt(tc, epoch):
     return pose_tc_antenna, 'FLT', epoch.nb
 
 
+def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
+                      init_ecef, R_enu2ecef, info):
+    """Initialize the single smoother at the first valid GNSS epoch."""
+    _, tow_obs = time2gpst(obs.t)
+    tc._collect_imu_samples(target_tow=tow_obs)
+    bias_acc, bias_gyro = tc._estimate_stationary_bias()
+    bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
+    tc.tc_bias = bias0
+    tc.tc_bias_init = bias0
+
+    n_static = max(1, min(500, tc.imu_idx))
+    acc_avg = np.mean([im['acc'] for im in tc.imu_data[:n_static]], axis=0)
+    acc_tilt = sensor_to_body_flu(np.array(acc_avg - bias_acc, dtype=float))
+    pitch_rad = float(np.arctan2(
+        acc_tilt[0], np.sqrt(acc_tilt[1] ** 2 + acc_tilt[2] ** 2)))
+    roll_rad = float(np.arctan2(acc_tilt[1], acc_tilt[2]))
+    rot0 = gtsam.Rot3(euler_to_R_body2enu(roll_rad, pitch_rad, 0.0))
+
+    tc.imu_params = tc._make_imu_params()
+    tc.lever_arm_tc = gtsam.Point3(*tc.lever_arm)
+    enu0 = R_enu2ecef.T @ (init_ecef - tc.base_ecef)
+    body_enu0 = enu0 - rot0.matrix() @ tc.lever_arm
+    pose0 = gtsam.Pose3(rot0, gtsam.Point3(*body_enu0))
+
+    tc.fls_lag = tc.cfg.fls_lag
+    tc.isam2 = tc._make_isam2(tc.fls_lag)
+    tc.tc_time = 0.0
+    tc.tc_epoch = 0
+    info['tc_epoch'] = 0
+
+    g = gtsam.NonlinearFactorGraph()
+    v = gtsam.Values()
+    v.insert(tc.Xpose(0), pose0)
+    v.insert(tc.Vel(0), np.zeros(3))
+    v.insert(tc.Bias(0), bias0)
+    rot_sigma = np.deg2rad(2.0)
+    g.addPriorPose3(tc.Xpose(0), pose0,
+                    gtsam.noiseModel.Diagonal.Sigmas(
+                        np.array([rot_sigma, rot_sigma, np.pi, 1e4, 1e4, 1e4])))
+    g.addPriorVector(tc.Vel(0), np.zeros(3),
+                     gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
+    g.addPriorConstantBias(tc.Bias(0), bias0,
+                           gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
+
+    _tc_factors.build_dd_factors(
+        tc, g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
+        tc.Xpose(0), tc.lever_arm_tc, tc._sat_states, existing_estimate=None)
+
+    ts0 = gtsam.FixedLagSmootherKeyTimestampMap()
+    tc.tc_time += tc._epoch_dt
+    for k in v.keys():
+        ts0[k] = tc.tc_time
+    tc.isam2.update(g, v, ts0)
+    for _ in range(3):
+        tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
+                        gtsam.FixedLagSmootherKeyTimestampMap())
+    est = tc.isam2.calculateEstimate()
+    pose_tc = est.atPose3(tc.Xpose(0))
+    ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
+    sol = tc._antenna_ecef(pose_tc, ecef_tc)
+    tc.nav.x[0:3] = sol
+    tc.nav.smode = 5
+    return _tc_recovery.advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
+
+
 def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                  obs_sd, ir_map, info, ns, init_ecef, R_enu2ecef):
-    """Phase 2: IMU/GNSS TC epoch flow."""
+    """Single-phase IMU/GNSS TC epoch flow."""
+    if tc.isam2 is None:
+        return _bootstrap_epoch0(
+            tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
+            init_ecef, R_enu2ecef, info)
+
     epoch = EpochData(
         obs=obs, obsb=obsb, rs=rs, vs=vs, rsb=rsb,
         sat=sat, el=el, iu=iu, obs_sd=obs_sd, ir_map=ir_map,
@@ -56,16 +126,6 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     if not epoch.estimate.exists(tc.Xpose(epoch.key_idx - 1)):
         info['prev_pose_missing'] = epoch.key_idx - 1
-        dummy_pose = gtsam.Pose3(
-            gtsam.Rot3.Identity(),
-            gtsam.Point3(*(R_enu2ecef.T @ (init_ecef - tc.base_ecef))))
-        ecef_ddpr_pm, ok = _tc_recovery.try_ddpr_reset(
-            tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-            dummy_pose, dummy_pose.rotation(),
-            info, 'ddpr_prev_missing_recover')
-        if ok:
-            return _tc_recovery.advance_epoch_and_pack(
-                tc, ecef_ddpr_pm, 'FLT', 0, info, obs)
         return _tc_recovery.advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 

@@ -1,4 +1,4 @@
-"""Minimal recovery and IMU-only propagation paths (no CP-hold or sanity heuristics)."""
+"""IMU-only outage propagation path."""
 
 import numpy as np
 import gtsam
@@ -13,10 +13,8 @@ from ..pipeline import update_smoother as _tc_isam
 
 def _make_imu_only_diagnostics(tc):
     return {
-        'phase': tc.phase,
-        'tc_epoch': 0,
-        'collecting': tc.collecting,
-        'n_collected': len(tc.collected_fixes),
+        'phase': 2,
+        'tc_epoch': tc.tc_epoch,
         'imu_only': True,
         'gnss_skip': True,
     }
@@ -27,61 +25,6 @@ def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
     tc.epoch += 1
     tc.nav.t = obs.t
     return sol, tag, nb, info
-
-
-def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None):
-    """Rebuild Phase-2 smoother at a new ECEF position after a numerical failure."""
-    R = tc.R_enu2ecef
-    enu_seed = R.T @ (ecef_seed - tc.base_ecef)
-    pose_seed = gtsam.Pose3(rot_seed, gtsam.Point3(*enu_seed))
-    vel_seed = (np.zeros(3) if vel_seed is None
-                else np.asarray(vel_seed, dtype=float).reshape(3))
-
-    tc.isam2 = tc._make_isam2(tc.fls_lag)
-    tc.tc_time = 0.0
-    tc.tc_epoch = 0
-
-    for st in tc._sat_states.values():
-        if st.amb_key is not None:
-            st.amb_gen += 1
-        st.amb_key = None
-
-    bias0 = tc.tc_bias if tc.tc_bias is not None else gtsam.imuBias.ConstantBias()
-
-    g = gtsam.NonlinearFactorGraph()
-    v = gtsam.Values()
-    v.insert(tc.Xpose(0), pose_seed)
-    v.insert(tc.Vel(0), vel_seed)
-    v.insert(tc.Bias(0), bias0)
-    rot_sigma = np.deg2rad(1.0)
-    g.addPriorPose3(tc.Xpose(0), pose_seed,
-                    gtsam.noiseModel.Diagonal.Sigmas(
-                        np.array([rot_sigma, rot_sigma, 0.3, 2.0, 2.0, 3.0])))
-    g.addPriorVector(tc.Vel(0), vel_seed, gtsam.noiseModel.Isotropic.Sigma(3, 3.0))
-    g.addPriorConstantBias(tc.Bias(0), bias0, gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
-    tc.tc_bias = bias0
-
-    ts0 = gtsam.FixedLagSmootherKeyTimestampMap()
-    tc.tc_time += tc._epoch_dt
-    ts0[tc.Xpose(0)] = tc.tc_time
-    ts0[tc.Vel(0)] = tc.tc_time
-    ts0[tc.Bias(0)] = tc.tc_time
-    tc.isam2.update(g, v, ts0)
-    tc.nav.x[0:3] = tc._antenna_ecef(pose_seed, ecef_seed)
-
-
-def try_ddpr_reset(tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-                   pose_init, rot_seed, info, reason, vel_seed=None):
-    """Try DDPR-only LS + warm Phase-2 reset after a smoother exception."""
-    ecef_ddpr, _, res_rms = tc._ddpr_only_position(
-        obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map, pose_init)
-    if ecef_ddpr is None or not np.isfinite(res_rms):
-        return None, False
-    info[reason] = True
-    warm_reset_phase2(tc, ecef_ddpr, rot_seed, vel_seed=vel_seed)
-    enu_body = tc.R_enu2ecef.T @ (ecef_ddpr - tc.base_ecef)
-    ant = tc._antenna_ecef(gtsam.Pose3(rot_seed, gtsam.Point3(*enu_body)), ecef_ddpr)
-    return ant, True
 
 
 def _outage_drain_imu(tc, tow_obs):
@@ -105,14 +48,14 @@ def _outage_tick_sat_outc(tc, info):
 
 
 def process_imu_only(tc, obs):
-    """Advance the Phase-2 graph by one epoch using IMU + NHC + ZUPT only."""
+    """Advance the graph by one epoch using IMU + NHC + ZUPT only."""
     tc._update_epoch_dt(obs)
     tc._reset_current_epoch()
     R = tc.R_enu2ecef
     info = _make_imu_only_diagnostics(tc)
     _, tow_obs = time2gpst(obs.t)
 
-    if tc.phase == 1:
+    if tc.isam2 is None:
         _outage_drain_imu(tc, tow_obs)
         return advance_epoch_and_pack(tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
@@ -161,16 +104,3 @@ def process_imu_only(tc, obs):
 
     tc.nav.smode = 5
     return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
-
-
-def handle_solve_exception(tc, ex, pred, bias_prev, key_idx, obs, obsb, obs_sd,
-                           rs, rsb, sat, el, iu, ir_map, info):
-    """Recover cleanly from an iSAM2 numerical exception."""
-    info['error'] = str(ex)
-    ecef_ddpr_fb, ok = try_ddpr_reset(
-        tc, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        pred.pose(), pred.pose().rotation(),
-        info, 'ddpr_exception_recover', vel_seed=pred.velocity())
-    if ok:
-        return advance_epoch_and_pack(tc, ecef_ddpr_fb, 'FLT', 0, info, obs)
-    return advance_epoch_and_pack(tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)

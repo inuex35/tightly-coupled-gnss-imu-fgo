@@ -91,19 +91,3 @@ def load_imu_csv(path: str) -> list:
                 'gyro': np.array([float(row[5]), float(row[6]), float(row[7])]) * np.pi / 180,
             })
     return data
-
-
-def heading_from_vel(vel: np.ndarray, fallback: float,
-                     disp_enu: np.ndarray | None = None,
-                     vel_speed_min: float = 0.5,
-                     disp_min: float = 0.01) -> float:
-    """Heading [rad] from horizontal velocity (ENU X=E, Y=N).
-
-    Falls back to displacement-based heading when velocity is too slow,
-    then to `fallback` when displacement is also too small.
-    """
-    if np.linalg.norm(vel[:2]) > vel_speed_min:
-        return float(np.arctan2(vel[0], vel[1]))
-    if disp_enu is not None and np.linalg.norm(disp_enu[:2]) > disp_min:
-        return float(np.arctan2(disp_enu[0], disp_enu[1]))
-    return float(fallback)

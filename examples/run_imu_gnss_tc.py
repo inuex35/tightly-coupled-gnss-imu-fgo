@@ -218,42 +218,27 @@ def main():
             'ref_vel': np.asarray(ref_vel),
             'smode': tc.nav.smode,
         }
-        rec.update({k: v for k, v in info.items() if k != 'transition'})
+        rec.update(info)
         results.append(rec)
-
-        if 'transition' in info:
-            print(f"\n--- Phase 2 transition at epoch {ne} ---")
-            print(f"    pitch={info['pitch']:.1f} roll={info['roll']:.1f} "
-                  f"heading={info['heading']:.1f} deg")
-            print(f"    {info['n_amb_tc']} ambiguities (fresh init, DD at all {info.get('n_collected',0)} collected epochs)")
-            print(f"    lever_arm={lever_arm.tolist()}")
-            if 'bias_acc_init' in info:
-                ba0 = info['bias_acc_init']
-                bg0 = info['bias_gyro_init']
-                print(f"    bias_acc0=[{ba0[0]:+.4f},{ba0[1]:+.4f},{ba0[2]:+.4f}]")
-                print(f"    bias_gyro0=[{np.degrees(bg0[0]):+.4f},{np.degrees(bg0[1]):+.4f},{np.degrees(bg0[2]):+.4f}] deg/s")
-            print()
 
         vel_mag = np.linalg.norm(ref_vel[:2])
         phase_tag = f"P{info['phase']}"
-        if info.get('collecting') and info['phase'] == 1:
-            phase_tag = f"P1c{info['n_collected']}"
         extra = ""
         if 'prev_pose_missing' in info:
             extra += f" PREV_MISSING(k={info['prev_pose_missing']})"
         if info.get('error'):
             e_msg = info['error'].replace('\n', ' | ').replace('(', '[').replace(')', ']')
             extra += f" ERR[{e_msg[:200]}]"
-            if info['phase'] == 2 and 'bias_acc' in info:
-                slip = info.get('n_slip', 0)
-                if slip > 0:
-                    extra += f" slip={slip}"
-                if info.get('gnss_skip'):
-                    extra += f" SKIP(ns={info.get('nsat',0)})"
-                if info.get('nhc'):
-                    extra += " NHC"
-                if 'lambda_correction' in info:
-                    extra += f" λcorr={info['lambda_correction']:.3f}"
+        if 'bias_acc' in info:
+            slip = info.get('n_slip', 0)
+            if slip > 0:
+                extra += f" slip={slip}"
+            if info.get('gnss_skip'):
+                extra += f" SKIP(ns={info.get('nsat',0)})"
+            if info.get('nhc'):
+                extra += " NHC"
+            if 'lambda_correction' in info:
+                extra += f" λcorr={info['lambda_correction']:.3f}"
 
         print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
               f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "

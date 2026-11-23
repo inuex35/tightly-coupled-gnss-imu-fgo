@@ -98,36 +98,6 @@ def build_pim(
     return pim, n, gyro_mean, idx
 
 
-def build_pim_from_samples(
-    params: gtsam.PreintegrationCombinedParams,
-    bias: gtsam.imuBias.ConstantBias,
-    imu_samples: List[dict],
-    dt: float = 0.01) -> Tuple[gtsam.PreintegratedCombinedMeasurements, int, np.ndarray]:
-    """Integrate a provided IMU sample list.
-
-    This mirrors ``build_pim()`` but does not own an external cursor. It is
-    used by Phase-2 initialization so the init graph and regular epoch path
-    share the same IMU measurement handling.
-    """
-    pim = gtsam.PreintegratedCombinedMeasurements(params, bias)
-    n = 0
-    gyro_sum = np.zeros(3)
-    prev_tow = None
-    for im in imu_samples:
-        gyro = sensor_to_body_flu(im['gyro'])
-        dt_i = dt
-        if prev_tow is not None:
-            d = round(im['tow'] - prev_tow, 4)
-            if 0.0 < d <= 10 * dt:
-                dt_i = d
-        prev_tow = im['tow']
-        pim.integrateMeasurement(im['acc'], gyro, dt_i)
-        gyro_sum += gyro
-        n += 1
-    gyro_mean = gyro_sum / n if n > 0 else np.zeros(3)
-    return pim, n, gyro_mean
-
-
 def estimate_stationary_bias(
     imu_data: List[dict],
     n_max: int,

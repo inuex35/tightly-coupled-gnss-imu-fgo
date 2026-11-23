@@ -23,8 +23,8 @@ and tunnels.
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected on every epoch
-- **Integrity & recovery** — LLI + geometry-free + Melbourne-Wübbena
-  cycle-slip detection, and automatic phase-2 warm reset on divergence
+- **Integrity & recovery** — LLI + geometry-free cycle-slip detection
+  and IMU-only outage bridging
 - **Contributed upstream** — the DD, Doppler, SD Doppler, and NHC
   factors are developed for and contributed to
   [GTSAM](https://github.com/borglab/gtsam); see the
@@ -87,13 +87,12 @@ Packages are the roles:
 
 | Package | Role |
 |---|---|
-| `pipeline/` | Phase-2 epoch flow (`imu_prediction` → `slip_detect` → `factors` → `update_smoother` → `run_ar`) |
+| `pipeline/` | single-phase epoch flow (`bootstrap` / `imu_prediction` → `slip_detect` → `factors` → `update_smoother` → `run_ar`) |
 | `factors/` | measurement → GTSAM factor builders, one file per family |
 | `ar/` | LAMBDA + partial AR with dimension-adaptive FFRT |
-| `integrity/` | cycle-slip detection (LLI + GF) and warm-reset recovery |
+| `integrity/` | cycle-slip detection (LLI + GF) and IMU-only outage bridging |
 | `state/` | records (`SatState`, `EpochData`) |
 
-Phase 1 bootstrap (GNSS-only init) is `initialization.py`;
 `runner.py` owns state and the cssrlib boundary.
 
 ## Configuration

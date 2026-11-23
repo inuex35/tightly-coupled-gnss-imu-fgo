@@ -21,7 +21,7 @@ class ArProblem:
 
 def build(tc, sat_list, amb_dict, key_pose=None):
     """Assemble ArProblem from live smoother variables, or None if unposed."""
-    smoother = tc.isam2 if tc.phase == 2 else tc.isam
+    smoother = tc.isam2
     if smoother is None:
         return None
     isam2 = smoother.getISAM2()

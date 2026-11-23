@@ -20,10 +20,9 @@ def _solve_isam2(tc, epoch):
                    keep_keys=live_amb_keys)
         epoch.estimate = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
-        return _tc_recovery.handle_solve_exception(
-            tc, ex, epoch.pred_nav, epoch.bias_prev, epoch.key_idx,
-            epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
-            epoch.sat, epoch.el, epoch.iu, epoch.ir_map, info)
+        info['error'] = str(ex)
+        return _tc_recovery.advance_epoch_and_pack(
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, epoch.obs)
 
     epoch.pose_tc = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
     info['post_heading_deg'] = heading_from_pose(epoch.pose_tc)
