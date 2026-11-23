@@ -302,53 +302,23 @@ def main():
         if info.get('collecting') and info['phase'] == 1:
             phase_tag = f"P1c{info['n_collected']}"
         extra = ""
-        if info.get('ddpr_recover'):
-            extra += f" DDPR_RECOVER(n={info['ddpr_recover']})"
-        if 'ddpr_fast_recover' in info:
-            extra += (
-                f" DDPR_FAST({info['ddpr_fast_recover']:.2f},"
-                f"worst={float(info.get('ddpr_fast_worst_sat_res', 0.0)):.1f})"
-            )
         if 'prev_pose_missing' in info:
             extra += f" PREV_MISSING(k={info['prev_pose_missing']})"
         if info.get('error'):
-            # Keep log single-line & greppable; show up to 200 chars
             e_msg = info['error'].replace('\n', ' | ').replace('(', '[').replace(')', ']')
             extra += f" ERR[{e_msg[:200]}]"
         if info['phase'] == 2 and 'bias_acc' in info:
             slip = info.get('n_slip', 0)
             if slip > 0:
                 extra += f" slip={slip}"
-            fde = info.get('fde_reject', 0)
-            if fde > 0:
-                extra += f" FDE={fde}"
             if info.get('gnss_skip'):
                 extra += f" SKIP(gdop={info.get('gdop',0):.1f},ns={info.get('nsat',0)})"
             if info.get('nhc'):
                 extra += " NHC"
             if 'lambda_correction' in info:
                 extra += f" λcorr={info['lambda_correction']:.3f}"
-            if info.get('ar_subset_used'):
-                drop_txt = '+'.join(
-                    _format_sat(int(s))
-                    for s in (info.get('ar_subset_drop_sats') or [])) or '-'
-                extra += (
-                    f" SUBSET_AR({drop_txt}"
-                    f",nb={int(info.get('ar_subset_nb', 0))}"
-                    f",r={float(info.get('ar_subset_ratio', 0.0)):.2f})"
-                )
-            if 'lambda_corr_hard_reject' in info:
-                extra += f" LCHR({info['lambda_corr_hard_reject']:.2f})"
-            if info.get('low_nb_fix_reject'):
-                extra += (
-                    f" LOW_NB_REJ(nb={int(info.get('low_nb_fix_reject_nb', 0))}"
-                    f",lc={float(info.get('low_nb_fix_reject_lc', 0.0)):.2f}"
-                    f",mres={float(info.get('low_nb_fix_reject_main_ddpr_res', 0.0)):.2f})"
-                )
             if 'prev_pose_drift' in info:
                 extra += f" prev_drift={info['prev_pose_drift']:.3f}"
-            if info.get('pim_discontinuity'):
-                extra += " PIM_BREAK"
             if 'main_ddpr_res' in info:
                 extra += f" mres={info['main_ddpr_res']:.2f}"
                 if 'main_ddpr_sat_worst' in info:
@@ -356,15 +326,6 @@ def main():
                     sys_i, prn = sat2prn(sw)
                     sys_ch = SYS_CHAR.get(sys_i, '?')
                     extra += f" worst={sys_ch}{prn:02d}:{rw:.1f}"
-            if int(info.get('held_release_flt_count', 0) or 0) > 0:
-                s_rel = int(info.get('held_release_flt_sat', 0) or 0)
-                f_rel = int(info.get('held_release_flt_freq', 0) or 0)
-                score_rel = float(info.get('held_release_flt_score', 0.0) or 0.0)
-                res_rel = float(info.get('held_release_flt_res', 0.0) or 0.0)
-                extra += (
-                    f" HREL({_format_sat_freq(s_rel, f_rel)}"
-                    f",score={score_rel:.1f},res={res_rel:.1f})"
-                )
 
         print(f"Ep {ne:3d} {phase_tag}: {tag} E={enu_err[0]:+.4f} "
               f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "

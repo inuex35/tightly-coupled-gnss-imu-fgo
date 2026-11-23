@@ -1,79 +1,59 @@
-"""Fix-and-hold: turn an accepted fix into priors the graph keeps.
-
-RTKLIB's armode==3, adapted to the two-smoother layout: Phase 1 holds each
-ambiguity with a PriorDouble at sigma = sqrt(varholdamb). Phase 2 adds no
-graph factors at all — the held integers live on the per-satellite hold
-state and ``nav.x`` (the value re-enters AR as a pinned input via
-ar_problem, publish_marginals mirrors it into ``nav.P``, and the DDCP
-builder folds it into the factor offset).
-
-Entry point: :func:`apply_fix_and_hold`.
-"""
+"""Optional in-graph DD integer constraints (ar_mode == 3) via pure C++ BetweenFactorDouble."""
 
 import numpy as np
 import gtsam
 
-from ..utils import sorted_amb_items
 
+def apply_fix_and_hold(tc, amb_dict, xa):
+    """Add once-per-arc C++ DD integer BetweenFactorDouble(k_tgt, k_ref, z_int) with DCS robust loss.
 
-def _collect_held_sat_freq_keys(tc, amb_dict):
-    """Return [(s, f), ...] for ambiguities that holdamb_flags() just promoted to fix=3."""
-    return [(s, f) for (s, f), _k in sorted_amb_items(amb_dict)
-            if tc.nav.fix[s - 1, f] == 3]
+    In GTSAM, BetweenFactorDouble(k1, k2, measured) constrains (x2 - x1) == measured.
+    So BetweenFactorDouble(k_tgt, k_ref, z_dd) constrains (N_ref - N_tgt) == z_dd,
+    which is the physically integer double-differenced ambiguity.
+    """
+    res = getattr(tc, '_last_ar_result', None)
+    if res is None or res.dropped or not res.pairs:
+        return False
 
+    smoother = tc.isam2 if tc.phase == 2 else tc.isam
+    if smoother is None:
+        return False
 
-def _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa):
-    """Add per-held-N PriorDouble factors with σ = √varholdamb (RTKLIB-style, in cycles)."""
-    hold_sigma = float(np.sqrt(tc.cfg.varholdamb))
-    hold_noise = tc._noise1(hold_sigma)
-    for s, f in hold_keys:
-        hg.addPriorDouble(
-            amb_dict[(s, f)], xa[tc.IB(s, f, tc.nav.na)], hold_noise)
+    hold_sigma = float(np.sqrt(max(tc.cfg.varholdamb, 1e-8)))
+    base_noise = tc._noise1(hold_sigma)
+    # Quadratic within ±0.5 cycles (snaps normal float ambiguities cleanly in
+    # one step), Huber-bounded beyond 0.5 cycles (caps wrong-integer conflicts).
+    hold_noise = gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(0.5 / hold_sigma), base_noise)
 
+    hg = gtsam.NonlinearFactorGraph()
+    ts = gtsam.FixedLagSmootherKeyTimestampMap()
+    t_now = tc.tc_time if tc.phase == 2 else tc.phase1_t
+    held_pairs = tc._held_dd_pairs
 
-def _apply_holds_phase1(tc, hg, hold_keys, amb_dict):
-    """Phase 1: IncrementalFixedLagSmoother.update with held-N timestamps."""
-    isam = tc.isam
-    ts_h1 = gtsam.FixedLagSmootherKeyTimestampMap()
-    t_p1 = tc.phase1_t
-    for sf in hold_keys:
-        ts_h1[amb_dict[sf]] = t_p1
+    for ref_sf, tgt_sf in res.pairs:
+        k_ref = amb_dict.get(ref_sf)
+        k_tgt = amb_dict.get(tgt_sf)
+        if k_ref is None or k_tgt is None:
+            continue
+        pair_key = (int(k_tgt), int(k_ref))
+        if pair_key in held_pairs:
+            continue
+        v_ref = res.fixed.get(ref_sf)
+        v_tgt = res.fixed.get(tgt_sf)
+        if v_ref is None or v_tgt is None:
+            continue
+        z_dd = float(round(v_ref - v_tgt))
+        hg.add(gtsam.BetweenFactorDouble(k_tgt, k_ref, z_dd, hold_noise))
+        ts[k_tgt] = t_now
+        ts[k_ref] = t_now
+        held_pairs.add(pair_key)
+
+    if hg.size() == 0:
+        return False
     try:
-        isam.update(hg, gtsam.Values(), ts_h1)
+        smoother.update(hg, gtsam.Values(), ts)
+        return True
     except (RuntimeError, IndexError) as ex:
-        # nav.fix already claims held — record the graph/nav mismatch.
-        tc.ar_diag.exception = f'hold_prior: {type(ex).__name__}: {ex}'
-
-
-def _activate_phase2_hold_states(tc, hold_keys, xa):
-    """Phase 2: copy held N → sat_state hold + nav.x; clear amb_key."""
-    for s, f in hold_keys:
-        held_value = float(xa[tc.IB(s, f, tc.nav.na)])
-        sat_st = tc._sat_states.get(s, f)
-        sat_st.activate_hold(held_value)
-        # Count the FIX streak before amb_key is cleared; the Stage-D
-        # streak loop only sees keys still carrying amb_key.
-        sat_st.fix_streak += 1
-        sat_st.amb_key = None
-        tc.nav.x[tc.IB(s, f, tc.nav.na)] = held_value
-
-
-def apply_fix_and_hold(tc, amb_dict, xa, allow=None):
-    """Phase D — fix-and-hold (armode==3): mark held flags, then Phase 1 adds hold-prior factors while Phase 2 activates the hold on sat_states / nav.x (no graph factors). Always returns True; the bool return survives for the Phase-1 call shape."""
-    tc.holdamb_flags()
-    hold_keys = _collect_held_sat_freq_keys(tc, amb_dict)
-    if allow is not None:  # partial fix: hold only the integer subset
-        excluded = [k for k in hold_keys if k not in allow]
-        hold_keys = [k for k in hold_keys if k in allow]
-        for s, f in excluded:  # fix==3 means held; these are not
-            tc.nav.fix[s - 1, f] = 2
-    if tc.phase != 2:
-        hg = gtsam.NonlinearFactorGraph()
-        _add_phase1_hold_priors(tc, hg, hold_keys, amb_dict, xa)
-        if hg.size() > 0:
-            _apply_holds_phase1(tc, hg, hold_keys, amb_dict)
-    else:
-        _activate_phase2_hold_states(tc, hold_keys, xa)
-    return True
-
-
+        tc.ar_diag.exception = f'dd_hold: {type(ex).__name__}: {ex}'
+        return False

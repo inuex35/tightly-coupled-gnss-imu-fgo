@@ -1,66 +1,42 @@
-"""Stage C2 -- the smoother update (ISAM2/FLS glue + one epoch).
-
-Gathers the keys that must survive this update (live ambiguities, their
-predecessors, the Doppler clock pair), applies the update with the epoch's
-removals, and snapshots the new estimate. A solve failure is handed to
-validation/recovery, which owns the warm-reset decision.
-"""
-
+"""Stage C2 — IncrementalFixedLagSmoother update keeping live arc ambiguities alive."""
 
 import gtsam
 
 from ..utils import sorted_amb_items
-
 from ..integrity import recovery as _tc_recovery
 
 
 def _solve_isam2(tc, epoch):
-    """Stage C2 — gather kept keys, run FLS update, snapshot the new estimate. Returns the recovery early-return tuple on solve failure, else None."""
+    """Stage C2 — update FixedLagSmoother and snapshot the new estimate."""
     info = epoch.info
     try:
-        extra = [k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())]
-        for sf, (k_old, _) in sorted_amb_items(epoch.prev_amb_values):
-            if tc._sat_states.at(*sf).amb_key is not None:
-                extra.append(k_old)
-        # This epoch's factors land at [nf_before, nf_before + G); the
-        # marginal containers the same update appends come after them.
-        epoch.nf_before = tc.isam2.getFactors().size()
+        # Keep only currently-visible or active arc ambiguity keys stamped at t.
+        live_amb_keys = [
+            k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())
+            if epoch.estimate.exists(k) or epoch.values.exists(k)
+        ]
         fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
-                   keep_keys=extra)
+                   keep_keys=live_amb_keys)
         epoch.estimate = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
-        # ValueError: ISAM2 marginalization raises it ("Asking to remove
-        # variables from the variable index that are not unused") when a
-        # prior purge left the FLS bookkeeping inconsistent — exactly
-        # the smoother-broke case the warm reset exists for.
-        return _tc_recovery.handle_solve_exception(tc,
-            ex, epoch.pred_nav, epoch.bias_prev, epoch.key_idx,
+        return _tc_recovery.handle_solve_exception(
+            tc, ex, epoch.pred_nav, epoch.bias_prev, epoch.key_idx,
             epoch.obs, epoch.obsb, epoch.obs_sd, epoch.rs, epoch.rsb,
             epoch.sat, epoch.el, epoch.iu, epoch.ir_map, info)
-
-    # ────────────────────────────────────────────────────────────────
-
-
-
-
-# ── ISAM2 / FixedLagSmoother glue (was optimize/solver.py) ──────────
+    return None
 
 
 def make_isam2(lag, relinearize_skip=1, relinearize_threshold=0.01):
-    """Build IncrementalFixedLagSmoother with project-standard ISAM2 params."""
+    """Build IncrementalFixedLagSmoother with standard ISAM2 parameters."""
     params = gtsam.ISAM2Params()
     params.setRelinearizeThreshold(float(relinearize_threshold))
     params.relinearizeSkip = int(relinearize_skip)
-    # apply_fde derives factor slots as nf_total - graph.size(), which
-    # assumes new factors always append; keep slot reuse OFF (the
-    # gtsam default) and say so explicitly.
-    params.findUnusedFactorSlots = False
     return gtsam.IncrementalFixedLagSmoother(lag, params)
 
 
 def fls_update(tc, graph, values, key_idx, keep_keys=(),
                advance_time=True, include_prev=True):
-    """Apply an isam2 update with a timestamp map for Xpose/Vel/Bias(key_idx)."""
+    """Apply an FLS update with current timestamps on pose/vel/bias and live N keys."""
     if advance_time:
         tc.tc_time += tc._epoch_dt
     ts = gtsam.FixedLagSmootherKeyTimestampMap()

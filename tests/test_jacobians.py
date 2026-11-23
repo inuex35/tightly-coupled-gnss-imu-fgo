@@ -34,17 +34,21 @@ def test_nhc_factor():
     check_factor_jacobians(f, v, atol=1e-5)
 
 
-def test_held_ddcp_factor():
-    from gnss_fgo.factors.factors import _make_ddcp_factor_with_held_n
-    sat_ref = np.array([-15200000.0, 12000000.0, 18300000.0])
-    sat_j = np.array([4200000.0, 21000000.0, 15500000.0])
+def test_cpp_ddcp_factor():
+    sat_ref = gtsam.Point3(-15200000.0, 12000000.0, 18300000.0)
+    sat_j = gtsam.Point3(4200000.0, 21000000.0, 15500000.0)
+    sat_ref_b = gtsam.Point3(-15199970.0, 12000030.0, 18300030.0)
+    sat_j_b = gtsam.Point3(4199975.0, 20999975.0, 15499975.0)
     noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
-    f = _make_ddcp_factor_with_held_n(
-        1, 2, noise, sat_ref, sat_j, sat_ref + 30.0, sat_j - 25.0,
-        BASE, 123.456, np.array([0.31, 0.0, 0.55]), enu_frame(BASE),
-        offset_m=-34387.86, coeff_m=-0.1903)
+    f = gtsam.DoubleDifferenceCarrierPhaseFactorArm(
+        1, 2, 3,
+        21000000.1, 21000100.2, 22000000.3, 22000050.4,
+        sat_ref, sat_j, sat_ref_b, sat_j_b,
+        gtsam.Point3(*BASE), 0.1903,
+        gtsam.Point3(0.31, 0.0, 0.55), enu_frame(BASE), noise)
     v = gtsam.Values()
     v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.05, -0.12, 2.2),
                             gtsam.Point3(310.0, -220.0, 4.0)))
-    v.insert(2, -180705.3)
+    v.insert(2, 100.0)
+    v.insert(3, 88.0)
     check_factor_jacobians(f, v, atol=2e-4)

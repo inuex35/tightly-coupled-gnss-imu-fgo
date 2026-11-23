@@ -1,43 +1,23 @@
-"""Stage C1 -- assemble this epoch's factor block.
-
-DD code/phase factors, the BetweenFactor chain on continuing ambiguities,
-the propagate-prior fallback when the DD set is too thin to solve, and the
-optional measurement families (SD Doppler, NHC, ZUPT, bootstrap DDPR
-prior). Everything lands in ``epoch.graph`` / ``epoch.values``; nothing
-here talks to the smoother.
-"""
-
+"""Stage C1 — assemble measurement factors (DDPR, DDCP, SD Doppler, NHC, ZUPT)."""
 
 import numpy as np
-import gtsam
 
 from ..factors import doppler_sd as _tc_doppler_sd
 from ..factors import factors as _tc_factors
 from ..factors import nhc as _tc_nhc
 from ..factors import zupt as _tc_zupt
-from ..utils import sorted_amb_items
 
 
-def _build_factor_block(tc, epoch, prev_smode):
-    """Stage C1 — DD factors + BetweenN chain + propagate-prior fallback + (Doppler / NHC / ZUPT / bootstrap-DDPR) priors."""
+def _build_factor_block(tc, epoch):
+    """Stage C1 — add pure C++ GNSS + vehicle constraint factors to epoch.graph."""
     info = epoch.info
-    # DD factor construction
-    nv = _tc_factors.build_dd_factors(tc, 
-        epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
+    epoch.nv = _tc_factors.build_dd_factors(
+        tc, epoch.graph, epoch.values, epoch.obs, epoch.obsb, epoch.obs_sd,
         epoch.rs, epoch.rsb, epoch.sat, epoch.el, epoch.iu, epoch.ir_map,
-        tc.Xpose(epoch.key_idx), tc.lever_arm_tc,
-        tc.amb_keys_tc,
-        dd_epoch=epoch.key_idx,
-        prev_amb_values=epoch.prev_amb_values,
-        skip_cp=epoch.skip_cp_now)
-    epoch.nv = nv
-    n_between = _add_between_n_chain(tc, epoch, prev_smode)
+        tc.Xpose(epoch.key_idx), tc.lever_arm_tc, tc.amb_keys_tc,
+        existing_estimate=epoch.estimate)
     info['n_dd'] = epoch.nv
-    if epoch.nv < tc.cfg.min_dd_for_solve:
-        _add_thin_epoch_priors(tc, epoch)
-    info['n_between'] = n_between
 
-    # Between-satellite differenced Doppler (clock-free; cfg.doppler_sd_sigma)
     _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
 
     if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
@@ -47,69 +27,11 @@ def _build_factor_block(tc, epoch, prev_smode):
 
     _tc_zupt.add_zupt_factors_for_stage(tc, epoch)
 
-    # ────────────────────────────────────────────────────────────────
-
-def _add_between_n_chain(tc, epoch, prev_smode):
-    """BetweenFactor(N_prev, N_new, 0) on continuing ambiguities.
-
-    The sigma is the CP-continuity leash: tight after a FIX streak
-    (sigma_n_between), loose right after FLT or during warmup
-    (sigma_n_between_flt) so a wrong integer cannot be dragged along.
-    """
-    info = epoch.info
-    last_flt = (prev_smode == 5)
-    info['prev_smode'] = prev_smode
-    sig_between_flt = tc.cfg.sigma_n_between_flt
-    sig_between_fix = tc.cfg.sigma_n_between
-    n_between = 0
-    if not epoch.skip_cp_now and tc.cfg.betweenn_enable:
-        for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-            if (s, f) in epoch.prev_amb_values:
-                k_old, _ = epoch.prev_amb_values[(s, f)]
-                sig_between = (sig_between_flt if last_flt
-                               else sig_between_fix)
-                epoch.graph.add(gtsam.BetweenFactorDouble(
-                    k_old, k_new, 0.0,
-                    tc._noise1(sig_between)))
-                n_between += 1
-    return n_between
-
-def _add_thin_epoch_priors(tc, epoch):
-    """Too few DD factors to solve: leash pose/vel/bias to the IMU
-    prediction (propagate_* sigmas) and anchor continuing ambiguities
-    so the graph stays determined until geometry returns."""
-    epoch.info['propagate_prior'] = epoch.nv
-    epoch.graph.addPriorPose3(
-        tc.Xpose(epoch.key_idx), epoch.pred_nav.pose(),
-        gtsam.noiseModel.Isotropic.Sigma(
-            6, tc.cfg.propagate_pose_sigma))
-    epoch.graph.addPriorVector(
-        tc.Vel(epoch.key_idx), epoch.pred_nav.velocity(),
-        gtsam.noiseModel.Isotropic.Sigma(
-            3, tc.cfg.propagate_vel_sigma))
-    epoch.graph.addPriorConstantBias(
-        tc.Bias(epoch.key_idx), epoch.bias_prev,
-        gtsam.noiseModel.Isotropic.Sigma(
-            6, tc.cfg.propagate_bias_sigma))
-    if not epoch.skip_cp_now:
-        n_anchored = 0
-        amb_noise = tc._noise1(tc.cfg.propagate_amb_sigma)
-        for (s, f), k_new in sorted_amb_items(tc._sat_states.amb_keys_dict()):
-            if (s, f) in epoch.prev_amb_values:
-                _, n_prev = epoch.prev_amb_values[(s, f)]
-                epoch.graph.add(gtsam.PriorFactorDouble(
-                    k_new, n_prev, amb_noise))
-                n_anchored += 1
-        epoch.info['n_anchored'] = n_anchored
-
 
 def _horizontal_speed(tc, epoch):
-    """Speed for the NHC gate: last solved velocity, else the prediction."""
     try:
         return float(np.linalg.norm(
             np.array(epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1)))[:2]))
     except RuntimeError:
-        # Never observed on tokyo run1 (incl. warm resets / tunnel);
-        # kept as a guard for datasets where Vel(k-1) can be missing.
         return float(np.linalg.norm(
             np.array(epoch.pred_nav.velocity())[:2]))

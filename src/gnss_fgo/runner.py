@@ -1,4 +1,4 @@
-"""ImuGnssTc — two-phase IMU/GNSS tight coupling runner."""
+"""ImuGnssTc — clean two-phase IMU/GNSS tightly-coupled FGO runner."""
 
 import numpy as np
 import gtsam
@@ -21,34 +21,23 @@ from . import initialization as _initialization
 from . import pipeline as _pipeline
 from .integrity import recovery as _tc_recovery
 from .state.runtime_state import (
-    ArDiagnostics, CurrentEpochState, MresSignalsState, RecoveryState,
-    SatFieldView, SatStateMap,
+    ArDiagnostics, CurrentEpochState, SatFieldView, SatStateMap,
 )
 from .pipeline import update_smoother as _tc_isam
 from .factors import prefit as _tc_prefit
 
 
 class ImuGnssTc:
-    """Two-phase IMU/GNSS tight coupling processor.
+    """Two-phase IMU/GNSS tightly-coupled factor-graph processor."""
 
-    The estimator is the factor graph; cssrlib is a library it calls, not a
-    base class it is. The complete surface this pipeline uses from cssrlib's
-    engine is the delegation block below -- seven methods and the ratio stash
-    -- everything else (EKF time/measurement updates, the engine's own
-    process loop) is deliberately out of reach.
-    """
-
-    # Symbol helpers
-    Xp = staticmethod(lambda i: gtsam.symbol('x', i))   # Phase 1 pose
-    Xpose = staticmethod(lambda i: gtsam.symbol('P', i)) # Phase 2 pose
+    Xp = staticmethod(lambda i: gtsam.symbol('x', i))
+    Xpose = staticmethod(lambda i: gtsam.symbol('P', i))
     Vel = staticmethod(lambda i: gtsam.symbol('v', i))
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
 
-    # ── The cssrlib boundary ────────────────────────────────────────
-    # Every capability this pipeline takes from the engine, in one block.
-    # Measurement preparation and validation:
+    # ── cssrlib boundary ──────────────────────────────────────────
     def prepare_double_difference_measurements(self, *a, **k):
         return self.engine.prepare_double_difference_measurements(*a, **k)
 
@@ -58,8 +47,6 @@ class ImuGnssTc:
     def sdres(self, *a, **k):
         return self.engine.sdres(*a, **k)
 
-    # AR bookkeeping still delegated to the cssrlib engine (the resolver
-    # itself lives in ar/):
     def ddidx(self, *a, **k):
         return self.engine.ddidx(*a, **k)
 
@@ -69,8 +56,6 @@ class ImuGnssTc:
     def IB(self, *a, **k):
         return self.engine.IB(*a, **k)
 
-    # The ratio stash lives on the engine; forwarding keeps one source of
-    # truth for the engine-side bookkeeping that still reads it.
     @property
     def _last_s0(self):
         return self.engine._last_s0
@@ -89,16 +74,10 @@ class ImuGnssTc:
 
     @staticmethod
     def _noise1(sigma):
-        """1-D isotropic noise model for ``sigma``.
-
-        Not cached: with elevation-dependent varerr sigmas nearly every
-        DD pair is a fresh key, so a cache only accumulates.
-        """
         return gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))
 
     def __init__(self, nav, pos0, base_ecef, imu_data,
                  lever_arm=np.zeros(3), logfile=None, cfg=None):
-        """Initialize TC processor."""
         self.engine = rtkpos(nav, pos0, logfile)
         self.nav = self.engine.nav
 
@@ -108,7 +87,6 @@ class ImuGnssTc:
 
         self._init_base_frame()
 
-        # Config: use provided TcConfig or load from env vars
         self.cfg = cfg if cfg is not None else TcConfig.from_env()
         self._apply_nav_config()
         self.body_rot_std = self.cfg.body_rot_std
@@ -116,13 +94,10 @@ class ImuGnssTc:
         self.gyro_noise = self.cfg.gyro_noise
         self.accel_bias_sigma = self.cfg.accel_bias_sigma
         self.gyro_bias_sigma = self.cfg.gyro_bias_sigma
-        self._recovery = RecoveryState()
-        self._mres_signals = MresSignalsState()
 
         self._init_runtime_state()
 
     def _init_base_frame(self):
-        """Build the ENU frame anchored at the configured base station."""
         lat, lon, _ = ecef2pos(self.base_ecef)
         sl, cl = np.sin(lat), np.cos(lat)
         sn, cn = np.sin(lon), np.cos(lon)
@@ -135,85 +110,57 @@ class ImuGnssTc:
         self.base_pt = gtsam.Point3(*self.base_ecef)
 
     def _apply_nav_config(self):
-        """Apply TcConfig values onto cssrlib's mutable nav state."""
         self.nav.armode = self.cfg.ar_mode
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
-        self.nav.thresar = self.cfg.ar_thresar
+        self.nav.thresar = self.cfg.ar_thresar_max
         self.nav.minfixsats = self.cfg.ar_minfixsats
-        self.nav.sat_band_plan = bool(self.cfg.sat_band_plan)
+        self.nav.sat_band_plan = True
 
     def _init_runtime_state(self):
-        """Initialize mutable per-run state for both pipeline phases."""
-        # State
         self.phase = 1
         self.epoch = 0
         self.imu_idx = 0
         self.tc_epoch = 0
 
         self.phase1_t = 0.0
-        self.isam = self._make_isam2(self.cfg.phase1_fls_lag,
-                                       self.cfg.isam2_relinearize_skip,
-                                       self.cfg.isam2_relinearize_threshold)
+        self.isam = self._make_isam2(self.cfg.fls_lag,
+                                     self.cfg.isam2_relinearize_skip,
+                                     self.cfg.isam2_relinearize_threshold)
         self.amb_keys = {}
         self._isam_p1_inserted = set()
 
-
-        # Collecting state (between Phase 1 and Phase 2)
         self.collecting = False
-        self.collected_fixes = []  # list of {'ecef': ..., 'vel': ..., 'imu': [...]}
+        self.collected_fixes = []
 
         self._sat_states = SatStateMap()
         self._amb_key_view = SatFieldView(self._sat_states, 'amb_key')
         self._amb_gen_view = SatFieldView(self._sat_states, 'amb_gen', absent=0)
 
-        # Phase 2 (initialized at transition)
         self.isam2 = None
         self.imu_params = None
         self.tc_bias = None
         self.lever_arm_tc = gtsam.Point3(0, 0, 0)
 
-        self._last_obs_t = None  # for real-seconds dt tracking
-        self._epoch_dt = 0.2     # actual seconds since last process() call
-        # Per-epoch scratch — replaced every epoch by _reset_current_epoch.
+        self._last_obs_t = None
+        self._epoch_dt = 0.2
         self.current_epoch = CurrentEpochState()
-        self.amb_gen = {}
-
-        self._init_epoch_state_defaults()
-
-    def _init_epoch_state_defaults(self):
-        """Per-epoch / per-run scratch state, one attribute per field."""
-        # AR diagnostics (set inside ar.run_ar)
-        self._ar_context_reject = None
-        self._ar_subset_debug = None
         self.ar_diag = ArDiagnostics()
-        self._ar_starve_streak = 0
+        self._last_ar_result = None
+        self._held_dd_pairs = set()
         self._nhc_lever_cache = None
         self._nhc_lever_src = None
         self._ar_key_pose = None
-        # Phase-1 motion-detection solution history [(tow, ecef), ...]
         self._sol_hist = []
-        # Phase-2 smoother config / bias anchor (set at transition)
         self.fls_lag = None
         self.tc_bias_init = None
-        # Per-epoch DDCP / DDPR factor bookkeeping (reset in build_dd_factors)
         self._ar_cp_visible_sf = set()
-        self._last_custom_ddcp_local = set()
-        self._last_custom_ddcp_global = {}
         self._last_ddpr_sat_tags = []
-        self._last_per_sat_res = {}
-        self._cached_ddpr_res_pre = None
-        # Phase-2 init bootstrap counters (filled by transition_to_tc)
-        # Phase-1 last solution (used by velocity estimator)
         self._last_sol_ecef = None
-        # AR ratio stash (nav_bridge.publish_attempt writes s0/s1 here)
         self._last_s0 = 0.0
         self._last_s1 = 0.0
 
     def _update_epoch_dt(self, obs):
-        """Refresh self._epoch_dt with elapsed seconds since the previous
-        obs epoch. dt only — the per-epoch state wipes live in
-        _reset_current_epoch (review finding A-1)."""
         if self._last_obs_t is not None:
             try:
                 dt = float(timediff(obs.t, self._last_obs_t))
@@ -224,23 +171,11 @@ class ImuGnssTc:
         self._last_obs_t = obs.t
 
     def _reset_current_epoch(self):
-        """Start the epoch's scratch lifetime (review findings A-1/A-2).
-
-        current_epoch is REPLACED, not wiped — anything epoch-scoped
-        belongs in CurrentEpochState, where it cannot outlive the epoch.
-        amb_gen is the one per-sat field still wiped here: it is part
-        of the N-key value (slip resets bump it pre-build), so it must
-        reset with the epoch to keep key numbering stable. The
-        one-epoch lifetime is the spec (persisting was measured worse).
-        """
+        """Replace epoch-scoped scratch; keep persistent arc amb_gen monotonic."""
         self.current_epoch = CurrentEpochState()
-        # Same lifetime rule: AR diagnostics are per-call, and a stale
-        # exception string otherwise rides every later epoch's info.
         self.ar_diag = ArDiagnostics()
-        self.amb_gen = {}
 
     def _assign_view(self, view: SatFieldView, value):
-        """Assignment semantics for view-backed attributes: replace contents."""
         if value is view:
             return
         view.clear()
@@ -248,25 +183,23 @@ class ImuGnssTc:
             for k, v in value.items():
                 view[k] = v
 
-    # ── Generated forwarders ───────────────────────────────────────
-    # Per-(sat,freq) dict views onto SatStateMap and scalar fields of the
-    # grouped state dataclasses, exposed as flat tc attributes. One table
-    # instead of 34 hand-written property/setter pairs; semantics are
-    # identical (view assignment goes through _assign_view).
-    _VIEW_FORWARDS = {
-        'amb_keys_tc': '_amb_key_view',
-        'amb_gen': '_amb_gen_view',
-    }
-    _FIELD_FORWARDS = {
-        '_recov_cp_hold': ('_recovery', 'recov_cp_hold'),
-        '_pim_discontinuity': ('_recovery', 'pim_discontinuity'),
-        '_ddpr_bad_count': ('_recovery', 'ddpr_bad_count'),
-    }
+    @property
+    def amb_keys_tc(self):
+        return self._amb_key_view
 
+    @amb_keys_tc.setter
+    def amb_keys_tc(self, value):
+        self._assign_view(self._amb_key_view, value)
 
+    @property
+    def amb_gen(self):
+        return self._amb_gen_view
+
+    @amb_gen.setter
+    def amb_gen(self, value):
+        self._assign_view(self._amb_gen_view, value)
 
     def _make_imu_params(self):
-        """Thin adapter — see utils.imu.make_imu_params."""
         return _utils_make_imu_params(
             accel_noise=self.accel_noise,
             gyro_noise=self.gyro_noise,
@@ -275,7 +208,6 @@ class ImuGnssTc:
             integ_cov=self.cfg.imu_integ_cov)
 
     def _antenna_ecef(self, pose, ecef_body):
-        """ECEF antenna position = body ECEF + R_body @ lever. Lever=0 → passthrough."""
         lever_arr = np.array(self.lever_arm_tc)
         if np.linalg.norm(lever_arr) == 0:
             return ecef_body
@@ -283,38 +215,33 @@ class ImuGnssTc:
         return ecef_body + R_body @ lever_arr
 
     def _collect_imu_samples(self, n_samples=100, target_tow=None):
-        """Thin adapter — see utils.imu.collect_imu_samples. Advances imu_idx."""
         samples, self.imu_idx = _utils_collect_imu_samples(
             self.imu_data, self.imu_idx,
             n_samples=n_samples, target_tow=target_tow)
         return samples
 
     def _estimate_stationary_bias(self):
-        """Thin adapter — see utils.imu.estimate_stationary_bias."""
         return _utils_estimate_stationary_bias(
             self.imu_data, n_max=min(3000, self.imu_idx))
 
     def _build_pim_from_samples(self, bias, imu_samples):
-        """Thin adapter — see utils.imu.build_pim_from_samples."""
         return _utils_build_pim_from_samples(self.imu_params, bias, imu_samples)
 
     def _heading_from_vel(self, vel, fallback, disp_enu=None):
-        """Thin adapter — see utils.heading_from_vel."""
         return _utils_heading_from_vel(vel, fallback, disp_enu)
 
     def _ddpr_only_position(self, obs, obsb, obs_sd, rs, rsb,
-                              sat, el, iu, ir_map, pose_init):
-        """Standalone DDPR-only LS. See utils.ls_solvers.ddpr_only_position."""
-        lever = self.lever_arm_tc
+                            sat, el, iu, ir_map, pose_init):
+        sigma_pr_zenith = _tc_prefit.varerr_dd_sigma(self, 1, np.pi / 2, self._epoch_dt)
         ctx = _DDPRContext(
             R_enu2ecef=self.R_enu2ecef,
             base_ecef=self.base_ecef,
             base_pt=self.base_pt,
             ecef_T_nav=self.ecef_T_nav,
-            lever=lever,
+            lever=self.lever_arm_tc,
             nav_nf=self.nav.nf,
-            sigma_pr=self.cfg.sigma_pr,
-            fde_pr=self.cfg.fde_pr,
+            sigma_pr=sigma_pr_zenith / np.sqrt(2.0),
+            fde_pr=4.0,
             pick_ref_sat_idx=lambda *a, **k: _tc_prefit.pick_ref_sat_idx(self, *a, **k),
         )
         ecef_out, n_active, res_rms, _, _ = _utils_ddpr_only_position(
@@ -323,20 +250,17 @@ class ImuGnssTc:
         return ecef_out, n_active, res_rms
 
     def _compute_gdop(self, pred, ns, rs, iu, R_enu2ecef):
-        """GDOP at IMU-predicted pose. See utils.geometry.compute_gdop."""
         return _utils_compute_gdop(
             np.array(pred.pose().translation()), ns, rs, iu,
             R_enu2ecef, self.base_ecef)
 
-    def process(self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd,
-                ir_map):
-        """Process one epoch. Returns (sol_ecef, tag, nb, info_dict)."""
+    def process(self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map):
         R, ns, init_ecef = prepare_process_epoch(self, obs, sat)
         info = make_epoch_diagnostics(self)
 
-        # Phase 1 ns<4: cannot form DD, just advance time
         if self.phase == 1 and ns < 4:
-            return _tc_recovery.advance_epoch_and_pack(self, self.nav.x[0:3], 'FLT', 0, info, obs)
+            return _tc_recovery.advance_epoch_and_pack(
+                self, self.nav.x[0:3], 'FLT', 0, info, obs)
 
         if self.phase == 1:
             return self._run_init_epoch(
@@ -346,29 +270,7 @@ class ImuGnssTc:
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
 
-
     _make_isam2 = staticmethod(_tc_isam.make_isam2)
     process_imu_only = _tc_recovery.process_imu_only
     _run_init_epoch = _initialization.run_init_epoch
     _run_tc_epoch = _pipeline.run_tc_epoch
-
-
-def _install_forwarders(cls):
-    """Class decorator: property-forward legacy attribute names onto the
-    grouped state objects (_VIEW_FORWARDS / _FIELD_FORWARDS)."""
-    for name, view_attr in cls._VIEW_FORWARDS.items():
-        def getter(self, _v=view_attr):
-            return getattr(self, _v)
-        def setter(self, value, _v=view_attr):
-            self._assign_view(getattr(self, _v), value)
-        setattr(cls, name, property(getter, setter))
-    for name, (group, field) in cls._FIELD_FORWARDS.items():
-        def getter(self, _g=group, _f=field):
-            return getattr(getattr(self, _g), _f)
-        def setter(self, value, _g=group, _f=field):
-            setattr(getattr(self, _g), _f, value)
-        setattr(cls, name, property(getter, setter))
-    return cls
-
-
-_install_forwarders(ImuGnssTc)
