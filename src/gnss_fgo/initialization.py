@@ -36,7 +36,6 @@ def _p1_fresh_restart(tc):
     tc.isam = tc._make_isam2(tc.cfg.fls_lag)
     tc.amb_keys.clear()
     tc._isam_p1_inserted = set()
-    tc._held_dd_pairs.clear()
     for st in tc._sat_states.values():
         st.amb_gen += 1
         st.amb_key = None
@@ -155,8 +154,6 @@ def _p1_emit_and_run_ar(tc, est, sat, el, R):
     xa = None
     if ep >= 5:
         nb, xa = _tc_ar.run_ar(tc, sat, el, tc.amb_keys)
-        if nb > 0 and xa is not None and tc.nav.armode == 3:
-            _tc_ar.ar_hold.apply_fix_and_hold(tc, tc.amb_keys, xa)
 
     sol = xa[0:3] if nb > 0 and tc.nav.smode == 4 else tc.nav.x[0:3]
     tag = 'FIX' if tc.nav.smode == 4 else 'FLT'
@@ -319,7 +316,6 @@ def transition_to_tc(tc, collected_fixes):
     tc.fls_lag = tc.cfg.fls_lag
     tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.tc_time = 0.0
-    tc._held_dd_pairs.clear()
 
     # Reset ambiguity tracking cleanly for Phase-2 persistent arcs.
     for st in tc._sat_states.values():

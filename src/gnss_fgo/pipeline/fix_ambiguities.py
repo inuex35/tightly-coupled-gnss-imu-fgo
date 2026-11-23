@@ -1,4 +1,4 @@
-"""Stage C4 — LAMBDA ambiguity resolution (with optional ar_mode=3 DD BetweenFactor hold)."""
+"""Stage C4 — Continuous LAMBDA ambiguity resolution."""
 
 from .. import ar as _tc_ar
 
@@ -15,7 +15,7 @@ _INIT_WARMUP_EPOCHS = 8
 
 
 def _run_lambda_ar(tc, epoch):
-    """Stage C4 — publish marginals, check GDOP, run LAMBDA, optionally add DD hold."""
+    """Stage C4 — publish marginals, check GDOP, and run continuous LAMBDA AR."""
     tc.nav.smode = 5
     epoch.nb = 0
     epoch.xa = None
@@ -35,8 +35,6 @@ def _run_lambda_ar(tc, epoch):
         tc.ar_diag.outcome = 'gdop_gate'
     else:
         epoch.nb, epoch.xa = _tc_ar.run_ar(tc, epoch.sat, epoch.el, amb_snapshot)
-        if epoch.nb > 0 and epoch.xa is not None and tc.nav.armode == 3:
-            _tc_ar.ar_hold.apply_fix_and_hold(tc, amb_snapshot, epoch.xa)
 
     if tc.ar_diag.exception:
         info['ar_exception'] = tc.ar_diag.exception

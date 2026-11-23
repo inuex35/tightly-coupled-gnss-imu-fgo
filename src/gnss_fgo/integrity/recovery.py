@@ -30,7 +30,6 @@ def warm_reset_phase2(tc, ecef_seed, rot_seed, vel_seed=None):
     tc.isam2 = tc._make_isam2(tc.fls_lag)
     tc.tc_time = 0.0
     tc.tc_epoch = 0
-    tc._held_dd_pairs.clear()
 
     for st in tc._sat_states.values():
         if st.amb_key is not None:

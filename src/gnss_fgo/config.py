@@ -52,7 +52,7 @@ class TcConfig:
 
     # 5. Cycle slip, AR & sliding window (5)
     thres_slip: float = 0.15       # geometry-free cycle slip threshold [m]
-    ar_mode: int = 3               # 0=off, 1=continuous, 3=C++ DD BetweenFactor hold
+    amb_rw_sigma: float = 0.001    # carrier-phase ambiguity random walk σ [cyc/epoch]
     ar_ratio: float = 3.0          # LAMBDA / FFRT upper ratio threshold
     ar_gdop_max: float = 8.0       # skip AR above this GDOP (0 = off)
     fls_lag: float = 1.0           # FixedLagSmoother window [s]

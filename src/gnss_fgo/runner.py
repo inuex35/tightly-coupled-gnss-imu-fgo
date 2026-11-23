@@ -109,7 +109,7 @@ class ImuGnssTc:
         self.base_pt = gtsam.Point3(*self.base_ecef)
 
     def _apply_nav_config(self):
-        self.nav.armode = self.cfg.ar_mode
+        self.nav.armode = 1
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
         self.nav.thresar = self.cfg.ar_ratio
@@ -144,7 +144,6 @@ class ImuGnssTc:
         self.current_epoch = CurrentEpochState()
         self.ar_diag = ArDiagnostics()
         self._last_ar_result = None
-        self._held_dd_pairs = set()
         self._nhc_lever_cache = None
         self._nhc_lever_src = None
         self._ar_key_pose = None

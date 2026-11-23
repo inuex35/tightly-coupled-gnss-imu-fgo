@@ -1,11 +1,10 @@
 """Integer ambiguity resolution (pure LAMBDA + optional partial AR)."""
 
-from . import hold as ar_hold
 from . import nav_bridge
 from . import problem as ar_problem
 from .ambiguity_resolver import AmbiguityResolver
 
-__all__ = ['ar_hold', 'nav_bridge', 'ar_problem', 'AmbiguityResolver', 'run_ar']
+__all__ = ['nav_bridge', 'ar_problem', 'AmbiguityResolver', 'run_ar']
 
 _FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
 

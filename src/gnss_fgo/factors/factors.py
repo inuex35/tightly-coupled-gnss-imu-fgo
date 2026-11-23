@@ -73,9 +73,24 @@ class DdFactorBuilder:
         return _tc_prefit.varerr_dd_sigma(self.tc, code, el_pair, self.dt_s)
 
     def _persistent_key(self, sat_id, freq):
-        """Return persistent arc key for (sat_id, freq); bump gen if marginalized out."""
+        """Return arc key for (sat_id, freq); chain per-epoch random walk in Phase 2."""
         tc = self.tc
+        sf = (int(sat_id), int(freq))
+        if sf in self.new_amb:
+            return self.new_amb[sf]
         st = tc._sat_states.get(sat_id, freq)
+        rw = float(tc.cfg.amb_rw_sigma)
+        if (tc.phase == 2 and rw > 0.0 and st.amb_key is not None
+                and self.existing_estimate is not None
+                and self.existing_estimate.exists(st.amb_key)):
+            k_old = st.amb_key
+            st.amb_gen += 1
+            k_new = tc.N(sat_id, freq, st.amb_gen)
+            self.values.insert(k_new, self.existing_estimate.atDouble(k_old))
+            self.graph.add(gtsam.BetweenFactorDouble(
+                k_old, k_new, 0.0, tc._noise1(rw)))
+            self.new_amb[sf] = k_new
+            return k_new
         if st.amb_key is not None:
             if (self.existing_estimate is None
                     or self.existing_estimate.exists(st.amb_key)):
