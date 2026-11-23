@@ -40,11 +40,11 @@ class ResolverResult:
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
-    #: Partial AR: minimum distinct integer-fixed satellites (4 = 3D GNSS
-    #: geometry minimum), bootstrapped success rate that picks the first
-    #: subset, and reduced searches allowed per epoch.
-    min_fix = 4
-    min_sats = 4
+    #: Minimum DD pairs and distinct integer-fixed satellites (applied
+    #: uniformly to both full AR and partial AR), plus partial-AR
+    #: bootstrapped success rate and reduced searches per epoch.
+    min_fix = 12
+    min_sats = 5
     par_p0 = 0.995
     par_trials = 8
 
@@ -131,7 +131,9 @@ class AmbiguityResolver:
         """
         keys = list(keys)
         pairs = self.double_difference(keys, elevations)
-        if len(pairs) < self.min_pairs:
+        full_sats = {s for ref, tgt in pairs for s in (ref[0], tgt[0])}
+        if (len(pairs) < max(self.min_pairs, self.min_fix)
+                or len(full_sats) < self.min_sats):
             return ResolverResult(pairs=pairs)
 
         index = {k: i for i, k in enumerate(keys)}

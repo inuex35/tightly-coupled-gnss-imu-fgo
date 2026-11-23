@@ -10,8 +10,10 @@ TRUTH = {(1, 0): 100.0, (2, 0): -250.0, (3, 0): 731.0, (4, 0): 12.0}
 def test_clean_fix_recovers_integers():
     rng = np.random.default_rng(7)
     floats = {k: TRUTH[k] + rng.normal(0, 0.01) for k in KEYS}
-    r = AmbiguityResolver(thresar=3.0).resolve(
-        floats, np.eye(4) * 1e-4, KEYS, EL)
+    resolver = AmbiguityResolver(thresar=3.0)
+    resolver.min_fix = 2  # synthetic problem has 4 sats (3 pairs)
+    resolver.min_sats = 4
+    r = resolver.resolve(floats, np.eye(4) * 1e-4, KEYS, EL)
     assert r.nb > 0
     for ref, tgt in r.pairs:
         dd_fixed = r.fixed[ref] - r.fixed[tgt]

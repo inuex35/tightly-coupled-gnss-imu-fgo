@@ -36,5 +36,6 @@ def test_partial_fix_accepts_the_clean_core():
 def test_full_fix_reports_dropped_zero():
     keys, vals, cov, el, _ = _problem(n_clean=8, n_noisy=0)
     r = AmbiguityResolver(thresar=3.0)
+    r.min_fix = 4  # synthetic problem is small
     res = r.resolve(vals, cov, keys, el)
     assert res.nb == len(res.pairs) and res.dropped == 0
