@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """IMU/GNSS tight coupling example.
 
-CombinedImuFactor + DDFactorArm + SD Doppler + NHC + ZUPT.
+CombinedImuFactor + DDFactorArm + SD Doppler + NHC.
 
 Usage:
   python run_imu_gnss_tc.py <rover.obs> <base.obs> <nav_file> <imu.csv> <reference.csv>

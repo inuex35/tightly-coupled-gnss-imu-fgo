@@ -129,7 +129,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
 
     _tc_factors.build_dd_factors(
         tc, g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        tc.Pose(0), tc.lever_arm_tc, tc._sat_states, existing_estimate=None)
+        tc.Pose(0), tc.lever_arm_tc, existing_estimate=None)
 
     # 3. Solve + extra relinearization passes to settle unobservably-yawed pose0
     update_smoother(tc, g, v, 0)
@@ -199,7 +199,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     n_dd, visible_sat_freqs, seeded_sat_freqs = _tc_factors.build_dd_factors(
         tc, graph, values, obs, obsb, obs_sd,
         rs, rsb, sat, el, iu, ir_map,
-        tc.Pose(key_idx), tc.lever_arm_tc, tc._sat_states,
+        tc.Pose(key_idx), tc.lever_arm_tc,
         existing_estimate=estimate)
     info['n_dd'] = n_dd
     _tc_factors.add_sd_doppler_factors(
