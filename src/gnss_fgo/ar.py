@@ -79,6 +79,7 @@ def build_problem(tc, sat_list, amb_dict, key_pose,
         for j, b in enumerate(keys):
             cov[i, j] = jm.at(ka, key_of[b])[0, 0]
         cross[:, i] = jm.at(key_pose, ka)[3:6, 0]
+    # GTSAM Pose3 tangent translation is body-local; rotate to ENU to match R_enu2ecef.
     cross = est.atPose3(key_pose).rotation().matrix() @ cross
 
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
@@ -156,7 +157,12 @@ class AmbiguityResolver:
          2.19282996e+00, -5.34583971e-02))
 
     def ratio_threshold(self, nb):
-        """Ratio-test threshold for ``nb`` DD candidates."""
+        """Ratio-test threshold for ``nb`` DD candidates.
+
+        Uses ``thresar`` as a fixed threshold when ``thresar_min == thresar_max``;
+        otherwise treats ``thresar`` as the FFRT failure-rate parameter ``p0`` in
+        the fitted rational polynomial clamped to ``[thresar_min, thresar_max]``.
+        """
         if self.thresar_min == self.thresar_max:
             return self.thresar
         p0 = self.thresar
@@ -248,19 +254,23 @@ class AmbiguityResolver:
         return fixed
 
     def _partial(self, y, Q, pairs):
+        """Partial AR: decorrelate, drop weakest until sr >= par_p0, then conditional-update."""
         n = len(y)
         if n <= self.min_fix:
             return None
+        # 1. Z-transform decorrelation
         L, d = ldldecom(Q)
         L, d, Z = reduction(L, d)
         iZt = np.round(np.linalg.inv(Z.T))
         z = Z.T @ y
         Qz = L.T @ np.diag(d) @ L
 
+        # 2. Drop lowest-precision decorrelated components until bootstrapped SR >= par_p0
         kmax = n - self.min_fix
         k = 1
         while k < kmax and sr_boost(d[k:]) < self.par_p0:
             k += 1
+        # 3. Search upward for a subset passing the ratio test, then conditionally update dropped ones
         for _ in range(self.par_trials):
             if k > kmax:
                 return None

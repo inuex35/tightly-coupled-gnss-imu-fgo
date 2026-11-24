@@ -171,8 +171,13 @@ def _sat_pts(rs, rsb, iu, ir_map, idx, sat_id):
     return pt, base_pt
 
 
-def _persistent_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq):
-    """Return arc key for (sat_id, freq); chain per-epoch random walk if enabled."""
+def _resolve_arc_amb_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq):
+    """Return the active ambiguity symbol for (sat_id, freq).
+
+    Reuses the existing symbol while the arc stays in the smoother, chains a
+    random-walk ``BetweenFactorDouble`` step when ``amb_rw_sigma > 0``, or
+    allocates a fresh symbol if the previous arc was marginalized out.
+    """
     sf = (int(sat_id), int(freq))
     if sf in new_amb:
         return new_amb[sf]
@@ -214,9 +219,9 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
     visible_sat_freqs.add((int(ref_sat), int(f)))
     visible_sat_freqs.add((int(j_sat), int(f)))
 
-    key_n_ref = _persistent_key(
+    key_n_ref = _resolve_arc_amb_key(
         tc, graph, values, new_amb, existing_estimate, ref_sat, f)
-    key_n_j = _persistent_key(
+    key_n_j = _resolve_arc_amb_key(
         tc, graph, values, new_amb, existing_estimate, j_sat, f)
     pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     init_dd_ambiguity_priors(
@@ -374,7 +379,9 @@ def add_nhc_factor(tc, graph, key_idx, gyro_mean=None):
     sig_vert = float(tc.cfg.nhc_sigma_vert)
     if sig_lat <= 0 or sig_vert <= 0:
         return False
-    lever = np.array([float(x) for x in tc.cfg.nhc_lever.split(',')])
+    lever = getattr(tc, '_nhc_lever', None)
+    if lever is None:
+        lever = np.array([float(x) for x in tc.cfg.nhc_lever.split(',')], dtype=float)
     if gyro_mean is not None:
         bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
                      else np.zeros(3))
