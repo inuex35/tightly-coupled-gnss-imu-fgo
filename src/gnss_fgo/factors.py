@@ -41,34 +41,12 @@ class SatStateMap:
     def keys(self):
         return self.track.keys()
 
-    def values(self):
-        return self.track.values()
-
     def amb_keys_dict(self) -> dict:
         return {k: st.amb_key for k, st in self.track.items()
                 if st.amb_key is not None}
 
-    def amb_count(self) -> int:
-        return sum(1 for st in self.track.values() if st.amb_key is not None)
-
-    def amb_key_values(self) -> list:
-        return [st.amb_key for st in self.track.values()
-                if st.amb_key is not None]
-
 
 # ── Cycle-slip detection & outage arc expiry ──────────────────────────
-
-def reset_slipped_ambiguities(tc, reset_keys):
-    """End the arc for every slipped (sat, f) by clearing amb_key and bumping amb_gen."""
-    n_reset = 0
-    for key in reset_keys:
-        sat_st = tc._sat_states.get(*key)
-        if sat_st.amb_key is not None:
-            sat_st.amb_key = None
-            n_reset += 1
-        sat_st.amb_gen += 1
-    return n_reset
-
 
 def _detect_gf_slip(tc, obs, row, s, lams, nf, reset_keys):
     """Geometry-free L1-L2 jump detector."""
@@ -112,7 +90,13 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
             if st.outage_count > maxout:
                 reset_keys.add(key)
 
-    n_reset = reset_slipped_ambiguities(tc, reset_keys)
+    n_reset = 0
+    for key in reset_keys:
+        sat_st = tc._sat_states.get(*key)
+        if sat_st.amb_key is not None:
+            sat_st.amb_key = None
+            n_reset += 1
+        sat_st.amb_gen += 1
     return n_reset, reset_keys
 
 # ── Ambiguity seeding ─────────────────────────────────────────────────

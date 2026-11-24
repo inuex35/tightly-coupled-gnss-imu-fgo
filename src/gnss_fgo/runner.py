@@ -21,27 +21,6 @@ from .utils import (
 
 # ── FixedLagSmoother helpers ──────────────────────────────────────────
 
-_ISAM2_RELINEARIZE_SKIP = 1
-_ISAM2_RELINEARIZE_THRESHOLD = 0.01
-
-
-def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
-               relinearize_threshold=_ISAM2_RELINEARIZE_THRESHOLD):
-    """Build IncrementalFixedLagSmoother with QR factorization and per-epoch relinearization."""
-    params = gtsam.ISAM2Params()
-    params.setFactorization("QR")
-    params.setRelinearizeThreshold(float(relinearize_threshold))
-    params.relinearizeSkip = int(relinearize_skip)
-    return gtsam.IncrementalFixedLagSmoother(lag, params)
-
-
-def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
-    """Advance tc.epoch / nav.t and pack the (sol, tag, nb, info) tuple."""
-    tc.epoch += 1
-    tc.nav.t = obs.t
-    return sol, tag, nb, info
-
-
 def update_smoother(tc, graph, values, key_idx, keep_keys=()):
     """Update FLS while keeping the previous pose/vel/bias and live N keys alive."""
     tc.tc_time += tc._epoch_dt
@@ -73,8 +52,7 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
         new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
-        return None, None, advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return None, None, (np.array(tc.nav.x[0:3]), 'FLT', 0, info)
 
     pose_tc = new_est.atPose3(tc.Pose(key_idx))
     tc.tc_bias = new_est.atConstantBias(tc.Bias(key_idx))
@@ -119,7 +97,11 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     body_enu0 = enu0 - rot0.matrix() @ tc.lever_arm
     pose0 = gtsam.Pose3(rot0, gtsam.Point3(*body_enu0))
 
-    tc.isam2 = make_isam2(tc.cfg.fls_lag)
+    params = gtsam.ISAM2Params()
+    params.setFactorization("QR")
+    params.setRelinearizeThreshold(0.01)
+    params.relinearizeSkip = 1
+    tc.isam2 = gtsam.IncrementalFixedLagSmoother(tc.cfg.fls_lag, params)
     tc.tc_time = 0.0
     tc.tc_epoch = 0
     info['tc_epoch'] = 0
@@ -153,7 +135,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     sol = tc._antenna_ecef(pose_tc, ecef_tc)
     tc.nav.x[0:3] = sol
     tc.nav.smode = 5
-    return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
+    return sol, 'FLT', 0, info
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
@@ -161,8 +143,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     """Single-phase IMU/GNSS TC epoch flow."""
     if tc.isam2 is None:
         if ns < 4:
-            return advance_epoch_and_pack(
-                tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+            return np.array(tc.nav.x[0:3]), 'FLT', 0, info
         return _bootstrap_epoch0(
             tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
             init_ecef, R_enu2ecef, info)
@@ -176,8 +157,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
     info['n_imu'] = n_imu
     if n_imu == 0:
-        return advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
     graph = gtsam.NonlinearFactorGraph()
     values = gtsam.Values()
@@ -185,8 +165,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     if not estimate.exists(tc.Pose(key_idx - 1)):
         info['prev_pose_missing'] = key_idx - 1
-        return advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
     pose_prev = estimate.atPose3(tc.Pose(key_idx - 1))
     vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
@@ -241,7 +220,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         tc, pose_tc, ecef_tc, n_fixed, fixed_pos, info)
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
-    return advance_epoch_and_pack(tc, sol, tag, n_fixed, info, obs)
+    return sol, tag, n_fixed, info
 
 
 class ImuGnssTc:
@@ -252,10 +231,6 @@ class ImuGnssTc:
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
-
-    # ── cssrlib boundary ──────────────────────────────────────────
-    def prepare_double_difference_measurements(self, *a, **k):
-        return self.engine.prepare_double_difference_measurements(*a, **k)
 
     @staticmethod
     def _noise1(sigma):
@@ -323,7 +298,7 @@ class ImuGnssTc:
                 self.nav.t = obs.t
             prep = None
             if obsb is not None:
-                prep = self.prepare_double_difference_measurements(
+                prep = self.engine.prepare_double_difference_measurements(
                     obs, obsb, pos_pred=self.nav.x[0:3].copy(),
                     dd_only=True, compute_zdres=False)
             if prep is not None and len(prep['iu']) >= 4:
@@ -339,8 +314,11 @@ class ImuGnssTc:
 
         R, ns, init_ecef = self.R_enu2ecef, len(sat), self.nav.x[0:3].copy()
         info = {'tc_epoch': self.tc_epoch}
-        return self._run_tc_epoch(
+        res = self._run_tc_epoch(
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
+        self.epoch += 1
+        self.nav.t = obs.t
+        return res
 
     _run_tc_epoch = run_tc_epoch
