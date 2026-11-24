@@ -1,7 +1,7 @@
 """Partial AR: a full-set decline with a clean core still fixes."""
 import numpy as np
 
-from gnss_fgo.ar.ambiguity_resolver import AmbiguityResolver
+from gnss_fgo.ar import AmbiguityResolver
 
 
 def _problem(n_clean=6, n_noisy=3, seed=3):

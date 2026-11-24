@@ -1,6 +1,6 @@
 """AmbiguityResolver: synthetic problems with known integer answers."""
 import numpy as np
-from gnss_fgo.ar.ambiguity_resolver import AmbiguityResolver
+from gnss_fgo.ar import AmbiguityResolver
 
 KEYS = [(1, 0), (2, 0), (3, 0), (4, 0)]     # four GPS sats, one band
 EL = {1: 1.2, 2: 0.9, 3: 0.7, 4: 0.5}

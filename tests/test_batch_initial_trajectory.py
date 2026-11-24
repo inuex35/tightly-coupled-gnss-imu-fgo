@@ -3,7 +3,7 @@ import gtsam
 import numpy as np
 import pytest
 
-from gnss_fgo.batch.tc_graph import initial_trajectory
+from gnss_fgo.batch_graph import initial_trajectory
 
 
 @pytest.mark.parametrize("speed", [0.0, 0.5, 1.0])

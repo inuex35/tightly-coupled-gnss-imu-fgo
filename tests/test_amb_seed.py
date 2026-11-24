@@ -2,14 +2,14 @@
 import gtsam
 import pytest
 
-from gnss_fgo.factors import amb_seed
+from gnss_fgo import factors as amb_seed
 
 
 class _Tc:
     epoch = 100
 
     def __init__(self):
-        from gnss_fgo.state.runtime_state import CurrentEpochState
+        from gnss_fgo.state import CurrentEpochState
         self.current_epoch = CurrentEpochState()
 
     @staticmethod

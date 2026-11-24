@@ -1,0 +1,433 @@
+"""Factor builders: DD PR/CP with persistent arcs & seeding, SD Doppler, NHC, ZUPT."""
+
+import gtsam
+import numpy as np
+from cssrlib.gnss import SAT_SYS_ARR, sat2prn, uGNSS
+
+from .utils import (
+    compute_zupt_stats as _utils_compute_zupt_stats,
+    get_wavelengths,
+    huber_noise,
+    is_bds_geo as _is_bds_geo,
+    parse_lever,
+    sorted_sys_ids,
+)
+
+# ── Ambiguity seeding ─────────────────────────────────────────────────
+
+_SIGMA_AMB0_GAUGE = 30.0  # loose gauge prior [cyc] so initial code multipath cannot pull N
+
+
+def seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id):
+    """Insert a fresh arc's ambiguity value + loose clock-free gauge prior."""
+    values.insert(key_n, n0_seed)
+    graph.addPriorDouble(key_n, n0_seed, tc._noise1(_SIGMA_AMB0_GAUGE))
+    tc.current_epoch.seeded_amb_keys.add(key_id)
+
+
+def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
+                             existing_estimate, freq, lam, pair_sat_info):
+    """Reuse existing smoother arc keys untouched; seed new arcs once clock-free."""
+    for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
+        key_id = (sat_id, freq)
+        if key_id in new_amb or values.exists(key_n):
+            continue
+        if existing_estimate is not None and existing_estimate.exists(key_n):
+            new_amb[key_id] = key_n
+            continue
+        if (isinstance(amb_dict, dict) and key_id in amb_dict
+                and amb_dict[key_id] == key_n and existing_estimate is None):
+            continue
+        n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
+        seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id)
+        new_amb[key_id] = key_n
+
+
+# ── DD pseudorange / carrier-phase factors ────────────────────────────
+
+_CLIGHT = 299792458.0
+_SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
+
+
+def varerr_dd_sigma(tc, code, el_rad, dt_s):
+    """RTKLIB varerr formula returning DD σ in metres."""
+    cfg = tc.cfg
+    fact = cfg.err_eratio_pr if code else 1.0
+    a = fact * cfg.err_a
+    d = _CLIGHT * _SCLKSTAB * dt_s
+    sinel = max(np.sin(el_rad), 0.05)
+    var_sd = 2.0 * (a * a * (1.0 + 1.0 / (sinel * sinel))) + d * d
+    return float(np.sqrt(2.0 * var_sd))
+
+
+def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
+    """Select the highest-elevation non-BDS-GEO reference satellite."""
+    prev_ref = tc.current_epoch.ref_sats.get(sys_id)
+    sats_in_sys = [sat[i] for i in idx_sys]
+    prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
+                   and _is_bds_geo(prev_ref))
+    if prev_ref is not None and prev_ref in sats_in_sys and not prev_is_geo:
+        return idx_sys[sats_in_sys.index(prev_ref)], prev_ref
+
+    pool = [i for i in idx_sys
+            if not (sys_id == uGNSS.BDS and _is_bds_geo(sat[i]))]
+    if not pool:
+        pool = idx_sys
+    pool_arr = np.array(pool)
+    ref_idx = int(pool_arr[np.argmax(el[pool_arr])])
+    return ref_idx, sat[ref_idx]
+
+
+def _dd_noise(tc, sigma):
+    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
+    return huber_noise(sigma, float(tc.cfg.huber_k))
+
+
+class DdFactorBuilder:
+    """Build all C++ DDPR + DDCP factors for one epoch using persistent arc keys."""
+
+    def __init__(self, tc, graph, values, obs, obsb, obs_sd,
+                 rs, rsb, sat, el, iu, ir_map,
+                 key_pose, lever, amb_dict,
+                 existing_estimate=None):
+        self.tc = tc
+        self.graph = graph
+        self.values = values
+        self.obs = obs
+        self.obsb = obsb
+        self.obs_sd = obs_sd
+        self.rs = rs
+        self.rsb = rsb
+        self.sat = sat
+        self.el = el
+        self.iu = iu
+        self.ir_map = ir_map
+        self.key_pose = key_pose
+        self.lever = lever
+        self.amb_dict = amb_dict
+        self.existing_estimate = existing_estimate
+
+        self.nf = tc.nav.nf
+        self.ns = len(sat)
+        self.el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
+        self.dt_s = float(tc._epoch_dt)
+
+        tc._ar_cp_visible_sf = set()
+
+        self.nv = 0
+        self.new_amb = {}
+
+    def _select_ref_for_system(self, sys_id, idx_sys):
+        ref_idx, ref_sat = _pick_ref_sat_idx(
+            self.tc, sys_id, idx_sys, self.sat, self.el)
+        self.tc.current_epoch.ref_sats[sys_id] = ref_sat
+        return ref_idx, ref_sat
+
+    def _sat_pts(self, idx, sat_id):
+        pt = gtsam.Point3(*self.rs[self.iu[idx], :3])
+        base_pt = (gtsam.Point3(*self.rsb[self.ir_map[sat_id], :3])
+                   if sat_id in self.ir_map else pt)
+        return pt, base_pt
+
+    def _pair_sigma(self, code, el_ref_rad, el_j_rad):
+        el_pair = max(min(el_ref_rad, el_j_rad), self.el_min_rad)
+        return varerr_dd_sigma(self.tc, code, el_pair, self.dt_s)
+
+    def _persistent_key(self, sat_id, freq):
+        """Return arc key for (sat_id, freq); chain per-epoch random walk if enabled."""
+        tc = self.tc
+        sf = (int(sat_id), int(freq))
+        if sf in self.new_amb:
+            return self.new_amb[sf]
+        st = tc._sat_states.get(sat_id, freq)
+        rw = float(tc.cfg.amb_rw_sigma)
+        if (rw > 0.0 and st.amb_key is not None
+                and self.existing_estimate is not None
+                and self.existing_estimate.exists(st.amb_key)):
+            k_old = st.amb_key
+            st.amb_gen += 1
+            k_new = tc.N(sat_id, freq, st.amb_gen)
+            self.values.insert(k_new, self.existing_estimate.atDouble(k_old))
+            self.graph.add(gtsam.BetweenFactorDouble(
+                k_old, k_new, 0.0, tc._noise1(rw)))
+            self.new_amb[sf] = k_new
+            return k_new
+        if st.amb_key is not None:
+            if (self.existing_estimate is None
+                    or self.existing_estimate.exists(st.amb_key)):
+                return st.amb_key
+            st.amb_key = None
+            st.amb_gen += 1
+        return tc.N(sat_id, freq, st.amb_gen)
+
+    def _build_pr_for_pair(self, ref_idx, j_idx, ref_sat, j_sat, f, sat_pts):
+        obs, obsb, iu, ir_map = self.obs, self.obsb, self.iu, self.ir_map
+        pr_ref_r = obs.P[iu[ref_idx], f]
+        pr_ref_b = obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0
+        pr_j_r = obs.P[iu[j_idx], f]
+        pr_j_b = obsb.P[ir_map[j_sat], f] if j_sat in ir_map else 0
+        if pr_ref_r == 0 or pr_ref_b == 0 or pr_j_r == 0 or pr_j_b == 0:
+            return None
+        sigma = self._pair_sigma(1, self.el[ref_idx], self.el[j_idx])
+        pr_noise = _dd_noise(self.tc, sigma)
+        ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
+        self.graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
+            self.key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
+            ref_pt, j_pt, ref_base_pt, j_base_pt,
+            self.tc.base_pt, self.lever, self.tc.ecef_T_nav, pr_noise))
+        return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
+
+    def _build_cp_for_pair(self, sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
+                           lams, sat_pts, pr_obs):
+        if sys_id == uGNSS.GLO or f >= len(lams) or lams[f] <= 0:
+            return 0
+        lam = lams[f]
+        obs, obsb, iu, ir_map = self.obs, self.obsb, self.iu, self.ir_map
+        cp_ref_r = obs.L[iu[ref_idx], f] * lam
+        cp_ref_b = obsb.L[ir_map[ref_sat], f] * lam if ref_sat in ir_map else 0
+        cp_j_r = obs.L[iu[j_idx], f] * lam
+        cp_j_b = obsb.L[ir_map[j_sat], f] * lam if j_sat in ir_map else 0
+        if cp_ref_r == 0 or cp_ref_b == 0 or cp_j_r == 0 or cp_j_b == 0:
+            return 0
+
+        tc = self.tc
+        tc._ar_cp_visible_sf.add((int(ref_sat), int(f)))
+        tc._ar_cp_visible_sf.add((int(j_sat), int(f)))
+
+        key_n_ref = self._persistent_key(ref_sat, f)
+        key_n_j = self._persistent_key(j_sat, f)
+        pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
+        init_dd_ambiguity_priors(
+            tc, self.graph, self.values, self.amb_dict, self.new_amb,
+            self.existing_estimate, f, lam,
+            ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
+             (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
+
+        sigma = self._pair_sigma(0, self.el[ref_idx], self.el[j_idx])
+        cp_noise = _dd_noise(tc, sigma)
+        ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
+        self.graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
+            self.key_pose, key_n_ref, key_n_j,
+            cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
+            ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
+            self.lever, tc.ecef_T_nav, cp_noise))
+        return 1
+
+    def run(self):
+        if self.ns == 0 or self.obsb is None or self.obs_sd is None:
+            return 0
+        nv = 0
+        sat_sys_for_obs = SAT_SYS_ARR[
+            np.asarray(self.sat[:self.ns], dtype=np.int32)]
+        for sys_id in sorted_sys_ids(self.obs_sd.sig):
+            idx_sys = np.where(sat_sys_for_obs == int(sys_id))[0].tolist()
+            if len(idx_sys) < 2:
+                continue
+            ref_idx, ref_sat = self._select_ref_for_system(sys_id, idx_sys)
+            lams = get_wavelengths(self.obs_sd, ref_sat, glo_ch=self.tc.nav.glo_ch)
+            ref_pt, ref_base_pt = self._sat_pts(ref_idx, ref_sat)
+            for j_idx in idx_sys:
+                if j_idx == ref_idx:
+                    continue
+                j_sat = self.sat[j_idx]
+                if SAT_SYS_ARR[j_sat] == uGNSS.BDS and _is_bds_geo(j_sat):
+                    continue
+                j_pt, j_base_pt = self._sat_pts(j_idx, j_sat)
+                sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
+                for f in range(self.nf):
+                    pr_obs = self._build_pr_for_pair(
+                        ref_idx, j_idx, ref_sat, j_sat, f, sat_pts)
+                    if pr_obs is None:
+                        continue
+                    nv += 1
+                    nv += self._build_cp_for_pair(
+                        sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
+                        lams, sat_pts, pr_obs)
+        for (s, f), k in self.new_amb.items():
+            self.tc._sat_states.get(s, f).amb_key = k
+        self.nv = nv
+        return nv
+
+
+def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
+                     rs, rsb, sat, el, iu, ir_map,
+                     key_pose, lever, amb_dict,
+                     existing_estimate=None):
+    """Build pure C++ DDPR + DDCP factors on persistent ambiguity arc keys."""
+    builder = DdFactorBuilder(
+        tc, graph, values, obs, obsb, obs_sd, rs, rsb, sat, el, iu,
+        ir_map, key_pose, lever, amb_dict,
+        existing_estimate=existing_estimate)
+    return builder.run()
+
+
+# ── Single-differenced Doppler factors ────────────────────────────────
+
+def _doppler_rows(tc, epoch):
+    """Collect (sat, sat_pos, sat_vel, doppler_hz, wavelength_m, el_rad)."""
+    if epoch.obs_sd is None or len(epoch.iu) == 0:
+        return []
+    rows = []
+    for si, i_obs in enumerate(epoch.iu):
+        s = int(epoch.sat[si])
+        if sat2prn(s)[0] == uGNSS.GLO:
+            continue
+        if i_obs >= epoch.obs.D.shape[0]:
+            continue
+        lams = None
+        for f in range(min(tc.nav.nf, epoch.obs.D.shape[1])):
+            d_obs = epoch.obs.D[i_obs, f]
+            if d_obs == 0.0:
+                continue
+            if lams is None:
+                lams = get_wavelengths(epoch.obs_sd, s, glo_ch=tc.nav.glo_ch)
+            if f < len(lams) and lams[f] > 0:
+                rows.append((s, epoch.rs[i_obs, :3], epoch.vs[i_obs, :3],
+                             float(d_obs), float(lams[f]),
+                             float(epoch.el[si])))
+                break
+    return rows
+
+
+def add_sd_doppler_factors(tc, epoch):
+    """Add clock-free SD Doppler factors against the highest-elevation reference sat."""
+    sigma = float(tc.cfg.doppler_sd_sigma)
+    if sigma <= 0 or epoch.key_idx is None:
+        return
+
+    rows = _doppler_rows(tc, epoch)
+    if len(rows) < 2:
+        return
+
+    sigmas = [sigma / max(np.sin(r[5]), 0.1) for r in rows]
+    i_ref = int(np.argmin(sigmas))
+    ref, sigma_ref = rows[i_ref], sigmas[i_ref]
+
+    omega = np.zeros(3)
+    if epoch.gyro_mean is not None:
+        bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
+                     else np.zeros(3))
+        omega = np.asarray(epoch.gyro_mean, dtype=float) - bias_gyro
+
+    key_idx = int(epoch.key_idx)
+    lever = np.asarray(tc.lever_arm_tc, dtype=float)
+    rr = np.asarray(epoch.pred_ecef, dtype=float)
+    n = 0
+    huber = float(tc.cfg.huber_k)
+    for row, sig in zip(rows, sigmas):
+        if row is ref:
+            continue
+        noise = huber_noise(np.hypot(sig, sigma_ref), huber)
+        epoch.graph.add(gtsam.SingleDifferenceDopplerFactorArm(
+            tc.Xpose(key_idx), tc.Vel(key_idx),
+            row[3], ref[3],
+            row[4], ref[4],
+            np.asarray(row[1], dtype=float), np.asarray(row[2], dtype=float),
+            np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float),
+            rr, lever, tc.ecef_T_nav, omega,
+            0.0, 0.0,
+            noise))
+        n += 1
+    if n:
+        epoch.info['doppler_sd_n'] = n
+        epoch.info['doppler_sd_ref'] = int(ref[0])
+
+
+# ── Non-Holonomic Constraint (NHC) ────────────────────────────────────
+
+def add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=None):
+    """Non-Holonomic Constraint at rear-axle pivot in the FLU body frame."""
+    sig_lat = float(tc.cfg.nhc_sigma_lat)
+    sig_vert = float(tc.cfg.nhc_sigma_vert)
+    if sig_lat <= 0 or sig_vert <= 0:
+        return False
+    lever = tc._nhc_lever_cache
+    if lever is None or tc._nhc_lever_src != tc.cfg.nhc_lever:
+        lever = parse_lever(tc.cfg.nhc_lever)
+        tc._nhc_lever_cache = lever
+        tc._nhc_lever_src = tc.cfg.nhc_lever
+    if gyro_mean_rh is not None:
+        bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
+                     else np.zeros(3))
+        omega = np.asarray(gyro_mean_rh - bias_gyro, dtype=float)
+    else:
+        omega = np.zeros(3)
+    noise = gtsam.noiseModel.Diagonal.Sigmas(
+        np.array([sig_lat, sig_vert]))
+    graph.add(gtsam.NhcFactor(
+        tc.Xpose(key_idx), tc.Vel(key_idx), omega,
+        np.asarray(lever, dtype=float), noise))
+    return True
+
+
+# ── ZUPT / ZARU stationary constraints ────────────────────────────────
+
+_ZUPT_MIN_SAMPLES = 5         # minimum IMU samples for valid sample std
+_ZUPT_MAX_ACC_STD = 0.55      # stationary accelerometer std gate [m/s²]
+_ZUPT_MAX_GYRO_STD = 0.030    # stationary gyroscope std gate [rad/s]
+_ZUPT_MAX_GYRO_MEDIAN = 0.020 # stationary gyroscope median gate [rad/s]
+_ZUPT_SIGMA_VEL = 0.5         # zero-velocity prior σ [m/s]
+_ZARU_SIGMA_GYRO_BIAS = 0.010 # stationary gyro-bias prior σ [rad/s]
+
+
+def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
+                        bias_gyro_ref: np.ndarray | None = None) -> bool:
+    """Shared IMU stillness check for both sequential and batch pipelines."""
+    if len(acc) < _ZUPT_MIN_SAMPLES:
+        return False
+    acc_std = float(np.sqrt(np.mean(np.sum((acc - acc.mean(axis=0)) ** 2, axis=1))))
+    gyro_std = float(np.sqrt(np.mean(np.sum((gyro - gyro.mean(axis=0)) ** 2, axis=1))))
+    resid = gyro if bias_gyro_ref is None else (gyro - bias_gyro_ref)
+    gyro_med = float(np.median(np.linalg.norm(resid, axis=1)))
+    return (acc_std <= _ZUPT_MAX_ACC_STD
+            and gyro_std <= _ZUPT_MAX_GYRO_STD
+            and gyro_med <= _ZUPT_MAX_GYRO_MEDIAN)
+
+
+def _zupt_should_fire(tc, n_imu, info, imu_idx_prev):
+    """Run IMU stillness check and return stats dict on hit, else None."""
+    if int(n_imu) < _ZUPT_MIN_SAMPLES:
+        return None
+    bias_init = tc.tc_bias_init
+    if bias_init is not None:
+        ref_acc = np.asarray(bias_init.accelerometer(), dtype=np.float64)
+        ref_gyro = np.asarray(bias_init.gyroscope(), dtype=np.float64)
+    else:
+        ref_acc = ref_gyro = None
+    samples = tc.imu_data[int(imu_idx_prev):tc.imu_idx]
+    stats = _utils_compute_zupt_stats(samples, ref_acc, ref_gyro)
+    if stats is None:
+        return None
+    info['zupt_acc_std'] = stats['acc_std']
+    info['zupt_gyro_std'] = stats['gyro_std']
+    info['zupt_gyro_median'] = stats['gyro_median']
+    if stats['acc_std'] > _ZUPT_MAX_ACC_STD:
+        return None
+    if stats['gyro_std'] > _ZUPT_MAX_GYRO_STD:
+        return None
+    if stats['gyro_median'] > _ZUPT_MAX_GYRO_MEDIAN:
+        return None
+    return stats
+
+
+def add_zupt_factors(tc, graph, key_idx, imu_idx_prev, n_imu, info):
+    """Add ZUPT (vel=0) and ZARU (gyro bias = gyro_mean) factors when stationary."""
+    stats = _zupt_should_fire(tc, n_imu, info, int(imu_idx_prev))
+    if stats is None:
+        return False
+    graph.add(gtsam.PriorFactorVector(
+        tc.Vel(key_idx),
+        np.zeros(3, dtype=np.float64),
+        gtsam.noiseModel.Isotropic.Sigma(3, _ZUPT_SIGMA_VEL)))
+    info['zupt'] = True
+
+    sigmas_bias = np.array([np.inf, np.inf, np.inf,
+                            _ZARU_SIGMA_GYRO_BIAS,
+                            _ZARU_SIGMA_GYRO_BIAS,
+                            _ZARU_SIGMA_GYRO_BIAS])
+    graph.add(gtsam.PriorFactorConstantBias(
+        tc.Bias(key_idx),
+        gtsam.imuBias.ConstantBias(np.zeros(3), stats['gyro_mean']),
+        gtsam.noiseModel.Diagonal.Sigmas(sigmas_bias)))
+    info['zaru'] = True
+    return True

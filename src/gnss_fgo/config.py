@@ -1,9 +1,19 @@
-"""TcConfig — 12 grounded physical & statistical parameters for ImuGnssTc."""
+"""TcConfig and BatchConfig — physical & statistical parameters (env-overridable)."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .utils import env_f, env_i
+import numpy as np
+
+from .utils import (
+    IMU_ACCEL_BIAS_SIGMA,
+    IMU_ACCEL_NOISE,
+    IMU_GYRO_BIAS_SIGMA,
+    IMU_GYRO_NOISE,
+    env_f,
+    env_i,
+    env_vec,
+)
 
 
 @dataclass
@@ -43,3 +53,64 @@ class TcConfig:
             else:
                 kw[name] = env_f(envname, default)
         return cls(**kw)
+
+
+_TC_DEFAULTS = TcConfig()
+
+
+@dataclass
+class BatchConfig:
+    """All tunables of gnss_fgo.batch. Loaded from env vars at construction."""
+
+    # --- solver
+    solver: str = field(default_factory=lambda: os.environ.get("BATCH_SOLVER", "auto"))
+    #   auto: gtsam.cuda (cuDSS) when the gtsam build has it, else CPU LM
+    max_iters: int = field(default_factory=lambda: env_i("BATCH_MAX_ITERS", 200))
+
+    # --- GNSS measurement model (defaults shared with TcConfig)
+    sig_pr: float = field(default_factory=lambda: env_f("BATCH_SIG_PR", 0.5))     # [m]
+    sig_cp: float = field(default_factory=lambda: env_f("BATCH_SIG_CP", 0.01))    # [m]
+    huber: float = field(default_factory=lambda: env_f("BATCH_HUBER", _TC_DEFAULTS.huber_k))
+    sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
+    sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
+    dop_sigma0: float = field(default_factory=lambda: env_f("DOP_SIGMA0", 0.1))   # [m/s]
+    huber_dop: float = 1.0
+    tropo: int = field(default_factory=lambda: env_i("TROPO", 0))   # Saastamoinen DD tropo
+
+    # --- IMU (datasheet + vehicle vibration PSD from utils)
+    lever: np.ndarray = field(default_factory=lambda: env_vec("LEVER_ARM", "0.31,0,0.55"))
+    acc_noise: np.ndarray = field(default_factory=lambda: env_vec("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}"))
+    gyro_noise: np.ndarray = field(default_factory=lambda: env_vec("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}"))
+    acc_bias_rw: float = field(default_factory=lambda: env_f("IMU_ACC_BIAS_RW", IMU_ACCEL_BIAS_SIGMA))
+    gyro_bias_rw: float = field(default_factory=lambda: env_f("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA))
+    integ_cov: float = 1e-3
+    gravity: float = field(default_factory=lambda: env_f("BATCH_GRAVITY", 9.81))
+    nhc_sigmas: tuple = (_TC_DEFAULTS.nhc_sigma_lat, _TC_DEFAULTS.nhc_sigma_vert)
+    nhc_calib: int = field(default_factory=lambda: env_i("NHC_CALIB", 0))   # mount angle state
+
+    # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)
+    zupt: int = field(default_factory=lambda: env_i("ZUPT", 1))
+    zupt_speed: float = field(default_factory=lambda: env_f("ZUPT_SPEED", 0.2))   # [m/s]
+    zupt_speed_src: str = field(
+        default_factory=lambda: os.environ.get("ZUPT_SPEED_SRC", "doppler"))   # doppler | gnss
+    zupt_vel_sigma: float = 0.1     # [m/s]
+    zupt_rot_sigma: float = 0.01    # [rad]
+    zupt_pos_sigma: float = 0.05    # [m]
+
+    # --- post-fit FDE on the float solution
+    fde_iters: int = field(default_factory=lambda: env_i("FDE_ITERS", 2))
+    fde_pr: float = field(default_factory=lambda: env_f("FDE_PR", 4.0))      # [m]
+    fde_cp: float = field(default_factory=lambda: env_f("FDE_CP", 0.5))      # [m]
+    fde_dop: float = field(default_factory=lambda: env_f("FDE_DOP", 2.0))    # [m/s]
+    fde_max_frac: float = 0.5        # at most this share of an epoch's rows per pass
+
+    # --- ambiguity resolution
+    ratio: float = field(default_factory=lambda: env_f("AR_RATIO", 3.0))
+    sig_fix: float = 1e-3            # [cyc] integer DD constraint
+    lambda_workers: int = field(
+        default_factory=lambda: env_i("AR_LAMBDA_WORKERS", 0))   # 0 = all cores, 1 = serial
+
+    # --- per-epoch FIX validation of the fixed solution
+    fix_res: float = field(default_factory=lambda: env_f("FIX_RES", 0.05))          # [m]
+    fix_min_pairs: int = field(default_factory=lambda: env_i("FIX_MIN_PAIRS", 4))
+    fix_min_sats: int = field(default_factory=lambda: env_i("FIX_MIN_SATS", 4))

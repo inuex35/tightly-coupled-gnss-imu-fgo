@@ -2,9 +2,8 @@
 import numpy as np
 import scipy.sparse as sp
 
-from gnss_fgo.batch import ils
-from gnss_fgo.batch.ar import ArcUnion
-from gnss_fgo.batch.selinv import selected_inverse
+from gnss_fgo import ar as ils
+from gnss_fgo.batch_ar import ArcUnion, selected_inverse
 
 
 def test_arc_union_transitive_and_conflict():
