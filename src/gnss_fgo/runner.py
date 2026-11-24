@@ -21,27 +21,6 @@ from .utils import (
 
 # ── FixedLagSmoother helpers ──────────────────────────────────────────
 
-_ISAM2_RELINEARIZE_SKIP = 1
-_ISAM2_RELINEARIZE_THRESHOLD = 0.01
-
-
-def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
-               relinearize_threshold=_ISAM2_RELINEARIZE_THRESHOLD):
-    """Build IncrementalFixedLagSmoother with QR factorization and per-epoch relinearization."""
-    params = gtsam.ISAM2Params()
-    params.setFactorization("QR")
-    params.setRelinearizeThreshold(float(relinearize_threshold))
-    params.relinearizeSkip = int(relinearize_skip)
-    return gtsam.IncrementalFixedLagSmoother(lag, params)
-
-
-def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
-    """Advance tc.epoch / nav.t and pack the (sol, tag, nb, info) tuple."""
-    tc.epoch += 1
-    tc.nav.t = obs.t
-    return sol, tag, nb, info
-
-
 def update_smoother(tc, graph, values, key_idx, keep_keys=()):
     """Update FLS while keeping the previous pose/vel/bias and live N keys alive."""
     tc.tc_time += tc._epoch_dt
@@ -73,8 +52,7 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
         new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
-        return None, None, advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return None, None, (np.array(tc.nav.x[0:3]), 'FLT', 0, info)
 
     pose_tc = new_est.atPose3(tc.Pose(key_idx))
     tc.tc_bias = new_est.atConstantBias(tc.Bias(key_idx))
@@ -85,18 +63,16 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
 
 # ── Epoch pipeline ────────────────────────────────────────────────────
 
-def _decide_fix_or_flt(tc, pose_tc, ecef_tc, n_fixed, fixed_pos, info):
+def _decide_fix_or_flt(tc, float_antenna_ecef, n_fixed, fixed_pos, info):
     """Pure FIX/FLT decision directly from LAMBDA acceptance (nav.smode == 4)."""
-    pose_tc_antenna = tc._antenna_ecef(pose_tc, ecef_tc)
     if tc.nav.smode == 4 and n_fixed > 0 and fixed_pos is not None:
-        info['lambda_correction'] = float(np.linalg.norm(fixed_pos[0:3] - pose_tc_antenna))
+        info['lambda_correction'] = float(np.linalg.norm(fixed_pos[0:3] - float_antenna_ecef))
         return fixed_pos[0:3], 'FIX', n_fixed
-    return pose_tc_antenna, 'FLT', n_fixed
+    return float_antenna_ecef, 'FLT', n_fixed
 
 
-def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
-                      init_ecef, R_enu2ecef, info):
-    """Initialize the single smoother at the first valid GNSS epoch."""
+def _init_pose_and_bias_epoch0(tc, obs, init_ecef, R_enu2ecef):
+    """Estimate stationary IMU bias & tilt from pre-GNSS samples and build pose0."""
     _, tow_obs = time2gpst(obs.t)
     while tc.imu_idx < len(tc.imu_data) and tc.imu_data[tc.imu_idx]['tow'] <= tow_obs + 1e-6:
         tc.imu_idx += 1
@@ -113,15 +89,28 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     roll_rad = float(np.arctan2(acc_tilt[1], acc_tilt[2]))
     rot0 = gtsam.Rot3(euler_to_R_body2enu(roll_rad, pitch_rad, 0.0))
 
-    tc.imu_params = make_imu_params()
-    tc.lever_arm_tc = gtsam.Point3(*tc.lever_arm)
     enu0 = R_enu2ecef.T @ (init_ecef - tc.base_ecef)
     body_enu0 = enu0 - rot0.matrix() @ tc.lever_arm
     pose0 = gtsam.Pose3(rot0, gtsam.Point3(*body_enu0))
+    return pose0, bias0
 
-    tc.isam2 = make_isam2(tc.cfg.fls_lag)
+
+def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
+                      init_ecef, R_enu2ecef, info):
+    """Initialize the single smoother at the first valid GNSS epoch."""
+    # 1. Stationary IMU alignment (bias, roll/pitch, lever-arm-compensated pose0)
+    pose0, bias0 = _init_pose_and_bias_epoch0(tc, obs, init_ecef, R_enu2ecef)
+    tc.imu_params = make_imu_params()
+    tc.lever_arm_tc = gtsam.Point3(*tc.lever_arm)
+
+    # 2. FixedLagSmoother setup and epoch-0 priors + DD factors
+    params = gtsam.ISAM2Params()
+    params.setFactorization("QR")
+    params.setRelinearizeThreshold(0.01)
+    params.relinearizeSkip = 1
+    tc.isam2 = gtsam.IncrementalFixedLagSmoother(tc.cfg.fls_lag, params)
     tc.tc_time = 0.0
-    tc.tc_epoch = 0
+    tc.smoother_node_idx = 0
     info['tc_epoch'] = 0
 
     g = gtsam.NonlinearFactorGraph()
@@ -142,8 +131,8 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
         tc, g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
         tc.Pose(0), tc.lever_arm_tc, tc._sat_states, existing_estimate=None)
 
+    # 3. Solve + extra relinearization passes to settle unobservably-yawed pose0
     update_smoother(tc, g, v, 0)
-    # Extra relinearization passes to settle the initially unobservably-yawed pose0.
     for _ in range(3):
         tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
                         gtsam.FixedLagSmootherKeyTimestampMap())
@@ -153,7 +142,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     sol = tc._antenna_ecef(pose_tc, ecef_tc)
     tc.nav.x[0:3] = sol
     tc.nav.smode = 5
-    return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
+    return sol, 'FLT', 0, info
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
@@ -161,23 +150,21 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     """Single-phase IMU/GNSS TC epoch flow."""
     if tc.isam2 is None:
         if ns < 4:
-            return advance_epoch_and_pack(
-                tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+            return np.array(tc.nav.x[0:3]), 'FLT', 0, info
         return _bootstrap_epoch0(
             tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
             init_ecef, R_enu2ecef, info)
 
     # 1. IMU preintegration & state prediction
-    tc.tc_epoch += 1
-    key_idx = tc.tc_epoch
+    tc.smoother_node_idx += 1
+    key_idx = tc.smoother_node_idx
     info['tc_epoch'] = key_idx
     _, tow_obs = time2gpst(obs.t)
     pim, n_imu, gyro_mean, tc.imu_idx = build_imu_preintegration(
         tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
     info['n_imu'] = n_imu
     if n_imu == 0:
-        return advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
     graph = gtsam.NonlinearFactorGraph()
     values = gtsam.Values()
@@ -185,8 +172,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     if not estimate.exists(tc.Pose(key_idx - 1)):
         info['prev_pose_missing'] = key_idx - 1
-        return advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
+        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
     pose_prev = estimate.atPose3(tc.Pose(key_idx - 1))
     vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
@@ -230,7 +216,8 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     # 5. Continuous LAMBDA ambiguity resolution & solution output
     tc.nav.smode = 5
-    tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
+    float_antenna_ecef = tc._antenna_ecef(pose_tc, ecef_tc)
+    tc.nav.x[0:3] = float_antenna_ecef
     n_fixed, fixed_pos = _tc_ar.run_ar(
         tc, sat, el, tc._sat_states.amb_keys_dict(),
         key_pose=tc.Pose(key_idx),
@@ -238,10 +225,10 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         seeded_sat_freqs=seeded_sat_freqs)
 
     sol, tag, n_fixed = _decide_fix_or_flt(
-        tc, pose_tc, ecef_tc, n_fixed, fixed_pos, info)
+        tc, float_antenna_ecef, n_fixed, fixed_pos, info)
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
-    return advance_epoch_and_pack(tc, sol, tag, n_fixed, info, obs)
+    return sol, tag, n_fixed, info
 
 
 class ImuGnssTc:
@@ -252,10 +239,6 @@ class ImuGnssTc:
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
-
-    # ── cssrlib boundary ──────────────────────────────────────────
-    def prepare_double_difference_measurements(self, *a, **k):
-        return self.engine.prepare_double_difference_measurements(*a, **k)
 
     @staticmethod
     def _noise1(sigma):
@@ -286,7 +269,7 @@ class ImuGnssTc:
     def _init_runtime_state(self):
         self.epoch = 0
         self.imu_idx = 0
-        self.tc_epoch = 0
+        self.smoother_node_idx = 0
 
         self._sat_states = SatStateMap()
 
@@ -294,6 +277,8 @@ class ImuGnssTc:
         self.imu_params = None
         self.tc_bias = None
         self.lever_arm_tc = gtsam.Point3(0, 0, 0)
+        self._nhc_lever = np.array(
+            [float(x) for x in self.cfg.nhc_lever.split(',')], dtype=float)
 
         self._last_obs_t = None
         self._epoch_dt = 0.2
@@ -315,32 +300,33 @@ class ImuGnssTc:
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
         return ecef_body + R_body @ lever_arr
 
+    def _prepare_dd_measurements(self, obs, obsb):
+        if self.isam2 is None:
+            self.nav.t = obs.t
+        prep = None
+        if obsb is not None:
+            prep = self.engine.prepare_double_difference_measurements(
+                obs, obsb, pos_pred=self.nav.x[0:3].copy(),
+                dd_only=True, compute_zdres=False)
+        if prep is not None and len(prep['iu']) >= 4:
+            return (prep['rs'], prep['vs'], prep['rsb'], prep['sat'],
+                    prep['el'], prep['iu'], prep['obs_sd'],
+                    {s: i for i, s in enumerate(obsb.sat)})
+        return (None, None, None, np.empty(0, dtype=int),
+                np.empty(0, dtype=float), np.empty(0, dtype=int), None, {})
+
     def process(self, obs, obsb=None, rs=None, vs=None, rsb=None,
                 sat=None, el=None, iu=None, obs_sd=None, ir_map=None):
         self._update_epoch_dt(obs)
         if rs is None:
-            if self.isam2 is None:
-                self.nav.t = obs.t
-            prep = None
-            if obsb is not None:
-                prep = self.prepare_double_difference_measurements(
-                    obs, obsb, pos_pred=self.nav.x[0:3].copy(),
-                    dd_only=True, compute_zdres=False)
-            if prep is not None and len(prep['iu']) >= 4:
-                rs, vs, rsb = prep['rs'], prep['vs'], prep['rsb']
-                sat, el, iu, obs_sd = prep['sat'], prep['el'], prep['iu'], prep['obs_sd']
-                ir_map = {s: i for i, s in enumerate(obsb.sat)}
-            else:
-                sat = np.empty(0, dtype=int)
-                el = np.empty(0, dtype=float)
-                iu = np.empty(0, dtype=int)
-                obs_sd = None
-                ir_map = {}
+            rs, vs, rsb, sat, el, iu, obs_sd, ir_map = (
+                self._prepare_dd_measurements(obs, obsb))
 
         R, ns, init_ecef = self.R_enu2ecef, len(sat), self.nav.x[0:3].copy()
-        info = {'tc_epoch': self.tc_epoch}
-        return self._run_tc_epoch(
-            obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
+        info = {'tc_epoch': self.smoother_node_idx}
+        res = run_tc_epoch(
+            self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
-
-    _run_tc_epoch = run_tc_epoch
+        self.epoch += 1
+        self.nav.t = obs.t
+        return res
