@@ -7,7 +7,7 @@ from cssrlib.rtk import rtkpos
 
 from . import pipeline as _pipeline
 from .config import TcConfig
-from .state import CurrentEpochState, SatStateMap
+from .state import SatStateMap
 from .utils import (
     enu_frame,
     estimate_stationary_bias as _utils_estimate_stationary_bias,
@@ -55,8 +55,6 @@ class ImuGnssTc:
         self.nav.armode = int(self.cfg.armode)
         self.nav.elmin = np.deg2rad(float(self.cfg.elmin_deg))
         self.nav.cnr_min = float(self.cfg.cnr_min_dbhz)
-        self.nav.thresar = 3.0
-        self.nav.minfixsats = 4
         self.nav.sat_band_plan = True
 
     def _init_runtime_state(self):
@@ -73,13 +71,6 @@ class ImuGnssTc:
 
         self._last_obs_t = None
         self._epoch_dt = 0.2
-        self.current_epoch = CurrentEpochState()
-        self._nhc_lever_cache = None
-        self._nhc_lever_src = None
-        self._ar_key_pose = None
-        self.fls_lag = None
-        self.tc_bias_init = None
-        self._ar_cp_visible_sf = set()
 
     def _update_epoch_dt(self, obs):
         if self._last_obs_t is not None:
@@ -90,10 +81,6 @@ class ImuGnssTc:
             except (TypeError, ValueError):
                 pass
         self._last_obs_t = obs.t
-
-    def _reset_current_epoch(self):
-        """Replace epoch-scoped scratch; keep persistent arc amb_gen monotonic."""
-        self.current_epoch = CurrentEpochState()
 
     def _make_imu_params(self):
         return _utils_make_imu_params()
@@ -112,7 +99,6 @@ class ImuGnssTc:
     def process(self, obs, obsb=None, rs=None, vs=None, rsb=None,
                 sat=None, el=None, iu=None, obs_sd=None, ir_map=None):
         self._update_epoch_dt(obs)
-        self._reset_current_epoch()
         if rs is None:
             if self.isam2 is None:
                 self.nav.t = obs.t

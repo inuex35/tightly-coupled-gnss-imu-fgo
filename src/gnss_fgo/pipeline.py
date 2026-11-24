@@ -97,17 +97,15 @@ def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
     return gtsam.IncrementalFixedLagSmoother(lag, params)
 
 
-def fls_update(tc, graph, values, key_idx, keep_keys=(),
-               advance_time=True, include_prev=True):
+def fls_update(tc, graph, values, key_idx, keep_keys=()):
     """Apply an FLS update with current timestamps on pose/vel/bias and live N keys."""
-    if advance_time:
-        tc.tc_time += tc._epoch_dt
+    tc.tc_time += tc._epoch_dt
     ts = gtsam.FixedLagSmootherKeyTimestampMap()
     t = tc.tc_time
     ts[tc.Xpose(key_idx)] = t
     ts[tc.Vel(key_idx)] = t
     ts[tc.Bias(key_idx)] = t
-    if include_prev and key_idx > 0:
+    if key_idx > 0:
         ts[tc.Xpose(key_idx - 1)] = t
         ts[tc.Vel(key_idx - 1)] = t
         ts[tc.Bias(key_idx - 1)] = t
@@ -160,7 +158,6 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     bias_acc, bias_gyro = tc._estimate_stationary_bias()
     bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
     tc.tc_bias = bias0
-    tc.tc_bias_init = bias0
 
     n_static = max(1, min(500, tc.imu_idx))
     acc_avg = np.mean([im['acc'] for im in tc.imu_data[:n_static]], axis=0)
@@ -176,8 +173,7 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     body_enu0 = enu0 - rot0.matrix() @ tc.lever_arm
     pose0 = gtsam.Pose3(rot0, gtsam.Point3(*body_enu0))
 
-    tc.fls_lag = tc.cfg.fls_lag
-    tc.isam2 = tc._make_isam2(tc.fls_lag)
+    tc.isam2 = tc._make_isam2(tc.cfg.fls_lag)
     tc.tc_time = 0.0
     tc.tc_epoch = 0
     info['tc_epoch'] = 0
@@ -270,11 +266,12 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         pred_nav.pose(), R_enu2ecef @ pred_enu + tc.base_ecef)
 
     # 3. Measurement factors (DDPR, DDCP, SD Doppler, NHC)
-    info['n_dd'] = _tc_factors.build_dd_factors(
+    nv, visible_sf, seeded_sf = _tc_factors.build_dd_factors(
         tc, graph, values, obs, obsb, obs_sd,
         rs, rsb, sat, el, iu, ir_map,
         tc.Xpose(key_idx), tc.lever_arm_tc, tc._sat_states,
         existing_estimate=estimate)
+    info['n_dd'] = nv
     _tc_factors.add_sd_doppler_factors(
         tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el, iu,
         pred_ecef, gyro_mean, info)
@@ -292,7 +289,8 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
     nb, xa = _tc_ar.run_ar(
         tc, sat, el, tc._sat_states.amb_keys_dict(),
-        key_pose=tc.Xpose(key_idx))
+        key_pose=tc.Xpose(key_idx),
+        visible_sf=visible_sf, seeded_sf=seeded_sf)
 
     sol, tag, nb = _decide_fix_or_flt(tc, pose_tc, ecef_tc, nb, xa, info)
     info['bias_acc'] = tc.tc_bias.accelerometer()

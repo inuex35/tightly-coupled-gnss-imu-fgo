@@ -15,10 +15,11 @@ class SatState:
 
 @dataclass
 class SatStateMap:
-    """Per-(sat, freq) ``SatState`` map + per-sat GF slip state."""
+    """Per-(sat, freq) ``SatState`` map, per-sat GF slip state, and DD ref sats."""
 
     track: dict = field(default_factory=dict)            # {(sat,f): SatState}
     gf: dict = field(default_factory=dict)               # {sat: gf [m]}
+    ref_sats: dict = field(default_factory=dict)         # {sys_id: sat}
     maxout: int = 5
 
     def get(self, sat: int, freq: int) -> SatState:
@@ -45,11 +46,3 @@ class SatStateMap:
     def amb_key_values(self) -> list:
         return [st.amb_key for st in self.track.values()
                 if st.amb_key is not None]
-
-
-@dataclass
-class CurrentEpochState:
-    """State that lives exactly one epoch."""
-
-    ref_sats: dict = field(default_factory=dict)
-    seeded_amb_keys: set = field(default_factory=set)

@@ -1,8 +1,6 @@
-"""Integer ambiguity resolution (LAMBDA, partial AR, and batched ILS)."""
+"""Integer ambiguity resolution (LAMBDA and partial AR)."""
 
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
-import os
 
 import gtsam
 import numpy as np
@@ -21,46 +19,6 @@ from .utils import huber_noise, sorted_amb_items
 _FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
 _FFRT_MAX_RATIO = 3.0  # Teunissen FFRT upper clamp (P_f = 0.1%)
 _SIGMA_HOLD_CYC = 0.01  # DD integer-hold factor sigma [cycles] (~2 mm)
-_MIN_PARALLEL = 256     # below this, pool start-up costs more than it saves
-
-
-# ── Batched ILS (shared with batch AR) ────────────────────────────────
-
-def _solve_one(a, Q):
-    try:
-        afix, s, _, _ = mlambda(np.asarray(a, float), np.asarray(Q, float), ncands=2)
-    except (np.linalg.LinAlgError, ValueError):
-        n = len(a)
-        return np.zeros(n, int), np.zeros(n, int), np.zeros(2), -1
-    return (np.rint(afix[:, 0]).astype(int), np.rint(afix[:, 1]).astype(int),
-            np.asarray(s[:2], float), 0)
-
-
-def _solve_chunk(chunk):
-    return [_solve_one(a, Q) for a, Q in chunk]
-
-
-def lambda_batch(ahats, Qs, workers=0):
-    """Integer LS for each (ahat, Q).
-
-    Returns (best, second, s, info): best/second integer vectors per problem,
-    s (nprob, 2) squared residuals (ratio = s[:, 1] / s[:, 0]), info 0 = ok.
-    workers: processes to use; 0 = os.cpu_count(), 1 = serial.
-    """
-    probs = list(zip(ahats, Qs))
-    workers = workers or os.cpu_count() or 1
-    if workers <= 1 or len(probs) < _MIN_PARALLEL:
-        out = _solve_chunk(probs)
-    else:
-        size = -(-len(probs) // (4 * workers))
-        chunks = [probs[i:i + size] for i in range(0, len(probs), size)]
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            out = [r for part in ex.map(_solve_chunk, chunks) for r in part]
-    best = [o[0] for o in out]
-    second = [o[1] for o in out]
-    s = np.array([o[2] for o in out], dtype=float).reshape(-1, 2)
-    info = np.array([o[3] for o in out], dtype=np.int32)
-    return best, second, s, info
 
 
 # ── Sequential AR problem assembly & conditional update ───────────────
@@ -76,7 +34,8 @@ class ArProblem:
     elevations: dict = field(default_factory=dict)
 
 
-def build_problem(tc, sat_list, amb_dict, key_pose=None):
+def build_problem(tc, sat_list, amb_dict, key_pose,
+                  el=None, visible_sf=None, seeded_sf=None):
     """Assemble ArProblem from live smoother variables, or None if unposed."""
     smoother = tc.isam2
     if smoother is None:
@@ -86,16 +45,13 @@ def build_problem(tc, sat_list, amb_dict, key_pose=None):
         return None
     est = smoother.calculateEstimate()
 
-    if key_pose is not None:
-        tc._ar_key_pose = key_pose
-    key_pose = tc._ar_key_pose
     if key_pose is None or not est.exists(key_pose):
         return None
 
     key_of = dict(sorted_amb_items(amb_dict))
     present = {int(s) for s in sat_list}
-    seeded = tc.current_epoch.seeded_amb_keys
-    cp_visible = tc._ar_cp_visible_sf
+    seeded = seeded_sf or set()
+    cp_visible = visible_sf or set()
     keys, values = [], {}
     for (s, f), k in sorted_amb_items(key_of):
         sf = (int(s), int(f))
@@ -128,9 +84,13 @@ def build_problem(tc, sat_list, amb_dict, key_pose=None):
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
         return None
 
-    el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
+    if el is not None and len(el) == len(sat_list):
+        el_by_sat = {int(s): float(e) for s, e in zip(sat_list, el)}
+        elev = {int(s): el_by_sat[int(s)] for s, _ in keys}
+    else:
+        elev = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
     return ArProblem(keys=keys, values=values, cov=cov, cross=cross,
-                     elevations=el)
+                     elevations=elev)
 
 
 def fixed_state(tc, problem, result):
@@ -342,9 +302,12 @@ def _hold_fixed_dd(tc, amb_dict, res):
                         gtsam.FixedLagSmootherKeyTimestampMap())
 
 
-def _resolve(tc, sat_list, amb_dict, allow_partial=False):
+def _resolve(tc, sat_list, amb_dict, key_pose, el=None,
+             visible_sf=None, seeded_sf=None, allow_partial=False):
     """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa)."""
-    problem = build_problem(tc, sat_list, amb_dict)
+    problem = build_problem(
+        tc, sat_list, amb_dict, key_pose,
+        el=el, visible_sf=visible_sf, seeded_sf=seeded_sf)
     if problem is None:
         return 0, None
     resolver = AmbiguityResolver(
@@ -362,22 +325,25 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
     return res.nb, xa
 
 
-def run_ar(tc, sat, el, amb_dict, key_pose=None):
+def run_ar(tc, sat, el, amb_dict, key_pose=None,
+           visible_sf=None, seeded_sf=None):
     """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (nb, xa)."""
     if tc.nav.armode == 0:
         return 0, None
-    if key_pose is not None:
-        tc._ar_key_pose = key_pose
 
     sat_list = [int(x) for x in sat]
     try:
-        nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=False)
+        nb, xa = _resolve(
+            tc, sat_list, amb_dict, key_pose, el=el,
+            visible_sf=visible_sf, seeded_sf=seeded_sf, allow_partial=False)
     except Exception:
         return 0, None
 
     if nb <= 0:
         try:
-            nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=True)
+            nb, xa = _resolve(
+                tc, sat_list, amb_dict, key_pose, el=el,
+                visible_sf=visible_sf, seeded_sf=seeded_sf, allow_partial=True)
         except Exception:
             return 0, None
 

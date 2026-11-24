@@ -11,15 +11,18 @@ from .utils import get_wavelengths, huber_noise
 _SIGMA_AMB0_GAUGE = 30.0  # loose gauge prior [cyc] so initial code multipath cannot pull N
 
 
-def seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id):
+def seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id,
+                       seeded_keys=None):
     """Insert a fresh arc's ambiguity value + loose clock-free gauge prior."""
     values.insert(key_n, n0_seed)
     graph.addPriorDouble(key_n, n0_seed, tc._noise1(_SIGMA_AMB0_GAUGE))
-    tc.current_epoch.seeded_amb_keys.add(key_id)
+    if seeded_keys is not None:
+        seeded_keys.add(key_id)
 
 
 def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
-                             existing_estimate, freq, lam, pair_sat_info):
+                             existing_estimate, freq, lam, pair_sat_info,
+                             seeded_keys=None):
     """Reuse existing smoother arc keys untouched; seed new arcs once clock-free."""
     for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
         key_id = (sat_id, freq)
@@ -32,7 +35,8 @@ def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
                 and amb_dict[key_id] == key_n and existing_estimate is None):
             continue
         n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
-        seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id)
+        seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id,
+                           seeded_keys=seeded_keys)
         new_amb[key_id] = key_n
 
 
@@ -55,7 +59,7 @@ def varerr_dd_sigma(tc, code, el_rad, dt_s):
 
 def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     """Select the highest-elevation non-BDS-GEO reference satellite."""
-    prev_ref = tc.current_epoch.ref_sats.get(sys_id)
+    prev_ref = tc._sat_states.ref_sats.get(sys_id)
     sats_in_sys = [sat[i] for i in idx_sys]
     prev_is_geo = (sys_id == uGNSS.BDS and prev_ref is not None
                    and _is_bds_geo(prev_ref))
@@ -131,6 +135,7 @@ def _build_pr_pair(tc, graph, obs, obsb, iu, ir_map, key_pose, lever,
 
 def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
                    amb_dict, new_amb, existing_estimate,
+                   visible_sf, seeded_sf,
                    sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                    lams, sat_pts, pr_obs, sigma):
     if sys_id == uGNSS.GLO or f >= len(lams) or lams[f] <= 0:
@@ -143,8 +148,8 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
     if cp_ref_r == 0 or cp_ref_b == 0 or cp_j_r == 0 or cp_j_b == 0:
         return 0
 
-    tc._ar_cp_visible_sf.add((int(ref_sat), int(f)))
-    tc._ar_cp_visible_sf.add((int(j_sat), int(f)))
+    visible_sf.add((int(ref_sat), int(f)))
+    visible_sf.add((int(j_sat), int(f)))
 
     key_n_ref = _persistent_key(
         tc, graph, values, new_amb, existing_estimate, ref_sat, f)
@@ -155,7 +160,8 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         tc, graph, values, amb_dict, new_amb,
         existing_estimate, f, lam,
         ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
-         (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)))
+         (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)),
+        seeded_keys=seeded_sf)
 
     ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
     graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
@@ -170,15 +176,14 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map,
                      key_pose, lever, amb_dict,
                      existing_estimate=None):
-    """Build pure C++ DDPR + DDCP factors on persistent ambiguity arc keys."""
+    """Build pure C++ DDPR + DDCP factors; return (nv, visible_sf, seeded_sf)."""
     ns = len(sat)
     if ns == 0 or obsb is None or obs_sd is None:
-        return 0
+        return 0, set(), set()
     nf = tc.nav.nf
     el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
     dt_s = float(tc._epoch_dt)
-    tc._ar_cp_visible_sf = set()
-    new_amb = {}
+    visible_sf, seeded_sf, new_amb = set(), set(), {}
     nv = 0
     sat_sys_for_obs = SAT_SYS_ARR[np.asarray(sat[:ns], dtype=np.int32)]
 
@@ -187,7 +192,7 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
         if len(idx_sys) < 2:
             continue
         ref_idx, ref_sat = _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el)
-        tc.current_epoch.ref_sats[sys_id] = ref_sat
+        tc._sat_states.ref_sats[sys_id] = ref_sat
         lams = get_wavelengths(obs_sd, ref_sat, glo_ch=tc.nav.glo_ch)
         ref_pt, ref_base_pt = _sat_pts(rs, rsb, iu, ir_map, ref_idx, ref_sat)
         for j_idx in idx_sys:
@@ -211,11 +216,12 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 nv += _build_cp_pair(
                     tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
                     amb_dict, new_amb, existing_estimate,
+                    visible_sf, seeded_sf,
                     sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                     lams, sat_pts, pr_obs, sigma_cp)
     for (s, f), k in new_amb.items():
         tc._sat_states.get(s, f).amb_key = k
-    return nv
+    return nv, visible_sf, seeded_sf
 
 
 # ── Single-differenced Doppler factors ────────────────────────────────
@@ -298,11 +304,7 @@ def add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=None):
     sig_vert = float(tc.cfg.nhc_sigma_vert)
     if sig_lat <= 0 or sig_vert <= 0:
         return False
-    lever = tc._nhc_lever_cache
-    if lever is None or tc._nhc_lever_src != tc.cfg.nhc_lever:
-        lever = np.array([float(x) for x in tc.cfg.nhc_lever.split(',')])
-        tc._nhc_lever_cache = lever
-        tc._nhc_lever_src = tc.cfg.nhc_lever
+    lever = np.array([float(x) for x in tc.cfg.nhc_lever.split(',')])
     if gyro_mean_rh is not None:
         bias_gyro = (tc.tc_bias.gyroscope() if tc.tc_bias is not None
                      else np.zeros(3))

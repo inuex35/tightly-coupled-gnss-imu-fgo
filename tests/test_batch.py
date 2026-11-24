@@ -2,7 +2,7 @@
 import numpy as np
 import scipy.sparse as sp
 
-from gnss_fgo import ar as ils
+from gnss_fgo import batch_ar as ils
 from gnss_fgo.batch_ar import ArcUnion, selected_inverse
 
 
