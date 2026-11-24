@@ -88,11 +88,9 @@ Flat module layout under `src/gnss_fgo/`:
 
 | Module | Role |
 |---|---|
-| `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point, DD prep, and cssrlib boundary |
-| `pipeline.py` | single-phase epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) and outage recovery |
-| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding) |
+| `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point and epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) |
+| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding), `SatStateMap`, and cycle-slip detection |
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
-| `state.py` | runtime state records (`SatStateMap`, `CurrentEpochState`) |
 | `config.py` | `TcConfig` and `BatchConfig` |
 | `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber noise |
 | `batch.py`, `batch_ar.py`, `batch_graph.py` | offline whole-run batch TC pipeline and global AR |

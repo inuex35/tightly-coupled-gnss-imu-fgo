@@ -1,8 +1,6 @@
-"""Integer ambiguity resolution (LAMBDA, partial AR, and batched ILS)."""
+"""Integer ambiguity resolution (LAMBDA and partial AR)."""
 
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
-import os
 
 import gtsam
 import numpy as np
@@ -21,46 +19,6 @@ from .utils import huber_noise, sorted_amb_items
 _FFRT_MIN_RATIO = 1.5  # Teunissen FFRT lower clamp
 _FFRT_MAX_RATIO = 3.0  # Teunissen FFRT upper clamp (P_f = 0.1%)
 _SIGMA_HOLD_CYC = 0.01  # DD integer-hold factor sigma [cycles] (~2 mm)
-_MIN_PARALLEL = 256     # below this, pool start-up costs more than it saves
-
-
-# ── Batched ILS (shared with batch AR) ────────────────────────────────
-
-def _solve_one(a, Q):
-    try:
-        afix, s, _, _ = mlambda(np.asarray(a, float), np.asarray(Q, float), ncands=2)
-    except (np.linalg.LinAlgError, ValueError):
-        n = len(a)
-        return np.zeros(n, int), np.zeros(n, int), np.zeros(2), -1
-    return (np.rint(afix[:, 0]).astype(int), np.rint(afix[:, 1]).astype(int),
-            np.asarray(s[:2], float), 0)
-
-
-def _solve_chunk(chunk):
-    return [_solve_one(a, Q) for a, Q in chunk]
-
-
-def lambda_batch(ahats, Qs, workers=0):
-    """Integer LS for each (ahat, Q).
-
-    Returns (best, second, s, info): best/second integer vectors per problem,
-    s (nprob, 2) squared residuals (ratio = s[:, 1] / s[:, 0]), info 0 = ok.
-    workers: processes to use; 0 = os.cpu_count(), 1 = serial.
-    """
-    probs = list(zip(ahats, Qs))
-    workers = workers or os.cpu_count() or 1
-    if workers <= 1 or len(probs) < _MIN_PARALLEL:
-        out = _solve_chunk(probs)
-    else:
-        size = -(-len(probs) // (4 * workers))
-        chunks = [probs[i:i + size] for i in range(0, len(probs), size)]
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            out = [r for part in ex.map(_solve_chunk, chunks) for r in part]
-    best = [o[0] for o in out]
-    second = [o[1] for o in out]
-    s = np.array([o[2] for o in out], dtype=float).reshape(-1, 2)
-    info = np.array([o[3] for o in out], dtype=np.int32)
-    return best, second, s, info
 
 
 # ── Sequential AR problem assembly & conditional update ───────────────
@@ -76,7 +34,8 @@ class ArProblem:
     elevations: dict = field(default_factory=dict)
 
 
-def build_problem(tc, sat_list, amb_dict, key_pose=None):
+def build_problem(tc, sat_list, amb_dict, key_pose,
+                  el=None, visible_sat_freqs=None, seeded_sat_freqs=None):
     """Assemble ArProblem from live smoother variables, or None if unposed."""
     smoother = tc.isam2
     if smoother is None:
@@ -86,18 +45,15 @@ def build_problem(tc, sat_list, amb_dict, key_pose=None):
         return None
     est = smoother.calculateEstimate()
 
-    if key_pose is not None:
-        tc._ar_key_pose = key_pose
-    key_pose = tc._ar_key_pose
     if key_pose is None or not est.exists(key_pose):
         return None
 
     key_of = dict(sorted_amb_items(amb_dict))
     present = {int(s) for s in sat_list}
-    seeded = tc.current_epoch.seeded_amb_keys
-    cp_visible = tc._ar_cp_visible_sf
+    seeded = seeded_sat_freqs or set()
+    cp_visible = visible_sat_freqs or set()
     keys, values = [], {}
-    for (s, f), k in sorted_amb_items(key_of):
+    for (s, f), k in key_of.items():
         sf = (int(s), int(f))
         if (int(s) in present and est.exists(k)
                 and (s, f) not in seeded
@@ -128,34 +84,35 @@ def build_problem(tc, sat_list, amb_dict, key_pose=None):
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(cross))):
         return None
 
-    el = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
+    if el is not None and len(el) == len(sat_list):
+        el_by_sat = {int(s): float(e) for s, e in zip(sat_list, el)}
+        elev = {int(s): el_by_sat[int(s)] for s, _ in keys}
+    else:
+        elev = {int(s): float(tc.nav.el[int(s) - 1]) for s, _ in keys}
     return ArProblem(keys=keys, values=values, cov=cov, cross=cross,
-                     elevations=el)
+                     elevations=elev)
 
 
 def fixed_state(tc, problem, result):
     """Conditional position update x - Qab Qb^-1 (y_float - y_fixed) in DD space."""
     keys, cov, values = problem.keys, problem.cov, problem.values
-    xa = tc.nav.x.copy()
-    for sf, value in result.fixed.items():
-        xa[tc.IB(sf[0], sf[1], tc.nav.na)] = value
+    pos_float = tc.nav.x[0:3].copy()
 
     idx = {sf: i for i, sf in enumerate(keys)}
     D = np.zeros((len(result.pairs), len(keys)))
     for row, (ref, tgt) in enumerate(result.pairs):
         D[row, idx[ref]] = 1.0
         D[row, idx[tgt]] = -1.0
-    x_float = np.array([values[sf] for sf in keys])
-    x_fixed = np.array([result.fixed.get(sf, values[sf]) for sf in keys])
+    y_float = D @ np.array([values[sf] for sf in keys])
+    y_fixed = result.dd_fixed
     Qb = D @ cov @ D.T
     Qab = problem.cross @ D.T
     try:
         gain = np.linalg.solve(Qb.T, Qab.T).T
     except np.linalg.LinAlgError:
-        return xa
-    d_enu = gain @ (D @ (x_float - x_fixed))
-    xa[0:3] = tc.nav.x[0:3] - tc.R_enu2ecef @ d_enu
-    return xa
+        return pos_float
+    d_enu = gain @ (y_float - y_fixed)
+    return pos_float - tc.R_enu2ecef @ d_enu
 
 
 # ── LAMBDA resolver ───────────────────────────────────────────────────
@@ -166,6 +123,7 @@ class ResolverResult:
 
     nb: int = 0
     fixed: dict = field(default_factory=dict)
+    dd_fixed: np.ndarray | None = None
     s0: float = 0.0
     s1: float = 0.0
     pairs: list = field(default_factory=list)
@@ -252,30 +210,33 @@ class AmbiguityResolver:
         y = D @ x
         Q = D @ np.asarray(covariance, dtype=float) @ D.T
 
-        b, s, nfix, ps = mlambda(y, Q)
-        s0 = float(s[0]) if len(s) > 0 else 0.0
-        s1 = float(s[1]) if len(s) > 1 else 0.0
-        if s0 <= 1e-12 * max(s1, 1.0):
-            s0 = 0.0
-        ratio = 0.0 if s0 <= 0.0 else s1 / s0
+        candidates, sqnorms, nfix, _ = mlambda(y, Q)
+        sqnorm_best = float(sqnorms[0]) if len(sqnorms) > 0 else 0.0
+        sqnorm_second = float(sqnorms[1]) if len(sqnorms) > 1 else 0.0
+        if sqnorm_best <= 1e-12 * max(sqnorm_second, 1.0):
+            sqnorm_best = 0.0
+        ratio = 0.0 if sqnorm_best <= 0.0 else sqnorm_second / sqnorm_best
         thres = self.ratio_threshold(len(pairs))
-        result = ResolverResult(s0=s0, s1=s1, pairs=pairs, thres_used=thres)
+        result = ResolverResult(
+            s0=sqnorm_best, s1=sqnorm_second, pairs=pairs, thres_used=thres)
         if nfix <= 0:
             return result
-        if not (s0 <= 0.0 or ratio >= thres):
+        if not (sqnorm_best <= 0.0 or ratio >= thres):
             par = self._partial(y, Q, pairs) if allow_partial else None
             if par is None:
                 return result
-            bvec, nb, s0, s1, thres, k = par
-            result.s0, result.s1 = s0, s1
+            dd_fixed_vec, nb, sqnorm_best, sqnorm_second, thres, k = par
+            result.s0, result.s1 = sqnorm_best, sqnorm_second
             result.thres_used = thres
             result.dropped = k
             result.nb = nb
-            result.fixed = self._restore_sd(pairs, float_values, bvec)
+            result.dd_fixed = dd_fixed_vec
+            result.fixed = self._restore_sd(pairs, float_values, dd_fixed_vec)
             return result
 
         result.nb = len(pairs)
-        result.fixed = self._restore_sd(pairs, float_values, b[:, 0])
+        result.dd_fixed = candidates[:, 0]
+        result.fixed = self._restore_sd(pairs, float_values, candidates[:, 0])
         return result
 
     @staticmethod
@@ -286,7 +247,7 @@ class AmbiguityResolver:
             fixed[tgt] = fixed[ref] - float(bvec[row])
         return fixed
 
-    def _partial(self, y, Q, pairs=None):
+    def _partial(self, y, Q, pairs):
         n = len(y)
         if n <= self.min_fix:
             return None
@@ -303,23 +264,22 @@ class AmbiguityResolver:
         for _ in range(self.par_trials):
             if k > kmax:
                 return None
-            if pairs is not None:
-                int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
-                fixed_sats = {
-                    s for row, (ref, tgt) in enumerate(pairs)
-                    if int_rows[row] for s in (ref[0], tgt[0])
-                }
-                if len(fixed_sats) < self.min_sats:
-                    return None
+            int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
+            fixed_sats = {
+                s for row, (ref, tgt) in enumerate(pairs)
+                if int_rows[row] for s in (ref[0], tgt[0])
+            }
+            if len(fixed_sats) < self.min_sats:
+                return None
             zpar, sq = estimILS(L[k:, k:], d[k:], z[k:], 2)
-            s0, s1 = float(sq[0]), float(sq[1])
+            sqnorm_best, sqnorm_second = float(sq[0]), float(sq[1])
             nb = n - k
             thres = self.ratio_threshold(nb)
-            if s0 > 0.0 and s1 / s0 >= thres:
+            if sqnorm_best > 0.0 and sqnorm_second / sqnorm_best >= thres:
                 QP = np.linalg.solve(Qz[k:, k:].T, Qz[:k, k:].T).T
                 zc = z[:k] - QP @ (z[k:] - zpar[:, 0])
-                bvec = iZt @ np.concatenate((zc, zpar[:, 0]))
-                return bvec, nb, s0, s1, thres, k
+                dd_fixed_vec = iZt @ np.concatenate((zc, zpar[:, 0]))
+                return dd_fixed_vec, nb, sqnorm_best, sqnorm_second, thres, k
             k += max(1, (kmax - k) // 4)
         return None
 
@@ -332,19 +292,23 @@ def _hold_fixed_dd(tc, amb_dict, res):
     est = tc.isam2.calculateEstimate()
     hold_graph = gtsam.NonlinearFactorGraph()
     noise = huber_noise(_SIGMA_HOLD_CYC, float(tc.cfg.huber_k))
-    for ref, tgt in res.pairs:
+    for (ref, tgt), b_val in zip(res.pairs, res.dd_fixed):
         kr, kt = key_of.get(ref), key_of.get(tgt)
         if kr is not None and kt is not None and est.exists(kr) and est.exists(kt):
-            b_int = float(round(res.fixed[ref] - res.fixed[tgt]))
-            hold_graph.add(gtsam.BetweenFactorDouble(kt, kr, b_int, noise))
+            hold_graph.add(gtsam.BetweenFactorDouble(
+                kt, kr, float(round(b_val)), noise))
     if hold_graph.size() > 0:
         tc.isam2.update(hold_graph, gtsam.Values(),
                         gtsam.FixedLagSmootherKeyTimestampMap())
 
 
-def _resolve(tc, sat_list, amb_dict, allow_partial=False):
-    """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa)."""
-    problem = build_problem(tc, sat_list, amb_dict)
+def _resolve(tc, sat_list, amb_dict, key_pose, el=None,
+             visible_sat_freqs=None, seeded_sat_freqs=None, allow_partial=False):
+    """Run LAMBDA over the smoother's joint marginals. Returns (n_fixed, fixed_pos)."""
+    problem = build_problem(
+        tc, sat_list, amb_dict, key_pose,
+        el=el, visible_sat_freqs=visible_sat_freqs,
+        seeded_sat_freqs=seeded_sat_freqs)
     if problem is None:
         return 0, None
     resolver = AmbiguityResolver(
@@ -356,33 +320,38 @@ def _resolve(tc, sat_list, amb_dict, allow_partial=False):
                            problem.elevations, allow_partial=allow_partial)
     if res.nb <= 0:
         return 0, None
-    xa = fixed_state(tc, problem, res)
+    fixed_pos = fixed_state(tc, problem, res)
     if tc.nav.armode >= 2 and res.dropped == 0:
         _hold_fixed_dd(tc, amb_dict, res)
-    return res.nb, xa
+    return res.nb, fixed_pos
 
 
-def run_ar(tc, sat, el, amb_dict, key_pose=None):
-    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (nb, xa)."""
+def run_ar(tc, sat, el, amb_dict, key_pose=None,
+           visible_sat_freqs=None, seeded_sat_freqs=None):
+    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (n_fixed, fixed_pos)."""
     if tc.nav.armode == 0:
         return 0, None
-    if key_pose is not None:
-        tc._ar_key_pose = key_pose
 
     sat_list = [int(x) for x in sat]
     try:
-        nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=False)
+        n_fixed, fixed_pos = _resolve(
+            tc, sat_list, amb_dict, key_pose, el=el,
+            visible_sat_freqs=visible_sat_freqs,
+            seeded_sat_freqs=seeded_sat_freqs, allow_partial=False)
     except Exception:
         return 0, None
 
-    if nb <= 0:
+    if n_fixed <= 0:
         try:
-            nb, xa = _resolve(tc, sat_list, amb_dict, allow_partial=True)
+            n_fixed, fixed_pos = _resolve(
+                tc, sat_list, amb_dict, key_pose, el=el,
+                visible_sat_freqs=visible_sat_freqs,
+                seeded_sat_freqs=seeded_sat_freqs, allow_partial=True)
         except Exception:
             return 0, None
 
-    if nb <= 0 or xa is None:
+    if n_fixed <= 0 or fixed_pos is None:
         return 0, None
 
     tc.nav.smode = 4
-    return nb, xa
+    return n_fixed, fixed_pos

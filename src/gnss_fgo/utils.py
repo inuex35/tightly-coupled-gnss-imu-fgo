@@ -14,7 +14,7 @@ from cssrlib.gnss import ecef2pos, sat2prn, uGNSS, uTYP
 
 # ── Env parsing ───────────────────────────────────────────────────────
 
-def env_f(name: str, default) -> float:
+def env_float(name: str, default) -> float:
     """Float env var with a default."""
     raw = os.environ.get(name, str(default))
     try:
@@ -23,7 +23,7 @@ def env_f(name: str, default) -> float:
         raise ValueError(f'{name}={raw!r} is not a float') from None
 
 
-def env_i(name: str, default) -> int:
+def env_int(name: str, default) -> int:
     """Int env var with a default."""
     raw = os.environ.get(name, str(default))
     try:
@@ -32,7 +32,7 @@ def env_i(name: str, default) -> int:
         raise ValueError(f'{name}={raw!r} is not an int') from None
 
 
-def env_vec(name: str, default: str) -> np.ndarray:
+def env_vector(name: str, default: str) -> np.ndarray:
     """Comma-separated float env var; one value is broadcast to 3 axes."""
     v = np.array([float(x) for x in os.environ.get(name, default).split(",")])
     return np.repeat(v, 3) if v.size == 1 else v
@@ -165,7 +165,7 @@ def make_imu_params(
     return p
 
 
-def build_pim(
+def build_imu_preintegration(
     params: gtsam.PreintegrationCombinedParams,
     bias: gtsam.imuBias.ConstantBias,
     imu_data: List[dict],
