@@ -235,8 +235,7 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
 
 def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                      rs, rsb, sat, el, iu, ir_map,
-                     key_pose, lever, amb_dict,
-                     existing_estimate=None):
+                     key_pose, lever, existing_estimate=None):
     """Build pure C++ DDPR + DDCP factors; return (n_dd, visible_sat_freqs, seeded_sat_freqs)."""
     ns = len(sat)
     if ns == 0 or obsb is None or obs_sd is None:
