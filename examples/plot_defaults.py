@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Render docs/tokyo_defaults.png — tokyo run1/run2/run3 planar trajectory.
+"""Render 3-run planar trajectory + 3D error summary PNG (e.g. docs/tokyo_defaults.png).
 
 Usage:
-  python examples/plot_tokyo_defaults.py \
-      run1.npz run2.npz run3.npz [-o docs/tokyo_defaults.png] [--clip 0.5]
+  python examples/plot_defaults.py \
+      run1.npz run2.npz run3.npz [-o docs/defaults.png] [--clip 0.5]
 """
 
 import os
@@ -98,7 +98,7 @@ def draw_fix_status_panel(ax, d):
 
 def main():
     args = sys.argv[1:]
-    out = 'docs/tokyo_defaults.png'
+    out = 'docs/defaults.png'
     clip_max = 0.5
     files = []
     i = 0
@@ -114,7 +114,7 @@ def main():
             i += 1
 
     if len(files) != 3:
-        print("Usage: plot_tokyo_defaults.py run1.npz run2.npz run3.npz "
+        print("Usage: plot_defaults.py run1.npz run2.npz run3.npz "
               "[-o out.png] [--clip 0.5]")
         sys.exit(1)
 
