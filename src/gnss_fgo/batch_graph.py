@@ -11,8 +11,19 @@ from cssrlib.gnss import ecef2pos, rSigRnx, sat2prn, uGNSS, uTYP
 from cssrlib.rtk import rtkpos
 from gtsam.symbol_shorthand import B, N, V, X
 
-from .factors import is_still_imu_window
 from .utils import enu_frame, huber_noise, make_imu_params
+
+
+def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
+                        bias_gyro_ref: np.ndarray | None = None) -> bool:
+    """IMU stillness check for batch ZUPT."""
+    if len(acc) < 5:
+        return False
+    acc_std = float(np.sqrt(np.mean(np.sum((acc - acc.mean(axis=0)) ** 2, axis=1))))
+    gyro_std = float(np.sqrt(np.mean(np.sum((gyro - gyro.mean(axis=0)) ** 2, axis=1))))
+    resid = gyro if bias_gyro_ref is None else (gyro - bias_gyro_ref)
+    gyro_med = float(np.median(np.linalg.norm(resid, axis=1)))
+    return acc_std <= 0.55 and gyro_std <= 0.030 and gyro_med <= 0.020
 
 
 # ── Row layout for batch measurement arrays ───────────────────────────
