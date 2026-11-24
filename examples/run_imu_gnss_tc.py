@@ -24,7 +24,7 @@ import cssrlib.rinex as rn
 import cssrlib.gnss as gn
 from cssrlib.gnss import uTYP, ecef2pos
 from gnss_fgo import ImuGnssTc, load_imu_csv
-from gnss_fgo.utils.sig_autodetect import auto_detect_signals
+from gnss_fgo.utils import auto_detect_signals
 
 
 def parse_args():
@@ -116,12 +116,9 @@ def main():
     else:
         nep = int(nep_env)
         nep_label = str(nep)
-    gnss_cut_from = int(os.environ.get('GNSS_CUT_FROM', '-1'))
     print(f"Base: {base_ecef}")
     print(f"Lever arm (FLU input): {lever_arm}")
     print(f"Max epochs: {nep_label}")
-    if gnss_cut_from >= 0:
-        print(f"Forced GNSS cut from epoch: {gnss_cut_from}")
     print()
 
     results = []
@@ -133,64 +130,6 @@ def main():
             obs, obsb, dt_sync = next(sync_gen)
         except StopIteration:
             break
-        forced_gnss_cut = gnss_cut_from >= 0 and ne >= gnss_cut_from
-        if forced_gnss_cut:
-            obsb = None
-        if obsb is None:
-            # Base missing: advance graph by IMU only (keeps chain coherent).
-            sol, tag, nb, info = tc.process_imu_only(obs)
-            _, tow_obs = gn.time2gpst(obs.t)
-            ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
-            ref_ecef = ref[ri_ref]['ecef']
-            enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
-            err_3d = float(np.linalg.norm(sol - ref_ecef))
-            reason = "FORCED_GNSS_CUT" if forced_gnss_cut else "SKIP_NOBASE"
-            print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
-                  f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
-                  f"3D={err_3d:.4f}m {reason}")
-            results.append({'ne': ne, 'tag': tag,
-                            'enu': enu_err, 'err': err_3d,
-                            'nb': nb, 'smode': tc.nav.smode,
-                            'sol_xyz': np.array(sol, copy=True),
-                            'forced_gnss_cut': forced_gnss_cut,
-                            'truth_xyz': np.asarray(ref_ecef)})
-            continue
-        if ne == 0:
-            nav.t = obs.t
-
-        prep = tc.prepare_double_difference_measurements(
-            obs, obsb, pos_pred=nav.x[0:3].copy(), dd_only=True,
-            compute_zdres=False,
-        )
-        ns = 0 if prep is None else len(prep['iu'])
-        if ns < 4:
-            # Too few sats for DD: advance graph by IMU only.
-            sol, tag, nb, info = tc.process_imu_only(obs)
-            _, tow_obs = gn.time2gpst(obs.t)
-            ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
-            ref_ecef = ref[ri_ref]['ecef']
-            enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
-            err_3d = float(np.linalg.norm(sol - ref_ecef))
-            print(f"Ep {ne:4d} IMU: {tag} E={enu_err[0]:+.4f} "
-                  f"N={enu_err[1]:+.4f} U={enu_err[2]:+.4f} "
-                  f"3D={err_3d:.4f}m SKIP_FEWSATS(ns={ns})")
-            results.append({'ne': ne, 'tag': tag,
-                            'enu': enu_err, 'err': err_3d,
-                            'nb': nb, 'smode': tc.nav.smode,
-                            'roll_deg': np.nan, 'pitch_deg': np.nan,
-                            'heading_deg': np.nan,
-                            'sol_xyz': np.array(sol, copy=True),
-                            'truth_xyz': np.asarray(ref_ecef)})
-            continue
-
-        rs = prep['rs']
-        vs = prep['vs']
-        rsb = prep['rsb']
-        sat = prep['sat']
-        el = prep['el']
-        iu = prep['iu']
-        obs_sd = prep['obs_sd']
-        ir_map = {s: i for i, s in enumerate(obsb.sat)}
 
         _, tow_obs = gn.time2gpst(obs.t)
         ri_ref = int(np.argmin(np.abs(ref_tows - tow_obs)))
@@ -199,8 +138,7 @@ def main():
         ref_vel = ref[ri_ref]['vel']
         ref_ecef = ref[ri_ref]['ecef']
 
-        sol, tag, nb, info = tc.process(
-            obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map)
+        sol, tag, nb, info = tc.process(obs, obsb)
 
         enu_err = gn.ecef2enu(ecef2pos(ref_ecef), sol - ref_ecef)
         err_3d = np.linalg.norm(sol - ref_ecef)
@@ -208,7 +146,6 @@ def main():
             'ep': ne, 'tag': tag, 'nb': nb, 'err': err_3d,
             'enu': enu_err,
             'sol_xyz': np.array(sol, copy=True),
-            'forced_gnss_cut': forced_gnss_cut,
             'truth_xyz': np.asarray(ref_ecef),
             'ref_vel': np.asarray(ref_vel),
             'smode': tc.nav.smode,
@@ -227,8 +164,8 @@ def main():
             slip = info.get('n_slip', 0)
             if slip > 0:
                 extra += f" slip={slip}"
-            if info.get('gnss_skip'):
-                extra += f" SKIP(ns={info.get('nsat',0)})"
+            if info.get('n_dd', 0) == 0:
+                extra += f" SKIP(ns={info.get('nsat', 0)})"
             if info.get('nhc'):
                 extra += " NHC"
             if 'lambda_correction' in info:

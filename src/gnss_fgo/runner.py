@@ -1,19 +1,18 @@
 """ImuGnssTc — single-phase IMU/GNSS tightly-coupled FGO runner."""
 
-import numpy as np
 import gtsam
+import numpy as np
+from cssrlib.gnss import timediff
 from cssrlib.rtk import rtkpos
-from cssrlib.gnss import ecef2pos, timediff
 
+from . import pipeline as _pipeline
+from .config import TcConfig
+from .state import CurrentEpochState, SatStateMap
 from .utils import (
+    enu_frame,
     estimate_stationary_bias as _utils_estimate_stationary_bias,
     make_imu_params as _utils_make_imu_params,
 )
-from .config import TcConfig
-from . import pipeline as _pipeline
-from .integrity import recovery as _tc_recovery
-from .state.runtime_state import CurrentEpochState, SatStateMap
-from .pipeline import update_smoother as _tc_isam
 
 
 class ImuGnssTc:
@@ -45,23 +44,12 @@ class ImuGnssTc:
         self.imu_data = imu_data
         self.lever_arm = np.array(lever_arm, dtype=float)
 
-        self._init_base_frame()
+        self.R_enu2ecef, self.ecef_T_nav = enu_frame(self.base_ecef)
+        self.base_pt = gtsam.Point3(*self.base_ecef)
 
         self.cfg = cfg if cfg is not None else TcConfig.from_env()
         self._apply_nav_config()
         self._init_runtime_state()
-
-    def _init_base_frame(self):
-        lat, lon, _ = ecef2pos(self.base_ecef)
-        sl, cl = np.sin(lat), np.cos(lat)
-        sn, cn = np.sin(lon), np.cos(lon)
-        self.R_enu2ecef = np.array([
-            [-sn, -sl * cn, cl * cn],
-            [cn, -sl * sn, cl * sn],
-            [0, cl, sl]])
-        self.ecef_T_nav = gtsam.Pose3(
-            gtsam.Rot3(self.R_enu2ecef), gtsam.Point3(*self.base_ecef))
-        self.base_pt = gtsam.Point3(*self.base_ecef)
 
     def _apply_nav_config(self):
         self.nav.armode = int(self.cfg.armode)
@@ -121,20 +109,34 @@ class ImuGnssTc:
         return _utils_estimate_stationary_bias(
             self.imu_data, n_max=min(3000, self.imu_idx))
 
-    def process(self, obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map):
+    def process(self, obs, obsb=None, rs=None, vs=None, rsb=None,
+                sat=None, el=None, iu=None, obs_sd=None, ir_map=None):
         self._update_epoch_dt(obs)
         self._reset_current_epoch()
+        if rs is None:
+            if self.isam2 is None:
+                self.nav.t = obs.t
+            prep = None
+            if obsb is not None:
+                prep = self.prepare_double_difference_measurements(
+                    obs, obsb, pos_pred=self.nav.x[0:3].copy(),
+                    dd_only=True, compute_zdres=False)
+            if prep is not None and len(prep['iu']) >= 4:
+                rs, vs, rsb = prep['rs'], prep['vs'], prep['rsb']
+                sat, el, iu, obs_sd = prep['sat'], prep['el'], prep['iu'], prep['obs_sd']
+                ir_map = {s: i for i, s in enumerate(obsb.sat)}
+            else:
+                sat = np.empty(0, dtype=int)
+                el = np.empty(0, dtype=float)
+                iu = np.empty(0, dtype=int)
+                obs_sd = None
+                ir_map = {}
+
         R, ns, init_ecef = self.R_enu2ecef, len(sat), self.nav.x[0:3].copy()
         info = {'tc_epoch': self.tc_epoch}
-
-        if ns < 4:
-            return _tc_recovery.advance_epoch_and_pack(
-                self, self.nav.x[0:3], 'FLT', 0, info, obs)
-
         return self._run_tc_epoch(
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
 
-    _make_isam2 = staticmethod(_tc_isam.make_isam2)
-    process_imu_only = _tc_recovery.process_imu_only
+    _make_isam2 = staticmethod(_pipeline.make_isam2)
     _run_tc_epoch = _pipeline.run_tc_epoch

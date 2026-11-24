@@ -2,23 +2,149 @@
 
 from types import SimpleNamespace
 
-import numpy as np
 import gtsam
+import numpy as np
 from cssrlib.gnss import time2gpst
 
-from .. import ar as _tc_ar
-from ..factors import doppler_sd as _tc_doppler_sd
-from ..factors import factors as _tc_factors
-from ..factors import nhc as _tc_nhc
-from ..factors import zupt as _tc_zupt
-from ..integrity import recovery as _tc_recovery
-from ..integrity import slip_detect as _tc_slip_detect
-from ..utils import (
+from . import ar as _tc_ar
+from . import factors as _tc_factors
+from .utils import (
     build_pim as _utils_build_pim,
     euler_to_R_body2enu,
+    get_wavelengths as _get_wavelengths,
+    sorted_amb_items,
 )
-from . import update_smoother as _tc_isam
 
+
+def advance_epoch_and_pack(tc, sol, tag, nb, info, obs):
+    """Advance tc.epoch / nav.t and pack the (sol, tag, nb, info) tuple."""
+    tc.epoch += 1
+    tc.nav.t = obs.t
+    return sol, tag, nb, info
+
+
+# ── Cycle-slip detection & outage arc expiry ──────────────────────────
+
+def reset_slipped_ambiguities(tc, reset_keys):
+    """End the arc for every slipped (sat, f) by clearing amb_key and bumping amb_gen."""
+    n_reset = 0
+    for key in reset_keys:
+        sat_st = tc._sat_states.get(*key)
+        if sat_st.amb_key is not None:
+            sat_st.amb_key = None
+            n_reset += 1
+        sat_st.amb_gen += 1
+    return n_reset
+
+
+def _detslp_gf(tc, obs, row, s, lams, nf, reset_keys):
+    """Geometry-free L1-L2 jump detector."""
+    L1 = obs.L[row, 0]
+    L2 = obs.L[row, 1]
+    if L1 == 0 or L2 == 0 or lams[0] <= 0 or lams[1] <= 0:
+        return
+    gf = L1 * lams[0] - L2 * lams[1]
+    prev_gf = tc._sat_states.gf
+    if s in prev_gf and prev_gf[s] != 0:
+        if abs(gf - prev_gf[s]) > tc.cfg.thres_slip:
+            for f in range(nf):
+                reset_keys.add((s, f))
+    prev_gf[s] = gf
+
+
+def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
+    """LLI + GF slip detection plus outage expiry. Returns (n_reset, reset_keys)."""
+    nf = tc.nav.nf
+    ns = len(sat)
+    reset_keys = set()
+    current_sats = set()
+
+    for i in range(ns):
+        s = sat[i]
+        lams = _get_wavelengths(obs_sd, s, glo_ch=tc.nav.glo_ch)
+        for f in range(nf):
+            current_sats.add((s, f))
+            sat_state = tc._sat_states.get(s, f)
+            sat_state.outc = 0
+            if hasattr(obs, 'lli') and obs.lli[iu[i], f] == 1:
+                reset_keys.add((s, f))
+        if nf >= 2 and len(lams) >= 2:
+            _detslp_gf(tc, obs, iu[i], s, lams, nf, reset_keys)
+
+    maxout = tc._sat_states.maxout
+    for key in list(tc._sat_states.keys()):
+        if key not in current_sats:
+            st = tc._sat_states.get(*key)
+            st.outc += 1
+            if st.outc > maxout:
+                reset_keys.add(key)
+
+    n_reset = reset_slipped_ambiguities(tc, reset_keys)
+    return n_reset, reset_keys
+
+
+# ── FixedLagSmoother update ───────────────────────────────────────────
+
+_ISAM2_RELINEARIZE_SKIP = 1
+_ISAM2_RELINEARIZE_THRESHOLD = 0.01
+
+
+def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
+               relinearize_threshold=_ISAM2_RELINEARIZE_THRESHOLD):
+    """Build IncrementalFixedLagSmoother with QR factorization and per-epoch relinearization."""
+    params = gtsam.ISAM2Params()
+    params.setFactorization("QR")
+    params.setRelinearizeThreshold(float(relinearize_threshold))
+    params.relinearizeSkip = int(relinearize_skip)
+    return gtsam.IncrementalFixedLagSmoother(lag, params)
+
+
+def fls_update(tc, graph, values, key_idx, keep_keys=(),
+               advance_time=True, include_prev=True):
+    """Apply an FLS update with current timestamps on pose/vel/bias and live N keys."""
+    if advance_time:
+        tc.tc_time += tc._epoch_dt
+    ts = gtsam.FixedLagSmootherKeyTimestampMap()
+    t = tc.tc_time
+    ts[tc.Xpose(key_idx)] = t
+    ts[tc.Vel(key_idx)] = t
+    ts[tc.Bias(key_idx)] = t
+    if include_prev and key_idx > 0:
+        ts[tc.Xpose(key_idx - 1)] = t
+        ts[tc.Vel(key_idx - 1)] = t
+        ts[tc.Bias(key_idx - 1)] = t
+    for k in values.keys():
+        if k not in ts:
+            ts[k] = t
+    for k in keep_keys:
+        ts[k] = t
+    tc.isam2.update(graph, values, ts)
+
+
+def _solve_isam2(tc, epoch):
+    """Update FixedLagSmoother and snapshot the new estimate."""
+    info = epoch.info
+    try:
+        live_amb_keys = [
+            k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())
+            if epoch.estimate.exists(k) or epoch.values.exists(k)
+        ]
+        fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
+                   keep_keys=live_amb_keys)
+        epoch.estimate = tc.isam2.calculateEstimate()
+    except (RuntimeError, IndexError, ValueError) as ex:
+        info['error'] = str(ex)
+        return advance_epoch_and_pack(
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, epoch.obs)
+
+    epoch.pose_tc = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
+    tc.tc_bias = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx))
+    enu_tc = np.array(epoch.pose_tc.translation())
+    epoch.ecef_tc = epoch.R_enu2ecef @ enu_tc + tc.base_ecef
+    return None
+
+
+# ── Epoch pipeline ────────────────────────────────────────────────────
 
 def _decide_fix_or_flt(tc, epoch):
     """Pure FIX/FLT decision directly from LAMBDA acceptance (nav.smode == 4)."""
@@ -35,7 +161,8 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
                       init_ecef, R_enu2ecef, info):
     """Initialize the single smoother at the first valid GNSS epoch."""
     _, tow_obs = time2gpst(obs.t)
-    _tc_recovery._outage_drain_imu(tc, tow_obs)
+    while tc.imu_idx < len(tc.imu_data) and tc.imu_data[tc.imu_idx]['tow'] <= tow_obs + 1e-6:
+        tc.imu_idx += 1
     bias_acc, bias_gyro = tc._estimate_stationary_bias()
     bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
     tc.tc_bias = bias0
@@ -93,13 +220,16 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     sol = tc._antenna_ecef(pose_tc, ecef_tc)
     tc.nav.x[0:3] = sol
     tc.nav.smode = 5
-    return _tc_recovery.advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
+    return advance_epoch_and_pack(tc, sol, 'FLT', 0, info, obs)
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                  obs_sd, ir_map, info, ns, init_ecef, R_enu2ecef):
     """Single-phase IMU/GNSS TC epoch flow."""
     if tc.isam2 is None:
+        if ns < 4:
+            return advance_epoch_and_pack(
+                tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
         return _bootstrap_epoch0(
             tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
             init_ecef, R_enu2ecef, info)
@@ -125,7 +255,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
     info['n_imu'] = epoch.n_imu
     if epoch.n_imu == 0:
-        return _tc_recovery.advance_epoch_and_pack(
+        return advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
     epoch.graph = gtsam.NonlinearFactorGraph()
@@ -134,7 +264,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     if not epoch.estimate.exists(tc.Xpose(epoch.key_idx - 1)):
         info['prev_pose_missing'] = epoch.key_idx - 1
-        return _tc_recovery.advance_epoch_and_pack(
+        return advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
     epoch.pose_p = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx - 1))
@@ -152,8 +282,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
-    n_reset, _ = _tc_slip_detect.detect_slips_and_reset_ambiguities(
-        tc, obs, obs_sd, sat, iu)
+    n_reset, _ = detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu)
     info['n_slip'] = n_reset
     pred_enu = np.array(epoch.pred_nav.pose().translation())
     epoch.pred_ecef = tc._antenna_ecef(
@@ -166,16 +295,16 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         tc.Xpose(epoch.key_idx), tc.lever_arm_tc, tc._sat_states,
         existing_estimate=epoch.estimate)
     info['n_dd'] = epoch.nv
-    _tc_doppler_sd.add_sd_doppler_factors(tc, epoch)
-    if _tc_nhc.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
-                              gyro_mean_rh=epoch.gyro_mean):
+    _tc_factors.add_sd_doppler_factors(tc, epoch)
+    if _tc_factors.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
+                                  gyro_mean_rh=epoch.gyro_mean):
         info['nhc'] = True
-    _tc_zupt.add_zupt_factors(
+    _tc_factors.add_zupt_factors(
         tc, epoch.graph, epoch.key_idx,
         int(epoch.imu_idx_prev), int(epoch.n_imu), info)
 
     # 4. Fixed-lag smoother update
-    early = _tc_isam._solve_isam2(tc, epoch)
+    early = _solve_isam2(tc, epoch)
     if early is not None:
         return early
 
@@ -189,5 +318,5 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     epoch.sol, epoch.tag, epoch.nb = _decide_fix_or_flt(tc, epoch)
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
-    return _tc_recovery.advance_epoch_and_pack(
+    return advance_epoch_and_pack(
         tc, epoch.sol, epoch.tag, epoch.nb, info, obs)

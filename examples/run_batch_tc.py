@@ -19,8 +19,7 @@ import sys
 
 import numpy as np
 
-from gnss_fgo.batch import BatchConfig, load_imu_csv, run_batch
-from gnss_fgo.batch import frontend
+from gnss_fgo.batch import BatchConfig, load, load_imu_csv, prepare, run_batch, save
 
 
 def base_ecef_from_env():
@@ -62,12 +61,12 @@ def main():
     max_ep = int(os.environ["MAX_EP"]) if "MAX_EP" in os.environ else None
 
     if cache and os.path.exists(cache):
-        meas = frontend.load(cache)
+        meas = load(cache)
         print(f"front end: loaded {cache}")
     else:
-        meas = frontend.prepare(rover, base, nav, base_ecef_from_env(), max_ep)
+        meas = prepare(rover, base, nav, base_ecef_from_env(), max_ep)
         if cache:
-            frontend.save(cache, meas)
+            save(cache, meas)
     if max_ep and len(meas["tow"]) > max_ep:
         meas = dict(meas, tow=meas["tow"][:max_ep],
                     rows=meas["rows"][meas["rows"][:, 0] < max_ep],
