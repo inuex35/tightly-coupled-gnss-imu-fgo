@@ -12,9 +12,9 @@ from .factors import SatStateMap
 from .utils import (
     build_imu_preintegration,
     enu_frame,
-    estimate_stationary_bias as _utils_estimate_stationary_bias,
+    estimate_stationary_bias,
     euler_to_R_body2enu,
-    make_imu_params as _utils_make_imu_params,
+    make_imu_params,
     sorted_amb_items,
 )
 
@@ -100,7 +100,8 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     _, tow_obs = time2gpst(obs.t)
     while tc.imu_idx < len(tc.imu_data) and tc.imu_data[tc.imu_idx]['tow'] <= tow_obs + 1e-6:
         tc.imu_idx += 1
-    bias_acc, bias_gyro = tc._estimate_stationary_bias()
+    bias_acc, bias_gyro = estimate_stationary_bias(
+        tc.imu_data, n_max=min(3000, tc.imu_idx))
     bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
     tc.tc_bias = bias0
 
@@ -112,13 +113,13 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     roll_rad = float(np.arctan2(acc_tilt[1], acc_tilt[2]))
     rot0 = gtsam.Rot3(euler_to_R_body2enu(roll_rad, pitch_rad, 0.0))
 
-    tc.imu_params = tc._make_imu_params()
+    tc.imu_params = make_imu_params()
     tc.lever_arm_tc = gtsam.Point3(*tc.lever_arm)
     enu0 = R_enu2ecef.T @ (init_ecef - tc.base_ecef)
     body_enu0 = enu0 - rot0.matrix() @ tc.lever_arm
     pose0 = gtsam.Pose3(rot0, gtsam.Point3(*body_enu0))
 
-    tc.isam2 = tc._make_isam2(tc.cfg.fls_lag)
+    tc.isam2 = make_isam2(tc.cfg.fls_lag)
     tc.tc_time = 0.0
     tc.tc_epoch = 0
     info['tc_epoch'] = 0
@@ -187,10 +188,10 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         return advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
-    pose_p = estimate.atPose3(tc.Pose(key_idx - 1))
+    pose_prev = estimate.atPose3(tc.Pose(key_idx - 1))
     vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
     bias_prev = estimate.atConstantBias(tc.Bias(key_idx - 1))
-    pred_nav = pim.predict(gtsam.NavState(pose_p, vel_prev), bias_prev)
+    pred_nav = pim.predict(gtsam.NavState(pose_prev, vel_prev), bias_prev)
     values.insert(tc.Pose(key_idx), pred_nav.pose())
     values.insert(tc.Vel(key_idx), pred_nav.velocity())
     values.insert(tc.Bias(key_idx), bias_prev)
@@ -307,19 +308,12 @@ class ImuGnssTc:
                 pass
         self._last_obs_t = obs.t
 
-    def _make_imu_params(self):
-        return _utils_make_imu_params()
-
     def _antenna_ecef(self, pose, ecef_body):
         lever_arr = np.array(self.lever_arm_tc)
         if np.linalg.norm(lever_arr) == 0:
             return ecef_body
         R_body = self.ecef_T_nav.compose(pose).rotation().matrix()
         return ecef_body + R_body @ lever_arr
-
-    def _estimate_stationary_bias(self):
-        return _utils_estimate_stationary_bias(
-            self.imu_data, n_max=min(3000, self.imu_idx))
 
     def process(self, obs, obsb=None, rs=None, vs=None, rsb=None,
                 sat=None, el=None, iu=None, obs_sd=None, ir_map=None):
@@ -349,5 +343,4 @@ class ImuGnssTc:
             obs, obsb, rs, vs, rsb, sat, el, iu, obs_sd, ir_map,
             info, ns, init_ecef, R)
 
-    _make_isam2 = staticmethod(make_isam2)
     _run_tc_epoch = run_tc_epoch

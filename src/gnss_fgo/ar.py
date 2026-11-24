@@ -53,7 +53,7 @@ def build_problem(tc, sat_list, amb_dict, key_pose,
     seeded = seeded_sat_freqs or set()
     cp_visible = visible_sat_freqs or set()
     keys, values = [], {}
-    for (s, f), k in sorted_amb_items(key_of):
+    for (s, f), k in key_of.items():
         sf = (int(s), int(f))
         if (int(s) in present and est.exists(k)
                 and (s, f) not in seeded
@@ -104,8 +104,7 @@ def fixed_state(tc, problem, result):
         D[row, idx[ref]] = 1.0
         D[row, idx[tgt]] = -1.0
     y_float = D @ np.array([values[sf] for sf in keys])
-    y_fixed = (result.dd_fixed if result.dd_fixed is not None
-               else D @ np.array([result.fixed.get(sf, values[sf]) for sf in keys]))
+    y_fixed = result.dd_fixed
     Qb = D @ cov @ D.T
     Qab = problem.cross @ D.T
     try:
@@ -211,32 +210,33 @@ class AmbiguityResolver:
         y = D @ x
         Q = D @ np.asarray(covariance, dtype=float) @ D.T
 
-        b, s, nfix, ps = mlambda(y, Q)
-        s0 = float(s[0]) if len(s) > 0 else 0.0
-        s1 = float(s[1]) if len(s) > 1 else 0.0
-        if s0 <= 1e-12 * max(s1, 1.0):
-            s0 = 0.0
-        ratio = 0.0 if s0 <= 0.0 else s1 / s0
+        candidates, sqnorms, nfix, _ = mlambda(y, Q)
+        sqnorm_best = float(sqnorms[0]) if len(sqnorms) > 0 else 0.0
+        sqnorm_second = float(sqnorms[1]) if len(sqnorms) > 1 else 0.0
+        if sqnorm_best <= 1e-12 * max(sqnorm_second, 1.0):
+            sqnorm_best = 0.0
+        ratio = 0.0 if sqnorm_best <= 0.0 else sqnorm_second / sqnorm_best
         thres = self.ratio_threshold(len(pairs))
-        result = ResolverResult(s0=s0, s1=s1, pairs=pairs, thres_used=thres)
+        result = ResolverResult(
+            s0=sqnorm_best, s1=sqnorm_second, pairs=pairs, thres_used=thres)
         if nfix <= 0:
             return result
-        if not (s0 <= 0.0 or ratio >= thres):
+        if not (sqnorm_best <= 0.0 or ratio >= thres):
             par = self._partial(y, Q, pairs) if allow_partial else None
             if par is None:
                 return result
-            bvec, nb, s0, s1, thres, k = par
-            result.s0, result.s1 = s0, s1
+            dd_fixed_vec, nb, sqnorm_best, sqnorm_second, thres, k = par
+            result.s0, result.s1 = sqnorm_best, sqnorm_second
             result.thres_used = thres
             result.dropped = k
             result.nb = nb
-            result.dd_fixed = bvec
-            result.fixed = self._restore_sd(pairs, float_values, bvec)
+            result.dd_fixed = dd_fixed_vec
+            result.fixed = self._restore_sd(pairs, float_values, dd_fixed_vec)
             return result
 
         result.nb = len(pairs)
-        result.dd_fixed = b[:, 0]
-        result.fixed = self._restore_sd(pairs, float_values, b[:, 0])
+        result.dd_fixed = candidates[:, 0]
+        result.fixed = self._restore_sd(pairs, float_values, candidates[:, 0])
         return result
 
     @staticmethod
@@ -247,7 +247,7 @@ class AmbiguityResolver:
             fixed[tgt] = fixed[ref] - float(bvec[row])
         return fixed
 
-    def _partial(self, y, Q, pairs=None):
+    def _partial(self, y, Q, pairs):
         n = len(y)
         if n <= self.min_fix:
             return None
@@ -264,23 +264,22 @@ class AmbiguityResolver:
         for _ in range(self.par_trials):
             if k > kmax:
                 return None
-            if pairs is not None:
-                int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
-                fixed_sats = {
-                    s for row, (ref, tgt) in enumerate(pairs)
-                    if int_rows[row] for s in (ref[0], tgt[0])
-                }
-                if len(fixed_sats) < self.min_sats:
-                    return None
+            int_rows = np.all(iZt[:, :k] == 0.0, axis=1)
+            fixed_sats = {
+                s for row, (ref, tgt) in enumerate(pairs)
+                if int_rows[row] for s in (ref[0], tgt[0])
+            }
+            if len(fixed_sats) < self.min_sats:
+                return None
             zpar, sq = estimILS(L[k:, k:], d[k:], z[k:], 2)
-            s0, s1 = float(sq[0]), float(sq[1])
+            sqnorm_best, sqnorm_second = float(sq[0]), float(sq[1])
             nb = n - k
             thres = self.ratio_threshold(nb)
-            if s0 > 0.0 and s1 / s0 >= thres:
+            if sqnorm_best > 0.0 and sqnorm_second / sqnorm_best >= thres:
                 QP = np.linalg.solve(Qz[k:, k:].T, Qz[:k, k:].T).T
                 zc = z[:k] - QP @ (z[k:] - zpar[:, 0])
-                bvec = iZt @ np.concatenate((zc, zpar[:, 0]))
-                return bvec, nb, s0, s1, thres, k
+                dd_fixed_vec = iZt @ np.concatenate((zc, zpar[:, 0]))
+                return dd_fixed_vec, nb, sqnorm_best, sqnorm_second, thres, k
             k += max(1, (kmax - k) // 4)
         return None
 

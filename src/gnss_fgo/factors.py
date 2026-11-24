@@ -120,19 +120,11 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
 _SIGMA_AMB0_GAUGE = 30.0  # loose gauge prior [cyc] so initial code multipath cannot pull N
 
 
-def seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id,
-                       seeded_keys=None):
-    """Insert a fresh arc's ambiguity value + loose clock-free gauge prior."""
-    values.insert(key_n, n0_seed)
-    graph.addPriorDouble(key_n, n0_seed, tc._noise1(_SIGMA_AMB0_GAUGE))
-    if seeded_keys is not None:
-        seeded_keys.add(key_id)
-
-
 def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
                              existing_estimate, freq, lam, pair_sat_info,
                              seeded_keys=None):
     """Reuse existing smoother arc keys untouched; seed new arcs once clock-free."""
+    del amb_dict  # kept for call compatibility; arc state lives in existing_estimate
     for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
         key_id = (sat_id, freq)
         if key_id in new_amb or values.exists(key_n):
@@ -140,12 +132,11 @@ def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
         if existing_estimate is not None and existing_estimate.exists(key_n):
             new_amb[key_id] = key_n
             continue
-        if (isinstance(amb_dict, dict) and key_id in amb_dict
-                and amb_dict[key_id] == key_n and existing_estimate is None):
-            continue
         n0_seed = ((cp_rover - cp_base) - (pr_rover - pr_base)) / lam
-        seed_one_amb_prior(tc, graph, values, key_n, n0_seed, key_id,
-                           seeded_keys=seeded_keys)
+        values.insert(key_n, n0_seed)
+        graph.addPriorDouble(key_n, n0_seed, tc._noise1(_SIGMA_AMB0_GAUGE))
+        if seeded_keys is not None:
+            seeded_keys.add(key_id)
         new_amb[key_id] = key_n
 
 
@@ -155,10 +146,10 @@ _CLIGHT = 299792458.0
 _SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
 
 
-def dd_obs_sigma(tc, code, el_rad, dt_s):
+def dd_obs_sigma(tc, is_pseudorange, el_rad, dt_s):
     """RTKLIB varerr formula returning DD σ in metres."""
     cfg = tc.cfg
-    fact = cfg.err_eratio_pr if code else 1.0
+    fact = cfg.err_eratio_pr if is_pseudorange else 1.0
     a = fact * cfg.err_a
     d = _CLIGHT * _SCLKSTAB * dt_s
     sinel = max(np.sin(el_rad), 0.05)
@@ -292,8 +283,8 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
             j_pt, j_base_pt = _sat_pts(rs, rsb, iu, ir_map, j_idx, j_sat)
             sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
             el_pair = max(min(el[ref_idx], el[j_idx]), el_min_rad)
-            sigma_pr = dd_obs_sigma(tc, 1, el_pair, dt_s)
-            sigma_cp = dd_obs_sigma(tc, 0, el_pair, dt_s)
+            sigma_pr = dd_obs_sigma(tc, True, el_pair, dt_s)
+            sigma_cp = dd_obs_sigma(tc, False, el_pair, dt_s)
             for f in range(nf):
                 pr_obs = (
                     obs.P[iu[ref_idx], f],
