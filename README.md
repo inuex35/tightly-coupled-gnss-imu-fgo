@@ -18,7 +18,8 @@ and tunnels.
   `IncrementalFixedLagSmoother`, float ambiguities chained via per-epoch
   random walk, clock-free seeding (SD phase − SD code)
 - **Integer ambiguity resolution** — continuous LAMBDA + partial AR
-  with a dimension-adaptive fixed-failure-rate ratio test (FFRT)
+  with a dimension-adaptive fixed-failure-rate ratio test (FFRT) and
+  full-AR DD integer fix-and-hold (`armode=2`)
 - **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
   NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
@@ -83,23 +84,24 @@ python examples/run_imu_gnss_tc.py \
 
 ## Architecture
 
-Packages are the roles:
+Flat module layout under `src/gnss_fgo/`:
 
-| Package | Role |
+| Module | Role |
 |---|---|
-| `pipeline/` | single-phase epoch flow (`bootstrap` / `imu_prediction` → `slip_detect` → `factors` → `update_smoother` → `run_ar`) |
-| `factors/` | measurement → GTSAM factor builders, one file per family |
-| `ar/` | LAMBDA + partial AR with dimension-adaptive FFRT |
-| `integrity/` | cycle-slip detection (LLI + GF) and IMU-only outage bridging |
-| `state/` | records (`SatState`) |
-
-`runner.py` owns state and the cssrlib boundary.
+| `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point, DD prep, and cssrlib boundary |
+| `pipeline.py` | single-phase epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) and outage recovery |
+| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ZUPT, ambiguity seeding) |
+| `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
+| `state.py` | runtime state records (`SatStateMap`, `CurrentEpochState`) |
+| `config.py` | `TcConfig` and `BatchConfig` |
+| `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber noise |
+| `batch.py`, `batch_ar.py`, `batch_graph.py` | offline whole-run batch TC pipeline and global AR |
 
 ## Configuration
 
-Every `config.py` field is an env var (`ERR_A`, `HUBER_K`,
-`DOPPLER_SD_SIGMA`, `AMB_RW_SIGMA`, `FLS_LAG`, …) — see `config.py`
-for the complete 12-parameter list. The example script adds its own
+Every `TcConfig` field in `config.py` is an env var (`ERR_A`, `HUBER_K`,
+`DOPPLER_SD_SIGMA`, `AMB_RW_SIGMA`, `ARMODE`, `FLS_LAG`, …) — see
+`config.py` for all 13 parameters. The example script adds its own
 env switches (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
 
 ## License

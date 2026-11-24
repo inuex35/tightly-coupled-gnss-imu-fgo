@@ -1,7 +1,5 @@
 """Single-phase tightly-coupled epoch pipeline: bootstrap/IMU prediction -> slip check -> solve -> AR -> report."""
 
-from types import SimpleNamespace
-
 import gtsam
 import numpy as np
 from cssrlib.gnss import time2gpst
@@ -121,40 +119,36 @@ def fls_update(tc, graph, values, key_idx, keep_keys=(),
     tc.isam2.update(graph, values, ts)
 
 
-def _solve_isam2(tc, epoch):
-    """Update FixedLagSmoother and snapshot the new estimate."""
-    info = epoch.info
+def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
+    """Update FixedLagSmoother and return (pose_tc, ecef_tc, early_result)."""
     try:
         live_amb_keys = [
             k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())
-            if epoch.estimate.exists(k) or epoch.values.exists(k)
+            if estimate.exists(k) or values.exists(k)
         ]
-        fls_update(tc, epoch.graph, epoch.values, epoch.key_idx,
-                   keep_keys=live_amb_keys)
-        epoch.estimate = tc.isam2.calculateEstimate()
+        fls_update(tc, graph, values, key_idx, keep_keys=live_amb_keys)
+        new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
-        return advance_epoch_and_pack(
-            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, epoch.obs)
+        return None, None, advance_epoch_and_pack(
+            tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
-    epoch.pose_tc = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx))
-    tc.tc_bias = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx))
-    enu_tc = np.array(epoch.pose_tc.translation())
-    epoch.ecef_tc = epoch.R_enu2ecef @ enu_tc + tc.base_ecef
-    return None
+    pose_tc = new_est.atPose3(tc.Xpose(key_idx))
+    tc.tc_bias = new_est.atConstantBias(tc.Bias(key_idx))
+    enu_tc = np.array(pose_tc.translation())
+    ecef_tc = R_enu2ecef @ enu_tc + tc.base_ecef
+    return pose_tc, ecef_tc, None
 
 
 # ── Epoch pipeline ────────────────────────────────────────────────────
 
-def _decide_fix_or_flt(tc, epoch):
+def _decide_fix_or_flt(tc, pose_tc, ecef_tc, nb, xa, info):
     """Pure FIX/FLT decision directly from LAMBDA acceptance (nav.smode == 4)."""
-    info = epoch.info
-    pose_tc_antenna = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
-    if tc.nav.smode == 4 and epoch.nb > 0 and epoch.xa is not None:
-        lc = float(np.linalg.norm(epoch.xa[0:3] - pose_tc_antenna))
-        info['lambda_correction'] = lc
-        return epoch.xa[0:3], 'FIX', epoch.nb
-    return pose_tc_antenna, 'FLT', epoch.nb
+    pose_tc_antenna = tc._antenna_ecef(pose_tc, ecef_tc)
+    if tc.nav.smode == 4 and nb > 0 and xa is not None:
+        info['lambda_correction'] = float(np.linalg.norm(xa[0:3] - pose_tc_antenna))
+        return xa[0:3], 'FIX', nb
+    return pose_tc_antenna, 'FLT', nb
 
 
 def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
@@ -234,89 +228,76 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
             tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
             init_ecef, R_enu2ecef, info)
 
-    epoch = SimpleNamespace(
-        obs=obs, obsb=obsb, rs=rs, vs=vs, rsb=rsb,
-        sat=sat, el=el, iu=iu, obs_sd=obs_sd, ir_map=ir_map,
-        info=info, ns=ns, init_ecef=init_ecef, R_enu2ecef=R_enu2ecef,
-        key_idx=None, tow=None, imu_idx_prev=None, pim=None, n_imu=0,
-        gyro_mean=None, graph=None, values=None, estimate=None,
-        pose_p=None, vel_prev=None, bias_prev=None, pred_nav=None,
-        pred_ecef=None, nv=0, pose_tc=None, ecef_tc=None,
-        nb=0, xa=None, sol=None, tag=None)
-
     # 1. IMU preintegration & state prediction
     tc.tc_epoch += 1
-    epoch.key_idx = tc.tc_epoch
-    info['tc_epoch'] = epoch.key_idx
-    epoch.imu_idx_prev = tc.imu_idx
+    key_idx = tc.tc_epoch
+    info['tc_epoch'] = key_idx
+    imu_idx_prev = tc.imu_idx
     _, tow_obs = time2gpst(obs.t)
-    epoch.tow = tow_obs
-    epoch.pim, epoch.n_imu, epoch.gyro_mean, tc.imu_idx = _utils_build_pim(
+    pim, n_imu, gyro_mean, tc.imu_idx = _utils_build_pim(
         tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
-    info['n_imu'] = epoch.n_imu
-    if epoch.n_imu == 0:
+    info['n_imu'] = n_imu
+    if n_imu == 0:
         return advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
-    epoch.graph = gtsam.NonlinearFactorGraph()
-    epoch.values = gtsam.Values()
-    epoch.estimate = tc.isam2.calculateEstimate()
+    graph = gtsam.NonlinearFactorGraph()
+    values = gtsam.Values()
+    estimate = tc.isam2.calculateEstimate()
 
-    if not epoch.estimate.exists(tc.Xpose(epoch.key_idx - 1)):
-        info['prev_pose_missing'] = epoch.key_idx - 1
+    if not estimate.exists(tc.Xpose(key_idx - 1)):
+        info['prev_pose_missing'] = key_idx - 1
         return advance_epoch_and_pack(
             tc, np.array(tc.nav.x[0:3]), 'FLT', 0, info, obs)
 
-    epoch.pose_p = epoch.estimate.atPose3(tc.Xpose(epoch.key_idx - 1))
-    epoch.vel_prev = epoch.estimate.atVector(tc.Vel(epoch.key_idx - 1))
-    epoch.bias_prev = epoch.estimate.atConstantBias(tc.Bias(epoch.key_idx - 1))
-    epoch.pred_nav = epoch.pim.predict(
-        gtsam.NavState(epoch.pose_p, epoch.vel_prev), epoch.bias_prev)
-    epoch.values.insert(tc.Xpose(epoch.key_idx), epoch.pred_nav.pose())
-    epoch.values.insert(tc.Vel(epoch.key_idx), epoch.pred_nav.velocity())
-    epoch.values.insert(tc.Bias(epoch.key_idx), epoch.bias_prev)
-    epoch.graph.add(gtsam.CombinedImuFactor(
-        tc.Xpose(epoch.key_idx - 1), tc.Vel(epoch.key_idx - 1),
-        tc.Xpose(epoch.key_idx), tc.Vel(epoch.key_idx),
-        tc.Bias(epoch.key_idx - 1), tc.Bias(epoch.key_idx), epoch.pim))
+    pose_p = estimate.atPose3(tc.Xpose(key_idx - 1))
+    vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
+    bias_prev = estimate.atConstantBias(tc.Bias(key_idx - 1))
+    pred_nav = pim.predict(gtsam.NavState(pose_p, vel_prev), bias_prev)
+    values.insert(tc.Xpose(key_idx), pred_nav.pose())
+    values.insert(tc.Vel(key_idx), pred_nav.velocity())
+    values.insert(tc.Bias(key_idx), bias_prev)
+    graph.add(gtsam.CombinedImuFactor(
+        tc.Xpose(key_idx - 1), tc.Vel(key_idx - 1),
+        tc.Xpose(key_idx), tc.Vel(key_idx),
+        tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
     n_reset, _ = detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu)
     info['n_slip'] = n_reset
-    pred_enu = np.array(epoch.pred_nav.pose().translation())
-    epoch.pred_ecef = tc._antenna_ecef(
-        epoch.pred_nav.pose(), R_enu2ecef @ pred_enu + tc.base_ecef)
+    pred_enu = np.array(pred_nav.pose().translation())
+    pred_ecef = tc._antenna_ecef(
+        pred_nav.pose(), R_enu2ecef @ pred_enu + tc.base_ecef)
 
     # 3. Measurement factors (DDPR, DDCP, SD Doppler, NHC, ZUPT)
-    epoch.nv = _tc_factors.build_dd_factors(
-        tc, epoch.graph, epoch.values, obs, obsb, obs_sd,
+    info['n_dd'] = _tc_factors.build_dd_factors(
+        tc, graph, values, obs, obsb, obs_sd,
         rs, rsb, sat, el, iu, ir_map,
-        tc.Xpose(epoch.key_idx), tc.lever_arm_tc, tc._sat_states,
-        existing_estimate=epoch.estimate)
-    info['n_dd'] = epoch.nv
-    _tc_factors.add_sd_doppler_factors(tc, epoch)
-    if _tc_factors.add_nhc_factor(tc, epoch.graph, epoch.key_idx,
-                                  gyro_mean_rh=epoch.gyro_mean):
+        tc.Xpose(key_idx), tc.lever_arm_tc, tc._sat_states,
+        existing_estimate=estimate)
+    _tc_factors.add_sd_doppler_factors(
+        tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el, iu,
+        pred_ecef, gyro_mean, info)
+    if _tc_factors.add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=gyro_mean):
         info['nhc'] = True
     _tc_factors.add_zupt_factors(
-        tc, epoch.graph, epoch.key_idx,
-        int(epoch.imu_idx_prev), int(epoch.n_imu), info)
+        tc, graph, key_idx, int(imu_idx_prev), int(n_imu), info)
 
     # 4. Fixed-lag smoother update
-    early = _solve_isam2(tc, epoch)
+    pose_tc, ecef_tc, early = _solve_isam2(
+        tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info)
     if early is not None:
         return early
 
     # 5. Continuous LAMBDA ambiguity resolution & solution output
     tc.nav.smode = 5
-    tc.nav.x[0:3] = tc._antenna_ecef(epoch.pose_tc, epoch.ecef_tc)
-    epoch.nb, epoch.xa = _tc_ar.run_ar(
+    tc.nav.x[0:3] = tc._antenna_ecef(pose_tc, ecef_tc)
+    nb, xa = _tc_ar.run_ar(
         tc, sat, el, tc._sat_states.amb_keys_dict(),
-        key_pose=tc.Xpose(epoch.key_idx))
+        key_pose=tc.Xpose(key_idx))
 
-    epoch.sol, epoch.tag, epoch.nb = _decide_fix_or_flt(tc, epoch)
+    sol, tag, nb = _decide_fix_or_flt(tc, pose_tc, ecef_tc, nb, xa, info)
     info['bias_acc'] = tc.tc_bias.accelerometer()
     info['bias_gyro'] = tc.tc_bias.gyroscope()
-    return advance_epoch_and_pack(
-        tc, epoch.sol, epoch.tag, epoch.nb, info, obs)
+    return advance_epoch_and_pack(tc, sol, tag, nb, info, obs)
