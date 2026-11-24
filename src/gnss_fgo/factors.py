@@ -104,11 +104,10 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
 _SIGMA_AMB0_GAUGE = 30.0  # loose gauge prior [cyc] so initial code multipath cannot pull N
 
 
-def init_dd_ambiguity_priors(tc, graph, values, amb_dict, new_amb,
+def init_dd_ambiguity_priors(tc, graph, values, new_amb,
                              existing_estimate, freq, lam, pair_sat_info,
                              seeded_keys=None):
     """Reuse existing smoother arc keys untouched; seed new arcs once clock-free."""
-    del amb_dict  # kept for call compatibility; arc state lives in existing_estimate
     for sat_id, key_n, cp_rover, cp_base, pr_rover, pr_base in pair_sat_info:
         key_id = (sat_id, freq)
         if key_id in new_amb or values.exists(key_n):
@@ -165,12 +164,6 @@ def _is_bds_geo(prn_sat: int) -> bool:
     return prn <= 5 or 59 <= prn <= 63
 
 
-def _sat_pts(rs, rsb, iu, ir_map, idx, sat_id):
-    pt = gtsam.Point3(*rs[iu[idx], :3])
-    base_pt = gtsam.Point3(*rsb[ir_map[sat_id], :3]) if sat_id in ir_map else pt
-    return pt, base_pt
-
-
 def _resolve_arc_amb_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq):
     """Return the active ambiguity symbol for (sat_id, freq).
 
@@ -202,7 +195,7 @@ def _resolve_arc_amb_key(tc, graph, values, new_amb, existing_estimate, sat_id, 
 
 
 def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
-                   amb_dict, new_amb, existing_estimate,
+                   new_amb, existing_estimate,
                    visible_sat_freqs, seeded_sat_freqs,
                    sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                    lams, sat_pts, pr_obs, sigma):
@@ -225,7 +218,7 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         tc, graph, values, new_amb, existing_estimate, j_sat, f)
     pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     init_dd_ambiguity_priors(
-        tc, graph, values, amb_dict, new_amb,
+        tc, graph, values, new_amb,
         existing_estimate, f, lam,
         ((ref_sat, key_n_ref, cp_ref_r, cp_ref_b, pr_ref_r, pr_ref_b),
          (j_sat, key_n_j, cp_j_r, cp_j_b, pr_j_r, pr_j_b)),
@@ -262,14 +255,18 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
         ref_idx, ref_sat = _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el)
         tc._sat_states.ref_sats[sys_id] = ref_sat
         lams = get_wavelengths(obs_sd, ref_sat, glo_ch=tc.nav.glo_ch)
-        ref_pt, ref_base_pt = _sat_pts(rs, rsb, iu, ir_map, ref_idx, ref_sat)
+        ref_pt = gtsam.Point3(*rs[iu[ref_idx], :3])
+        ref_base_pt = (gtsam.Point3(*rsb[ir_map[ref_sat], :3])
+                       if ref_sat in ir_map else ref_pt)
         for j_idx in idx_sys:
             if j_idx == ref_idx:
                 continue
             j_sat = sat[j_idx]
             if SAT_SYS_ARR[j_sat] == uGNSS.BDS and _is_bds_geo(j_sat):
                 continue
-            j_pt, j_base_pt = _sat_pts(rs, rsb, iu, ir_map, j_idx, j_sat)
+            j_pt = gtsam.Point3(*rs[iu[j_idx], :3])
+            j_base_pt = (gtsam.Point3(*rsb[ir_map[j_sat], :3])
+                         if j_sat in ir_map else j_pt)
             sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
             el_pair = max(min(el[ref_idx], el[j_idx]), el_min_rad)
             sigma_pr = dd_obs_sigma(tc, True, el_pair, dt_s)
@@ -289,7 +286,7 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 n_dd += 1
                 n_dd += _build_cp_pair(
                     tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
-                    amb_dict, new_amb, existing_estimate,
+                    new_amb, existing_estimate,
                     visible_sat_freqs, seeded_sat_freqs,
                     sys_id, ref_idx, j_idx, ref_sat, j_sat, f,
                     lams, sat_pts, pr_obs, sigma_cp)

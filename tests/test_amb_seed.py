@@ -17,10 +17,10 @@ LAM = 0.1903
 
 
 def _seed(tc, cp_r, cp_b, pr_r, pr_b, existing_estimate=None):
-    graph, values, amb, new, seeded = (
-        gtsam.NonlinearFactorGraph(), gtsam.Values(), {}, {}, set())
+    graph, values, new, seeded = (
+        gtsam.NonlinearFactorGraph(), gtsam.Values(), {}, set())
     amb_seed.init_dd_ambiguity_priors(
-        tc, graph, values, amb, new, existing_estimate, 0, LAM,
+        tc, graph, values, new, existing_estimate, 0, LAM,
         ((7, gtsam.symbol('n', 7), cp_r, cp_b, pr_r, pr_b),),
         seeded_keys=seeded)
     return graph, values, new, seeded
