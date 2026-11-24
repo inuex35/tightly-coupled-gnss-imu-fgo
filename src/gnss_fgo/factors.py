@@ -1,10 +1,119 @@
-"""Factor builders: DD PR/CP with persistent arcs & seeding, SD Doppler, NHC."""
+"""Factor builders, arc bookkeeping, and cycle-slip detection."""
+
+from dataclasses import dataclass, field
+from typing import Optional
 
 import gtsam
 import numpy as np
 from cssrlib.gnss import SAT_SYS_ARR, sat2prn, uGNSS
 
 from .utils import get_wavelengths, huber_noise
+
+
+# ── Satellite / arc state bookkeeping ─────────────────────────────────
+
+@dataclass
+class SatState:
+    """Bookkeeping for a single (sat, freq) continuous carrier-phase arc."""
+
+    outc: int = 0                    # epochs since last seen
+    amb_key: Optional[int] = None    # persistent GTSAM symbol for this arc's N
+    amb_gen: int = 0                 # monotonic arc generation (++ on slip / reset)
+
+
+@dataclass
+class SatStateMap:
+    """Per-(sat, freq) ``SatState`` map, per-sat GF slip state, and DD ref sats."""
+
+    track: dict = field(default_factory=dict)            # {(sat,f): SatState}
+    gf: dict = field(default_factory=dict)               # {sat: gf [m]}
+    ref_sats: dict = field(default_factory=dict)         # {sys_id: sat}
+    maxout: int = 5
+
+    def get(self, sat: int, freq: int) -> SatState:
+        key = (int(sat), int(freq))
+        st = self.track.get(key)
+        if st is None:
+            st = SatState()
+            self.track[key] = st
+        return st
+
+    def keys(self):
+        return self.track.keys()
+
+    def values(self):
+        return self.track.values()
+
+    def amb_keys_dict(self) -> dict:
+        return {k: st.amb_key for k, st in self.track.items()
+                if st.amb_key is not None}
+
+    def amb_count(self) -> int:
+        return sum(1 for st in self.track.values() if st.amb_key is not None)
+
+    def amb_key_values(self) -> list:
+        return [st.amb_key for st in self.track.values()
+                if st.amb_key is not None]
+
+
+# ── Cycle-slip detection & outage arc expiry ──────────────────────────
+
+def reset_slipped_ambiguities(tc, reset_keys):
+    """End the arc for every slipped (sat, f) by clearing amb_key and bumping amb_gen."""
+    n_reset = 0
+    for key in reset_keys:
+        sat_st = tc._sat_states.get(*key)
+        if sat_st.amb_key is not None:
+            sat_st.amb_key = None
+            n_reset += 1
+        sat_st.amb_gen += 1
+    return n_reset
+
+
+def _detslp_gf(tc, obs, row, s, lams, nf, reset_keys):
+    """Geometry-free L1-L2 jump detector."""
+    L1 = obs.L[row, 0]
+    L2 = obs.L[row, 1]
+    if L1 == 0 or L2 == 0 or lams[0] <= 0 or lams[1] <= 0:
+        return
+    gf = L1 * lams[0] - L2 * lams[1]
+    prev_gf = tc._sat_states.gf
+    if s in prev_gf and prev_gf[s] != 0:
+        if abs(gf - prev_gf[s]) > tc.cfg.thres_slip:
+            for f in range(nf):
+                reset_keys.add((s, f))
+    prev_gf[s] = gf
+
+
+def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
+    """LLI + GF slip detection plus outage expiry. Returns (n_reset, reset_keys)."""
+    nf = tc.nav.nf
+    ns = len(sat)
+    reset_keys = set()
+    current_sats = set()
+
+    for i in range(ns):
+        s = sat[i]
+        lams = get_wavelengths(obs_sd, s, glo_ch=tc.nav.glo_ch)
+        for f in range(nf):
+            current_sats.add((s, f))
+            sat_state = tc._sat_states.get(s, f)
+            sat_state.outc = 0
+            if hasattr(obs, 'lli') and obs.lli[iu[i], f] == 1:
+                reset_keys.add((s, f))
+        if nf >= 2 and len(lams) >= 2:
+            _detslp_gf(tc, obs, iu[i], s, lams, nf, reset_keys)
+
+    maxout = tc._sat_states.maxout
+    for key in list(tc._sat_states.keys()):
+        if key not in current_sats:
+            st = tc._sat_states.get(*key)
+            st.outc += 1
+            if st.outc > maxout:
+                reset_keys.add(key)
+
+    n_reset = reset_slipped_ambiguities(tc, reset_keys)
+    return n_reset, reset_keys
 
 # ── Ambiguity seeding ─────────────────────────────────────────────────
 
@@ -75,11 +184,6 @@ def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
     return ref_idx, sat[ref_idx]
 
 
-def _dd_noise(tc, sigma):
-    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
-    return huber_noise(sigma, float(tc.cfg.huber_k))
-
-
 def _is_bds_geo(prn_sat: int) -> bool:
     """True for BeiDou GEO slots (C1-C5, C59-C63) — excluded as DD ref."""
     prn = sat2prn(prn_sat)[1]
@@ -117,15 +221,6 @@ def _persistent_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq)
     return tc.N(sat_id, freq, st.amb_gen)
 
 
-def _build_pr_pair(tc, graph, pr_obs, key_pose, lever, sat_pts, sigma):
-    pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
-    ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
-    graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
-        key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
-        ref_pt, j_pt, ref_base_pt, j_base_pt,
-        tc.base_pt, lever, tc.ecef_T_nav, _dd_noise(tc, sigma)))
-
-
 def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
                    amb_dict, new_amb, existing_estimate,
                    visible_sf, seeded_sf,
@@ -161,7 +256,7 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         key_pose, key_n_ref, key_n_j,
         cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
         ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
-        lever, tc.ecef_T_nav, _dd_noise(tc, sigma)))
+        lever, tc.ecef_T_nav, huber_noise(sigma, float(tc.cfg.huber_k))))
     return 1
 
 
@@ -208,7 +303,9 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 )
                 if 0 in pr_obs:
                     continue
-                _build_pr_pair(tc, graph, pr_obs, key_pose, lever, sat_pts, sigma_pr)
+                graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
+                    key_pose, *pr_obs, *sat_pts, tc.base_pt, lever,
+                    tc.ecef_T_nav, huber_noise(sigma_pr, float(tc.cfg.huber_k))))
                 nv += 1
                 nv += _build_cp_pair(
                     tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
