@@ -21,7 +21,7 @@ and tunnels.
   with a dimension-adaptive fixed-failure-rate ratio test (FFRT) and
   full-AR DD integer fix-and-hold (`armode=2`)
 - **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
-  NHC and ZUPT vehicle constraints (C++ factors with exact Jacobians)
+  NHC vehicle constraint (C++ factor with exact Jacobians)
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected on every epoch
 - **Integrity & recovery** — LLI + geometry-free cycle-slip detection
@@ -41,12 +41,12 @@ urban-Nagoya drives
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11928 ep  |  5.57 m | 0.040 m | 0.13 m  | 74.4 % | 80.9 % |
-| tokyo run2  |  9151 ep  |  2.17 m | 0.034 m | 0.07 m  | 86.9 % | 91.5 % |
-| tokyo run3  | 15301 ep  |  3.90 m | 0.034 m | 0.16 m  | 84.0 % | 89.4 % |
-| nagoya run1 |  7602 ep  |  6.62 m | 0.134 m | 0.15 m  | 68.5 % | 71.1 % |
-| nagoya run2 |  9451 ep  |  4.21 m | 0.267 m | 0.37 m  | 60.8 % | 52.4 % |
-| nagoya run3 |  5201 ep  |  1.03 m | 0.137 m | 0.13 m  | 59.2 % | 79.2 % |
+| tokyo run1  | 11928 ep  |  1.63 m | 0.041 m | 0.13 m  | 74.4 % | 81.0 % |
+| tokyo run2  |  9151 ep  |  1.36 m | 0.034 m | 0.08 m  | 87.1 % | 92.7 % |
+| tokyo run3  | 15301 ep  |  1.47 m | 0.034 m | 0.16 m  | 84.0 % | 89.3 % |
+| nagoya run1 |  7602 ep  |  6.67 m | 0.134 m | 0.16 m  | 76.8 % | 78.5 % |
+| nagoya run2 |  9451 ep  |  3.22 m | 0.254 m | 0.73 m  | 62.7 % | 53.4 % |
+| nagoya run3 |  5201 ep  |  1.01 m | 0.139 m | 0.13 m  | 58.7 % | 79.1 % |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
@@ -90,7 +90,7 @@ Flat module layout under `src/gnss_fgo/`:
 |---|---|
 | `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point, DD prep, and cssrlib boundary |
 | `pipeline.py` | single-phase epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) and outage recovery |
-| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ZUPT, ambiguity seeding) |
+| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding) |
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
 | `state.py` | runtime state records (`SatStateMap`, `CurrentEpochState`) |
 | `config.py` | `TcConfig` and `BatchConfig` |

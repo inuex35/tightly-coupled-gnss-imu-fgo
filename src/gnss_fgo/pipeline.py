@@ -232,7 +232,6 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     tc.tc_epoch += 1
     key_idx = tc.tc_epoch
     info['tc_epoch'] = key_idx
-    imu_idx_prev = tc.imu_idx
     _, tow_obs = time2gpst(obs.t)
     pim, n_imu, gyro_mean, tc.imu_idx = _utils_build_pim(
         tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
@@ -270,7 +269,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
     pred_ecef = tc._antenna_ecef(
         pred_nav.pose(), R_enu2ecef @ pred_enu + tc.base_ecef)
 
-    # 3. Measurement factors (DDPR, DDCP, SD Doppler, NHC, ZUPT)
+    # 3. Measurement factors (DDPR, DDCP, SD Doppler, NHC)
     info['n_dd'] = _tc_factors.build_dd_factors(
         tc, graph, values, obs, obsb, obs_sd,
         rs, rsb, sat, el, iu, ir_map,
@@ -281,8 +280,6 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         pred_ecef, gyro_mean, info)
     if _tc_factors.add_nhc_factor(tc, graph, key_idx, gyro_mean_rh=gyro_mean):
         info['nhc'] = True
-    _tc_factors.add_zupt_factors(
-        tc, graph, key_idx, int(imu_idx_prev), int(n_imu), info)
 
     # 4. Fixed-lag smoother update
     pose_tc, ecef_tc, early = _solve_isam2(

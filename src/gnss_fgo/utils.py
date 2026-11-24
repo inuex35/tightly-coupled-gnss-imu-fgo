@@ -224,41 +224,6 @@ def estimate_stationary_bias(
     return bias_acc, gyro_mean
 
 
-def compute_zupt_stats(
-    imu_samples: List[dict],
-    bias_acc_ref: Optional[np.ndarray] = None,
-    bias_gyro_ref: Optional[np.ndarray] = None,
-) -> Optional[dict]:
-    """Stationarity stats over a window of IMU samples."""
-    n = len(imu_samples)
-    if n == 0:
-        return None
-    acc = np.array([im['acc'] for im in imu_samples], dtype=np.float64)
-    gyro = np.array([im['gyro'] for im in imu_samples], dtype=np.float64)
-    acc_mean = acc.mean(axis=0)
-    acc_dev = acc - acc_mean
-    gyro_dev = gyro - gyro.mean(axis=0)
-    acc_var = float((acc_dev * acc_dev).sum(axis=1).mean())
-    gyro_var = float((gyro_dev * gyro_dev).sum(axis=1).mean())
-    if bias_acc_ref is not None:
-        acc_mean_corr = acc_mean - np.asarray(bias_acc_ref, dtype=np.float64)
-    else:
-        acc_mean_corr = acc_mean
-    if bias_gyro_ref is not None:
-        gyro_resid = gyro - np.asarray(bias_gyro_ref, dtype=np.float64)
-    else:
-        gyro_resid = gyro
-    gyro_resid_norm = np.linalg.norm(gyro_resid, axis=1)
-    return {
-        'n': int(n),
-        'acc_std': float(np.sqrt(max(acc_var, 0.0))),
-        'gyro_std': float(np.sqrt(max(gyro_var, 0.0))),
-        'gyro_median': float(np.median(gyro_resid_norm)),
-        'acc_norm_mean': float(np.linalg.norm(acc_mean_corr)),
-        'gyro_mean': gyro.mean(axis=0),
-    }
-
-
 # ── RINEX signal auto-detection ───────────────────────────────────────
 
 _BAND_PRIORITY = (1, 2, 5, 7, 6, 8, 3, 4, 9)
