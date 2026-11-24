@@ -11,19 +11,15 @@ def _tc(smode):
     return tc
 
 
-def _epoch(nb, xa):
-    return types.SimpleNamespace(
-        nb=nb, xa=xa, pose_tc=None, ecef_tc=np.zeros(3), info={})
-
-
 def test_float_mode_passes_through():
-    ep = _epoch(nb=0, xa=None)
-    sol, tag, nb = _decide_fix_or_flt(_tc(smode=5), ep)
+    info = {}
+    sol, tag, nb = _decide_fix_or_flt(_tc(smode=5), None, np.zeros(3), 0, None, info)
     assert (tag, nb) == ('FLT', 0)
 
 
 def test_clean_fix_accepted():
-    ep = _epoch(nb=12, xa=np.array([0.01, 0.0, 0.0]))
-    sol, tag, nb = _decide_fix_or_flt(_tc(smode=4), ep)
+    info = {}
+    sol, tag, nb = _decide_fix_or_flt(
+        _tc(smode=4), None, np.zeros(3), 12, np.array([0.01, 0.0, 0.0]), info)
     assert (tag, nb) == ('FIX', 12)
-    assert 'lambda_correction' in ep.info
+    assert 'lambda_correction' in info
