@@ -35,7 +35,7 @@ class ArProblem:
 
 
 def build_problem(tc, sat_list, amb_dict, key_pose,
-                  el=None, visible_sf=None, seeded_sf=None):
+                  el=None, visible_sat_freqs=None, seeded_sat_freqs=None):
     """Assemble ArProblem from live smoother variables, or None if unposed."""
     smoother = tc.isam2
     if smoother is None:
@@ -50,8 +50,8 @@ def build_problem(tc, sat_list, amb_dict, key_pose,
 
     key_of = dict(sorted_amb_items(amb_dict))
     present = {int(s) for s in sat_list}
-    seeded = seeded_sf or set()
-    cp_visible = visible_sf or set()
+    seeded = seeded_sat_freqs or set()
+    cp_visible = visible_sat_freqs or set()
     keys, values = [], {}
     for (s, f), k in sorted_amb_items(key_of):
         sf = (int(s), int(f))
@@ -304,11 +304,12 @@ def _hold_fixed_dd(tc, amb_dict, res):
 
 
 def _resolve(tc, sat_list, amb_dict, key_pose, el=None,
-             visible_sf=None, seeded_sf=None, allow_partial=False):
-    """Run LAMBDA over the smoother's joint marginals. Returns (nb, xa)."""
+             visible_sat_freqs=None, seeded_sat_freqs=None, allow_partial=False):
+    """Run LAMBDA over the smoother's joint marginals. Returns (n_fixed, fixed_pos)."""
     problem = build_problem(
         tc, sat_list, amb_dict, key_pose,
-        el=el, visible_sf=visible_sf, seeded_sf=seeded_sf)
+        el=el, visible_sat_freqs=visible_sat_freqs,
+        seeded_sat_freqs=seeded_sat_freqs)
     if problem is None:
         return 0, None
     resolver = AmbiguityResolver(
@@ -320,36 +321,38 @@ def _resolve(tc, sat_list, amb_dict, key_pose, el=None,
                            problem.elevations, allow_partial=allow_partial)
     if res.nb <= 0:
         return 0, None
-    xa = fixed_state(tc, problem, res)
+    fixed_pos = fixed_state(tc, problem, res)
     if tc.nav.armode >= 2 and res.dropped == 0:
         _hold_fixed_dd(tc, amb_dict, res)
-    return res.nb, xa
+    return res.nb, fixed_pos
 
 
 def run_ar(tc, sat, el, amb_dict, key_pose=None,
-           visible_sf=None, seeded_sf=None):
-    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (nb, xa)."""
+           visible_sat_freqs=None, seeded_sat_freqs=None):
+    """Run LAMBDA AR (full fix, then partial-AR fallback). Returns (n_fixed, fixed_pos)."""
     if tc.nav.armode == 0:
         return 0, None
 
     sat_list = [int(x) for x in sat]
     try:
-        nb, xa = _resolve(
+        n_fixed, fixed_pos = _resolve(
             tc, sat_list, amb_dict, key_pose, el=el,
-            visible_sf=visible_sf, seeded_sf=seeded_sf, allow_partial=False)
+            visible_sat_freqs=visible_sat_freqs,
+            seeded_sat_freqs=seeded_sat_freqs, allow_partial=False)
     except Exception:
         return 0, None
 
-    if nb <= 0:
+    if n_fixed <= 0:
         try:
-            nb, xa = _resolve(
+            n_fixed, fixed_pos = _resolve(
                 tc, sat_list, amb_dict, key_pose, el=el,
-                visible_sf=visible_sf, seeded_sf=seeded_sf, allow_partial=True)
+                visible_sat_freqs=visible_sat_freqs,
+                seeded_sat_freqs=seeded_sat_freqs, allow_partial=True)
         except Exception:
             return 0, None
 
-    if nb <= 0 or xa is None:
+    if n_fixed <= 0 or fixed_pos is None:
         return 0, None
 
     tc.nav.smode = 4
-    return nb, xa
+    return n_fixed, fixed_pos
