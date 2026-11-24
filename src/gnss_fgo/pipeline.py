@@ -98,7 +98,7 @@ def make_isam2(lag, relinearize_skip=_ISAM2_RELINEARIZE_SKIP,
 
 
 def fls_update(tc, graph, values, key_idx, keep_keys=()):
-    """Apply an FLS update with current timestamps on pose/vel/bias and live N keys."""
+    """Update FLS while keeping the previous pose/vel/bias and live N keys alive."""
     tc.tc_time += tc._epoch_dt
     ts = gtsam.FixedLagSmootherKeyTimestampMap()
     t = tc.tc_time
@@ -196,11 +196,8 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
         tc, g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
         tc.Xpose(0), tc.lever_arm_tc, tc._sat_states, existing_estimate=None)
 
-    ts0 = gtsam.FixedLagSmootherKeyTimestampMap()
-    tc.tc_time += tc._epoch_dt
-    for k in v.keys():
-        ts0[k] = tc.tc_time
-    tc.isam2.update(g, v, ts0)
+    fls_update(tc, g, v, 0)
+    # Extra relinearization passes to settle the initially unobservably-yawed pose0.
     for _ in range(3):
         tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
                         gtsam.FixedLagSmootherKeyTimestampMap())

@@ -117,20 +117,13 @@ def _persistent_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq)
     return tc.N(sat_id, freq, st.amb_gen)
 
 
-def _build_pr_pair(tc, graph, obs, obsb, iu, ir_map, key_pose, lever,
-                   ref_idx, j_idx, ref_sat, j_sat, f, sat_pts, sigma):
-    pr_ref_r = obs.P[iu[ref_idx], f]
-    pr_ref_b = obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0
-    pr_j_r = obs.P[iu[j_idx], f]
-    pr_j_b = obsb.P[ir_map[j_sat], f] if j_sat in ir_map else 0
-    if pr_ref_r == 0 or pr_ref_b == 0 or pr_j_r == 0 or pr_j_b == 0:
-        return None
+def _build_pr_pair(tc, graph, pr_obs, key_pose, lever, sat_pts, sigma):
+    pr_ref_r, pr_ref_b, pr_j_r, pr_j_b = pr_obs
     ref_pt, j_pt, ref_base_pt, j_base_pt = sat_pts
     graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
         key_pose, pr_ref_r, pr_ref_b, pr_j_r, pr_j_b,
         ref_pt, j_pt, ref_base_pt, j_base_pt,
         tc.base_pt, lever, tc.ecef_T_nav, _dd_noise(tc, sigma)))
-    return pr_ref_r, pr_ref_b, pr_j_r, pr_j_b
 
 
 def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
@@ -207,11 +200,15 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
             sigma_pr = varerr_dd_sigma(tc, 1, el_pair, dt_s)
             sigma_cp = varerr_dd_sigma(tc, 0, el_pair, dt_s)
             for f in range(nf):
-                pr_obs = _build_pr_pair(
-                    tc, graph, obs, obsb, iu, ir_map, key_pose, lever,
-                    ref_idx, j_idx, ref_sat, j_sat, f, sat_pts, sigma_pr)
-                if pr_obs is None:
+                pr_obs = (
+                    obs.P[iu[ref_idx], f],
+                    obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0,
+                    obs.P[iu[j_idx], f],
+                    obsb.P[ir_map[j_sat], f] if j_sat in ir_map else 0,
+                )
+                if 0 in pr_obs:
                     continue
+                _build_pr_pair(tc, graph, pr_obs, key_pose, lever, sat_pts, sigma_pr)
                 nv += 1
                 nv += _build_cp_pair(
                     tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
@@ -238,6 +235,7 @@ def _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu):
         if i_obs >= obs.D.shape[0]:
             continue
         lams = None
+        # Use the first valid frequency per satellite (SD Doppler is geometry-based).
         for f in range(min(tc.nav.nf, obs.D.shape[1])):
             d_obs = obs.D[i_obs, f]
             if d_obs == 0.0:

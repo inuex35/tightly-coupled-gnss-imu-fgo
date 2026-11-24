@@ -28,9 +28,6 @@ class ImuGnssTc:
     def prepare_double_difference_measurements(self, *a, **k):
         return self.engine.prepare_double_difference_measurements(*a, **k)
 
-    def IB(self, *a, **k):
-        return self.engine.IB(*a, **k)
-
     @staticmethod
     def _noise1(sigma):
         return gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))

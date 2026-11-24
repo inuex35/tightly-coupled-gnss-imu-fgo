@@ -96,26 +96,24 @@ def build_problem(tc, sat_list, amb_dict, key_pose,
 def fixed_state(tc, problem, result):
     """Conditional position update x - Qab Qb^-1 (y_float - y_fixed) in DD space."""
     keys, cov, values = problem.keys, problem.cov, problem.values
-    xa = tc.nav.x.copy()
-    for sf, value in result.fixed.items():
-        xa[tc.IB(sf[0], sf[1], tc.nav.na)] = value
+    pos_float = tc.nav.x[0:3].copy()
 
     idx = {sf: i for i, sf in enumerate(keys)}
     D = np.zeros((len(result.pairs), len(keys)))
     for row, (ref, tgt) in enumerate(result.pairs):
         D[row, idx[ref]] = 1.0
         D[row, idx[tgt]] = -1.0
-    x_float = np.array([values[sf] for sf in keys])
-    x_fixed = np.array([result.fixed.get(sf, values[sf]) for sf in keys])
+    y_float = D @ np.array([values[sf] for sf in keys])
+    y_fixed = (result.dd_fixed if result.dd_fixed is not None
+               else D @ np.array([result.fixed.get(sf, values[sf]) for sf in keys]))
     Qb = D @ cov @ D.T
     Qab = problem.cross @ D.T
     try:
         gain = np.linalg.solve(Qb.T, Qab.T).T
     except np.linalg.LinAlgError:
-        return xa
-    d_enu = gain @ (D @ (x_float - x_fixed))
-    xa[0:3] = tc.nav.x[0:3] - tc.R_enu2ecef @ d_enu
-    return xa
+        return pos_float
+    d_enu = gain @ (y_float - y_fixed)
+    return pos_float - tc.R_enu2ecef @ d_enu
 
 
 # ── LAMBDA resolver ───────────────────────────────────────────────────
@@ -126,6 +124,7 @@ class ResolverResult:
 
     nb: int = 0
     fixed: dict = field(default_factory=dict)
+    dd_fixed: np.ndarray | None = None
     s0: float = 0.0
     s1: float = 0.0
     pairs: list = field(default_factory=list)
@@ -231,10 +230,12 @@ class AmbiguityResolver:
             result.thres_used = thres
             result.dropped = k
             result.nb = nb
+            result.dd_fixed = bvec
             result.fixed = self._restore_sd(pairs, float_values, bvec)
             return result
 
         result.nb = len(pairs)
+        result.dd_fixed = b[:, 0]
         result.fixed = self._restore_sd(pairs, float_values, b[:, 0])
         return result
 
@@ -292,11 +293,11 @@ def _hold_fixed_dd(tc, amb_dict, res):
     est = tc.isam2.calculateEstimate()
     hold_graph = gtsam.NonlinearFactorGraph()
     noise = huber_noise(_SIGMA_HOLD_CYC, float(tc.cfg.huber_k))
-    for ref, tgt in res.pairs:
+    for (ref, tgt), b_val in zip(res.pairs, res.dd_fixed):
         kr, kt = key_of.get(ref), key_of.get(tgt)
         if kr is not None and kt is not None and est.exists(kr) and est.exists(kt):
-            b_int = float(round(res.fixed[ref] - res.fixed[tgt]))
-            hold_graph.add(gtsam.BetweenFactorDouble(kt, kr, b_int, noise))
+            hold_graph.add(gtsam.BetweenFactorDouble(
+                kt, kr, float(round(b_val)), noise))
     if hold_graph.size() > 0:
         tc.isam2.update(hold_graph, gtsam.Values(),
                         gtsam.FixedLagSmootherKeyTimestampMap())
