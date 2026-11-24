@@ -70,17 +70,6 @@ def euler_to_R_body2enu(roll: float, pitch: float, heading: float) -> np.ndarray
     return _R_NED2ENU @ R_ned2body.T @ _R_FLU2FRD
 
 
-def parse_lever(s: str) -> np.ndarray:
-    """Parse 'x,y,z' CSV string -> np.array."""
-    return np.array([float(x) for x in s.split(',')])
-
-
-def is_bds_geo(prn_sat: int) -> bool:
-    """True for BeiDou GEO slots (C1-C5, C59-C63) — excluded as DD ref."""
-    prn = sat2prn(prn_sat)[1]
-    return prn <= 5 or 59 <= prn <= 63
-
-
 def load_imu_csv(path: str, as_arrays: bool = False):
     """Load raw IMU CSV measurements in the body FLU frame.
 
@@ -129,11 +118,6 @@ def huber_noise(sigma: float, k: float):
         return base
     return gtsam.noiseModel.Robust.Create(
         gtsam.noiseModel.mEstimator.Huber.Create(float(k)), base)
-
-
-def sorted_sys_ids(sig_map):
-    """Deterministic system-id iteration order (GPS=1, GLO=2, ...)."""
-    return sorted(sig_map.keys(), key=int)
 
 
 def sorted_amb_items(amb_dict):
