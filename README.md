@@ -41,12 +41,12 @@ urban-Nagoya drives
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11928 ep  |  0.91 m | 0.039 m | 0.11 m  | 79.2 % | 86.2 % |
-| tokyo run2  |  9151 ep  |  1.38 m | 0.031 m | 0.06 m  | 86.3 % | 89.5 % |
-| tokyo run3  | 15301 ep  |  1.64 m | 0.030 m | 0.16 m  | 87.6 % | 92.0 % |
-| nagoya run1 |  7602 ep  |  6.05 m | 0.127 m | 0.13 m  | 80.8 % | 83.9 % |
-| nagoya run2 |  9451 ep  |  2.99 m | 0.239 m | 0.37 m  | 61.9 % | 54.4 % |
-| nagoya run3 |  5201 ep  |  1.03 m | 0.130 m | 0.13 m  | 64.6 % | 81.3 % |
+| tokyo run1  | 11928 ep  |  0.80 m | 0.039 m | 0.11 m  | 79.3 % | 86.3 % |
+| tokyo run2  |  9151 ep  |  1.38 m | 0.032 m | 0.06 m  | 84.4 % | 89.6 % |
+| tokyo run3  | 15301 ep  |  1.57 m | 0.030 m | 0.16 m  | 88.0 % | 92.3 % |
+| nagoya run1 |  7602 ep  |  2.89 m | 0.127 m | 0.12 m  | 80.8 % | 83.9 % |
+| nagoya run2 |  9451 ep  |  2.90 m | 0.232 m | 0.37 m  | 63.1 % | 56.8 % |
+| nagoya run3 |  5201 ep  |  1.00 m | 0.131 m | 0.13 m  | 64.6 % | 81.7 % |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
@@ -97,9 +97,9 @@ Flat module layout under `src/gnss_fgo/`:
 
 ## Configuration
 
-Every `TcConfig` field in `config.py` is an env var (`ERR_A`, `HUBER_K`,
-`DOPPLER_SD_SIGMA`, `AMB_RW_SIGMA`, `ARMODE`, `FLS_LAG`, …) — see
-`config.py` for all 13 parameters. The example script adds its own
+Every `TcConfig` field in `config.py` is an env var (`ERR_A`, `ERR_ERATIO_PR`,
+`ELMIN_DEG`, `AMB_RW_SIGMA`, `ARMODE`, `FLS_LAG`, …) — see
+`config.py` for all 11 parameters. The example script adds its own
 env switches (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
 
 ## License

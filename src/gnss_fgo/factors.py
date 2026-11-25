@@ -127,25 +127,26 @@ def init_dd_ambiguity_priors(tc, graph, values, new_amb,
 
 _CLIGHT = 299792458.0
 _SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
+_SNR_REF_DBHZ = 45.0  # nominal open-sky zenith C/N0 reference [dB-Hz]
 _SNR_MIN_DBHZ = 20.0
+_DOPPLER_COH_TIME_S = 0.02  # GPS L1 C/A 50 bps nav-bit coherent integration [s]
 
 
-def _snr_var_scale(snr_dbhz, snr_ref_dbhz):
-    """Variance scale 10^((snr_ref - snr)/10), clipped at _SNR_MIN_DBHZ."""
-    if snr_ref_dbhz <= 0 or snr_dbhz <= 0 or not np.isfinite(snr_dbhz):
+def _snr_var_scale(snr_dbhz):
+    """Variance scale 10^((_SNR_REF_DBHZ - snr)/10), clipped at _SNR_MIN_DBHZ."""
+    if snr_dbhz <= 0 or not np.isfinite(snr_dbhz):
         return 1.0
-    delta = max(float(snr_ref_dbhz) - max(float(snr_dbhz), _SNR_MIN_DBHZ), 0.0)
+    delta = max(_SNR_REF_DBHZ - max(float(snr_dbhz), _SNR_MIN_DBHZ), 0.0)
     return 10.0 ** (delta / 10.0)
 
 
 def dd_obs_sigma(tc, is_pseudorange, snrs, dt_s):
-    """SNR-weighted DD observation σ [m] matching zenith varerr at snr_ref_dbhz."""
+    """SNR-weighted DD observation σ [m] matching zenith varerr at _SNR_REF_DBHZ."""
     cfg = tc.cfg
     fact = cfg.err_eratio_pr if is_pseudorange else 1.0
     a = fact * cfg.err_a
     d = _CLIGHT * _SCLKSTAB * dt_s
-    snr_ref = float(getattr(cfg, "snr_ref_dbhz", 45.0))
-    var_dd = sum(2.0 * (a * a) * _snr_var_scale(s, snr_ref) for s in snrs) + 2.0 * (d * d)
+    var_dd = sum(2.0 * (a * a) * _snr_var_scale(s) for s in snrs) + 2.0 * (d * d)
     return float(np.sqrt(var_dd))
 
 
@@ -238,7 +239,7 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         key_pose, key_n_ref, key_n_j,
         cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
         ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
-        lever, tc.ecef_T_nav, huber_noise(sigma, float(tc.cfg.huber_k))))
+        lever, tc.ecef_T_nav, huber_noise(sigma)))
     return 1
 
 
@@ -296,7 +297,7 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 sigma_cp = dd_obs_sigma(tc, False, snrs, dt_s)
                 graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
                     key_pose, *pr_obs, *sat_pts, tc.base_pt, lever,
-                    tc.ecef_T_nav, huber_noise(sigma_pr, float(tc.cfg.huber_k))))
+                    tc.ecef_T_nav, huber_noise(sigma_pr)))
                 n_dd += 1
                 if obs_sd.L[ref_idx, f] == 0 or obs_sd.L[j_idx, f] == 0:
                     continue
@@ -314,10 +315,11 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
 # ── Single-differenced Doppler factors ────────────────────────────────
 
 def _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu):
-    """Collect (sat, sat_pos, sat_vel, doppler_hz, wavelength_m, el_rad)."""
+    """Collect (sat, sat_pos, sat_vel, doppler_hz, wavelength_m, snr_dbhz)."""
     if obs_sd is None or len(iu) == 0:
         return []
     rows = []
+    has_s = hasattr(obs, "S")
     for si, i_obs in enumerate(iu):
         s = int(sat[si])
         if sat2prn(s)[0] == uGNSS.GLO:
@@ -333,24 +335,25 @@ def _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu):
             if lams is None:
                 lams = get_wavelengths(obs_sd, s, glo_ch=tc.nav.glo_ch)
             if f < len(lams) and lams[f] > 0:
+                snr = float(obs.S[i_obs, f]) if has_s else 0.0
                 rows.append((s, rs[i_obs, :3], vs[i_obs, :3],
-                             float(d_obs), float(lams[f]), float(el[si])))
+                             float(d_obs), float(lams[f]), snr))
                 break
     return rows
 
 
 def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
                            iu, pred_ecef, gyro_mean, info):
-    """Add clock-free SD Doppler factors against the highest-elevation reference sat."""
-    sigma = float(tc.cfg.doppler_sd_sigma)
-    if sigma <= 0 or key_idx is None:
+    """Add clock-free SD Doppler factors against the highest-SNR reference sat."""
+    if key_idx is None:
         return
+    sigma = float(np.sqrt(2.0) * tc.cfg.err_a / _DOPPLER_COH_TIME_S)
 
     rows = _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu)
     if len(rows) < 2:
         return
 
-    sigmas = [sigma / max(np.sin(r[5]), 0.1) for r in rows]
+    sigmas = [sigma * float(np.sqrt(_snr_var_scale(r[5]))) for r in rows]
     i_ref = int(np.argmin(sigmas))
     ref, sigma_ref = rows[i_ref], sigmas[i_ref]
 
@@ -364,11 +367,10 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
     lever = np.asarray(tc.lever_arm_tc, dtype=float)
     rr = np.asarray(pred_ecef, dtype=float)
     n = 0
-    huber = float(tc.cfg.huber_k)
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue
-        noise = huber_noise(np.hypot(sig, sigma_ref), huber)
+        noise = huber_noise(np.hypot(sig, sigma_ref))
         graph.add(gtsam.SingleDifferenceDopplerFactorArm(
             tc.Pose(key_idx), tc.Vel(key_idx),
             row[3], ref[3],
