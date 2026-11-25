@@ -20,11 +20,12 @@ from .utils import (
 class TcConfig:
     """Minimal physical & statistical parameters for ImuGnssTc (env-overridable)."""
 
-    # 1. GNSS observation model (6)
-    err_a: float = 0.001           # carrier-phase σ scale [m] (σ² = a²(1 + 1/sin²el))
+    # 1. GNSS observation model (7)
+    err_a: float = 0.001           # carrier-phase σ scale [m] at snr_ref_dbhz
     err_eratio_pr: float = 100.0   # pseudorange / carrier-phase σ ratio
     elmin_deg: float = 15.0        # satellite elevation mask [deg]
     cnr_min_dbhz: float = 25.0     # minimum C/N0 [dB-Hz]
+    snr_ref_dbhz: float = 45.0     # reference C/N0 for SNR weighting [dB-Hz] (0 = flat)
     huber_k: float = 1.345         # Huber M-estimator scale [σ] (0 = L2; 1.345 = 95% eff.)
     doppler_sd_sigma: float = 0.5  # SD Doppler zenith σ [m/s] (0 = off)
 

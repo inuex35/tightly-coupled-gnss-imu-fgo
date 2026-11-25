@@ -127,17 +127,26 @@ def init_dd_ambiguity_priors(tc, graph, values, new_amb,
 
 _CLIGHT = 299792458.0
 _SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
+_SNR_MIN_DBHZ = 20.0
 
 
-def dd_obs_sigma(tc, is_pseudorange, el_rad, dt_s):
-    """RTKLIB varerr formula returning DD σ in metres."""
+def _snr_var_scale(snr_dbhz, snr_ref_dbhz):
+    """Variance scale 10^((snr_ref - snr)/10), clipped at _SNR_MIN_DBHZ."""
+    if snr_ref_dbhz <= 0 or snr_dbhz <= 0 or not np.isfinite(snr_dbhz):
+        return 1.0
+    delta = max(float(snr_ref_dbhz) - max(float(snr_dbhz), _SNR_MIN_DBHZ), 0.0)
+    return 10.0 ** (delta / 10.0)
+
+
+def dd_obs_sigma(tc, is_pseudorange, snrs, dt_s):
+    """SNR-weighted DD observation σ [m] matching zenith varerr at snr_ref_dbhz."""
     cfg = tc.cfg
     fact = cfg.err_eratio_pr if is_pseudorange else 1.0
     a = fact * cfg.err_a
     d = _CLIGHT * _SCLKSTAB * dt_s
-    sinel = max(np.sin(el_rad), 0.05)
-    var_sd = 2.0 * (a * a * (1.0 + 1.0 / (sinel * sinel))) + d * d
-    return float(np.sqrt(2.0 * var_sd))
+    snr_ref = float(getattr(cfg, "snr_ref_dbhz", 45.0))
+    var_dd = sum(2.0 * (a * a) * _snr_var_scale(s, snr_ref) for s in snrs) + 2.0 * (d * d)
+    return float(np.sqrt(var_dd))
 
 
 def _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el):
@@ -241,7 +250,6 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
     if ns == 0 or obsb is None or obs_sd is None:
         return 0, set(), set()
     nf = tc.nav.nf
-    el_min_rad = np.radians(max(1.0, tc.cfg.elmin_deg))
     dt_s = float(tc._epoch_dt)
     visible_sat_freqs, seeded_sat_freqs, new_amb = set(), set(), {}
     n_dd = 0
@@ -267,9 +275,6 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
             j_base_pt = (gtsam.Point3(*rsb[ir_map[j_sat], :3])
                          if j_sat in ir_map else j_pt)
             sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
-            el_pair = max(min(el[ref_idx], el[j_idx]), el_min_rad)
-            sigma_pr = dd_obs_sigma(tc, True, el_pair, dt_s)
-            sigma_cp = dd_obs_sigma(tc, False, el_pair, dt_s)
             for f in range(nf):
                 if obs_sd.P[ref_idx, f] == 0 or obs_sd.P[j_idx, f] == 0:
                     continue
@@ -281,6 +286,14 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 )
                 if 0 in pr_obs:
                     continue
+                snrs = (
+                    obs.S[iu[ref_idx], f] if hasattr(obs, "S") else 0.0,
+                    obsb.S[ir_map[ref_sat], f] if (hasattr(obsb, "S") and ref_sat in ir_map) else 0.0,
+                    obs.S[iu[j_idx], f] if hasattr(obs, "S") else 0.0,
+                    obsb.S[ir_map[j_sat], f] if (hasattr(obsb, "S") and j_sat in ir_map) else 0.0,
+                )
+                sigma_pr = dd_obs_sigma(tc, True, snrs, dt_s)
+                sigma_cp = dd_obs_sigma(tc, False, snrs, dt_s)
                 graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
                     key_pose, *pr_obs, *sat_pts, tc.base_pt, lever,
                     tc.ecef_T_nav, huber_noise(sigma_pr, float(tc.cfg.huber_k))))

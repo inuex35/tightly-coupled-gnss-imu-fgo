@@ -191,9 +191,10 @@ def main():
     flt = [r for r in results if r['tag'] == 'FLT']
     enu_all = np.array([r['enu'] for r in results])
     err_all = np.array([r['err'] for r in results])
-    print(f"\nAll ({len(results)} ep, {len(fix)} fix, {len(flt)} flt):")
+    print(f"\nAll ({len(results)} ep, {len(fix)} fix ({100.0*len(fix)/len(results):.1f}%), {len(flt)} flt):")
     print(f"  3D RMS: {np.sqrt(np.mean(err_all**2)):.4f}m, "
-          f"median: {np.median(err_all):.4f}m")
+          f"median: {np.median(err_all):.4f}m, "
+          f"<50cm: {100.0*np.mean(err_all < 0.5):.1f}%")
     print(f"  E RMS:  {np.sqrt(np.mean(enu_all[:,0]**2)):.4f}m")
     print(f"  N RMS:  {np.sqrt(np.mean(enu_all[:,1]**2)):.4f}m")
     print(f"  U RMS:  {np.sqrt(np.mean(enu_all[:,2]**2)):.4f}m")

@@ -9,18 +9,19 @@ from gnss_fgo.factors import dd_obs_sigma
 
 
 def _cfg():
-    return types.SimpleNamespace(err_eratio_pr=100.0, err_a=0.001)
+    return types.SimpleNamespace(err_eratio_pr=100.0, err_a=0.001, snr_ref_dbhz=45.0)
 
 
 def test_varerr_zenith_values():
     tc = types.SimpleNamespace(cfg=_cfg())
-    sig_pr = dd_obs_sigma(tc, is_pseudorange=True, el_rad=math.pi / 2, dt_s=0.2)
-    sig_cp = dd_obs_sigma(tc, is_pseudorange=False, el_rad=math.pi / 2, dt_s=0.2)
+    ref_snrs = (45.0, 45.0, 45.0, 45.0)
+    sig_pr = dd_obs_sigma(tc, is_pseudorange=True, snrs=ref_snrs, dt_s=0.2)
+    sig_cp = dd_obs_sigma(tc, is_pseudorange=False, snrs=ref_snrs, dt_s=0.2)
     assert sig_pr == pytest.approx(0.2828, abs=2e-3)
     assert sig_cp == pytest.approx(0.002860, abs=2e-5)
-    sig_pr_low = dd_obs_sigma(tc, is_pseudorange=True, el_rad=math.radians(10), dt_s=0.2)
-    assert sig_pr_low / sig_pr == pytest.approx(
-        math.sqrt((1 + 1 / math.sin(math.radians(10)) ** 2) / 2), rel=1e-3)
+    low_snrs = (45.0, 45.0, 35.0, 45.0)
+    sig_pr_low = dd_obs_sigma(tc, is_pseudorange=True, snrs=low_snrs, dt_s=0.2)
+    assert sig_pr_low / sig_pr == pytest.approx(math.sqrt((3.0 + 10.0) / 4.0), rel=1e-3)
 
 
 def test_n_symbol_roundtrip():
