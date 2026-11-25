@@ -111,7 +111,10 @@ def get_wavelengths(obs_sd, sat: int, glo_ch: dict | None = None) -> List[float]
 
 # ── Pipeline helpers ──────────────────────────────────────────────────
 
-def huber_noise(sigma: float, k: float):
+HUBER_K = 1.345  # 95% asymptotic relative efficiency under Gaussian noise
+
+
+def huber_noise(sigma: float, k: float = HUBER_K):
     """Build 1-D Gaussian or GTSAM Huber robust noise model."""
     base = gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))
     if float(k) <= 0.0:

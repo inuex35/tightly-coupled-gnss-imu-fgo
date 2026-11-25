@@ -9,7 +9,7 @@ from gnss_fgo.factors import dd_obs_sigma
 
 
 def _cfg():
-    return types.SimpleNamespace(err_eratio_pr=100.0, err_a=0.001, snr_ref_dbhz=45.0)
+    return types.SimpleNamespace(err_eratio_pr=100.0, err_a=0.001)
 
 
 def test_varerr_zenith_values():

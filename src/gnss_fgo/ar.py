@@ -301,7 +301,7 @@ def _hold_fixed_dd(tc, amb_dict, res):
     key_of = dict(sorted_amb_items(amb_dict))
     est = tc.isam2.calculateEstimate()
     hold_graph = gtsam.NonlinearFactorGraph()
-    noise = huber_noise(_SIGMA_HOLD_CYC, float(tc.cfg.huber_k))
+    noise = huber_noise(_SIGMA_HOLD_CYC)
     for (ref, tgt), b_val in zip(res.pairs, res.dd_fixed):
         kr, kt = key_of.get(ref), key_of.get(tgt)
         if kr is not None and kt is not None and est.exists(kr) and est.exists(kt):
