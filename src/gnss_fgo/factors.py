@@ -126,6 +126,7 @@ def init_dd_ambiguity_priors(tc, graph, values, new_amb,
 # ── DD pseudorange / carrier-phase factors ────────────────────────────
 
 _CLIGHT = 299792458.0
+_OMGE = 7.2921151467e-5
 _SCLKSTAB = 5e-12  # standard receiver clock stability [s/s] (RTKLIB default)
 _SNR_REF_DBHZ = 45.0  # nominal open-sky zenith C/N0 reference [dB-Hz]
 _SNR_MIN_DBHZ = 20.0
@@ -342,6 +343,46 @@ def _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu):
     return rows
 
 
+def _make_sd_doppler_custom_factor(
+        pose_key, vel_key, d_t, d_r, lam_t, lam_r,
+        sat_pos_t, sat_vel_t, sat_pos_r, sat_vel_r,
+        rec_pos, lever, ecef_T_nav, omega, noise):
+    """Pure-Python gtsam.CustomFactor equivalent of SingleDifferenceDopplerFactorArm."""
+    e_t = sat_pos_t - rec_pos
+    e_t = e_t / np.linalg.norm(e_t)
+    e_r = sat_pos_r - rec_pos
+    e_r = e_r / np.linalg.norm(e_r)
+    k = _OMGE / _CLIGHT
+    sag_t = k * (sat_vel_t[1] * rec_pos[0] - sat_vel_t[0] * rec_pos[1])
+    sag_r = k * (sat_vel_r[1] * rec_pos[0] - sat_vel_r[0] * rec_pos[1])
+    vsag_t = np.array([k * sat_pos_t[1], -k * sat_pos_t[0], 0.0])
+    vsag_r = np.array([k * sat_pos_r[1], -k * sat_pos_r[0], 0.0])
+    meas_rr_diff = -lam_t * d_t + lam_r * d_r
+    offset = float(np.dot(e_t, sat_vel_t) - np.dot(e_r, sat_vel_r)
+                   + sag_t - sag_r - meas_rr_diff)
+    g = (vsag_t - vsag_r) - (e_t - e_r)
+    lever_vel = np.cross(omega, lever)
+    Rvel = ecef_T_nav.rotation().matrix()
+    g_Rvel = g @ Rvel
+
+    def _error(this, values, jacobians):
+        pose = values.atPose3(pose_key)
+        vel = values.atVector(vel_key)
+        if jacobians is not None:
+            H_rot = np.zeros((3, 3), order='F')
+            v_nav = pose.rotation().rotate(lever_vel, H_rot)
+            H_pose = np.zeros((1, 6))
+            H_pose[0, :3] = g_Rvel @ H_rot
+            jacobians[0] = H_pose
+            jacobians[1] = g_Rvel.reshape(1, 3)
+        else:
+            v_nav = pose.rotation().rotate(lever_vel)
+        v_ant = Rvel @ (vel + v_nav)
+        return np.array([offset + np.dot(g, v_ant)])
+
+    return gtsam.CustomFactor(noise, [pose_key, vel_key], _error)
+
+
 def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
                            iu, pred_ecef, gyro_mean, info):
     """Add clock-free SD Doppler factors against the highest-SNR reference sat."""
@@ -366,20 +407,26 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
     key_idx = int(key_idx)
     lever = np.asarray(tc.lever_arm_tc, dtype=float)
     rr = np.asarray(pred_ecef, dtype=float)
+    sd_cpp = getattr(gtsam, 'SingleDifferenceDopplerFactorArm', None)
     n = 0
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue
         noise = huber_noise(np.hypot(sig, sigma_ref))
-        graph.add(gtsam.SingleDifferenceDopplerFactorArm(
-            tc.Pose(key_idx), tc.Vel(key_idx),
-            row[3], ref[3],
-            row[4], ref[4],
-            np.asarray(row[1], dtype=float), np.asarray(row[2], dtype=float),
-            np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float),
-            rr, lever, tc.ecef_T_nav, omega,
-            0.0, 0.0,
-            noise))
+        sat_pt, sat_vt = np.asarray(row[1], dtype=float), np.asarray(row[2], dtype=float)
+        ref_pt, ref_vt = np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float)
+        if sd_cpp is not None:
+            graph.add(sd_cpp(
+                tc.Pose(key_idx), tc.Vel(key_idx),
+                row[3], ref[3], row[4], ref[4],
+                sat_pt, sat_vt, ref_pt, ref_vt,
+                rr, lever, tc.ecef_T_nav, omega, 0.0, 0.0, noise))
+        else:
+            graph.add(_make_sd_doppler_custom_factor(
+                tc.Pose(key_idx), tc.Vel(key_idx),
+                row[3], ref[3], row[4], ref[4],
+                sat_pt, sat_vt, ref_pt, ref_vt,
+                rr, lever, tc.ecef_T_nav, omega, noise))
         n += 1
     if n:
         info['doppler_sd_n'] = n
