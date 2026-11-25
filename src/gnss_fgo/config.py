@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .utils import (
+    HUBER_K,
     IMU_ACCEL_BIAS_SIGMA,
     IMU_ACCEL_NOISE,
     IMU_GYRO_BIAS_SIGMA,
@@ -20,14 +21,11 @@ from .utils import (
 class TcConfig:
     """Minimal physical & statistical parameters for ImuGnssTc (env-overridable)."""
 
-    # 1. GNSS observation model (7)
-    err_a: float = 0.001           # carrier-phase σ scale [m] at snr_ref_dbhz
+    # 1. GNSS observation model (4)
+    err_a: float = 0.001           # carrier-phase σ scale [m] at 45 dB-Hz
     err_eratio_pr: float = 100.0   # pseudorange / carrier-phase σ ratio
     elmin_deg: float = 15.0        # satellite elevation mask [deg]
     cnr_min_dbhz: float = 25.0     # minimum C/N0 [dB-Hz]
-    snr_ref_dbhz: float = 45.0     # reference C/N0 for SNR weighting [dB-Hz] (0 = flat)
-    huber_k: float = 1.345         # Huber M-estimator scale [σ] (0 = L2; 1.345 = 95% eff.)
-    doppler_sd_sigma: float = 0.5  # SD Doppler zenith σ [m/s] (0 = off)
 
     # 2. Non-holonomic vehicle constraint (3)
     nhc_sigma_lat: float = 0.3     # body lateral velocity σ [m/s] (0 = off)
@@ -71,7 +69,7 @@ class BatchConfig:
     # --- GNSS measurement model (defaults shared with TcConfig)
     sig_pr: float = field(default_factory=lambda: env_float("BATCH_SIG_PR", 0.5))     # [m]
     sig_cp: float = field(default_factory=lambda: env_float("BATCH_SIG_CP", 0.01))    # [m]
-    huber: float = field(default_factory=lambda: env_float("BATCH_HUBER", _TC_DEFAULTS.huber_k))
+    huber: float = field(default_factory=lambda: env_float("BATCH_HUBER", HUBER_K))
     sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
     sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
     dop_sigma0: float = field(default_factory=lambda: env_float("DOP_SIGMA0", 0.1))   # [m/s]
