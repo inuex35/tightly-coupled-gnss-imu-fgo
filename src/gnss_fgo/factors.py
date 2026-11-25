@@ -364,21 +364,23 @@ def _make_sd_doppler_custom_factor(
     lever_vel = np.cross(omega, lever)
     Rvel = ecef_T_nav.rotation().matrix()
     g_Rvel = g @ Rvel
+    H_rot = np.empty((3, 3), order='F')
+    H_pose = np.zeros((1, 6))
+    H_vel = g_Rvel.reshape(1, 3)
+    out = np.empty(1)
 
     def _error(this, values, jacobians):
         pose = values.atPose3(pose_key)
         vel = values.atVector(vel_key)
         if jacobians is not None:
-            H_rot = np.zeros((3, 3), order='F')
             v_nav = pose.rotation().rotate(lever_vel, H_rot)
-            H_pose = np.zeros((1, 6))
             H_pose[0, :3] = g_Rvel @ H_rot
             jacobians[0] = H_pose
-            jacobians[1] = g_Rvel.reshape(1, 3)
+            jacobians[1] = H_vel
         else:
             v_nav = pose.rotation().rotate(lever_vel)
-        v_ant = Rvel @ (vel + v_nav)
-        return np.array([offset + np.dot(g, v_ant)])
+        out[0] = offset + np.dot(g_Rvel, vel + v_nav)
+        return out
 
     return gtsam.CustomFactor(noise, [pose_key, vel_key], _error)
 
