@@ -271,6 +271,8 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
             sigma_pr = dd_obs_sigma(tc, True, el_pair, dt_s)
             sigma_cp = dd_obs_sigma(tc, False, el_pair, dt_s)
             for f in range(nf):
+                if obs_sd.P[ref_idx, f] == 0 or obs_sd.P[j_idx, f] == 0:
+                    continue
                 pr_obs = (
                     obs.P[iu[ref_idx], f],
                     obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0,
@@ -283,6 +285,8 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                     key_pose, *pr_obs, *sat_pts, tc.base_pt, lever,
                     tc.ecef_T_nav, huber_noise(sigma_pr, float(tc.cfg.huber_k))))
                 n_dd += 1
+                if obs_sd.L[ref_idx, f] == 0 or obs_sd.L[j_idx, f] == 0:
+                    continue
                 n_dd += _build_cp_pair(
                     tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
                     new_amb, existing_estimate,
