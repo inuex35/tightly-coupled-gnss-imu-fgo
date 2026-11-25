@@ -409,7 +409,6 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
     key_idx = int(key_idx)
     lever = np.asarray(tc.lever_arm_tc, dtype=float)
     rr = np.asarray(pred_ecef, dtype=float)
-    sd_cpp = getattr(gtsam, 'SingleDifferenceDopplerFactorArm', None)
     n = 0
     for row, sig in zip(rows, sigmas):
         if row is ref:
@@ -417,18 +416,11 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
         noise = huber_noise(np.hypot(sig, sigma_ref))
         sat_pt, sat_vt = np.asarray(row[1], dtype=float), np.asarray(row[2], dtype=float)
         ref_pt, ref_vt = np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float)
-        if sd_cpp is not None:
-            graph.add(sd_cpp(
-                tc.Pose(key_idx), tc.Vel(key_idx),
-                row[3], ref[3], row[4], ref[4],
-                sat_pt, sat_vt, ref_pt, ref_vt,
-                rr, lever, tc.ecef_T_nav, omega, 0.0, 0.0, noise))
-        else:
-            graph.add(_make_sd_doppler_custom_factor(
-                tc.Pose(key_idx), tc.Vel(key_idx),
-                row[3], ref[3], row[4], ref[4],
-                sat_pt, sat_vt, ref_pt, ref_vt,
-                rr, lever, tc.ecef_T_nav, omega, noise))
+        graph.add(_make_sd_doppler_custom_factor(
+            tc.Pose(key_idx), tc.Vel(key_idx),
+            row[3], ref[3], row[4], ref[4],
+            sat_pt, sat_vt, ref_pt, ref_vt,
+            rr, lever, tc.ecef_T_nav, omega, noise))
         n += 1
     if n:
         info['doppler_sd_n'] = n
