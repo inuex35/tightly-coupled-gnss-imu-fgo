@@ -49,10 +49,6 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
             if (estimate is not None and estimate.exists(k)) or values.exists(k)
         ]
         update_smoother(tc, graph, values, key_idx, keep_keys=live_amb_keys)
-        if key_idx == 0:
-            for _ in range(3):
-                tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
-                                gtsam.FixedLagSmootherKeyTimestampMap())
         new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
