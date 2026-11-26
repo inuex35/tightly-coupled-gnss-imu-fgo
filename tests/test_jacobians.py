@@ -9,6 +9,7 @@ import gtsam
 
 from cssrlib.gnss import ecef2pos
 from factor_check import check_factor_jacobians
+from gnss_fgo._extra_factors import NhcFactor
 
 BASE = np.array([-3961905.0, 3348994.0, 3698212.0])
 
@@ -25,8 +26,8 @@ def enu_frame(base):
 
 def test_nhc_factor():
     noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.3, 0.1]))
-    f = gtsam.NhcFactor(1, 2, np.array([0.02, -0.01, 0.3]),
-                        np.array([0.5, 0.1, -0.3]), noise)
+    f = NhcFactor(1, 2, np.array([0.02, -0.01, 0.3]),
+                  np.array([0.5, 0.1, -0.3]), noise)
     v = gtsam.Values()
     v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.3, -0.2, 1.1),
                             gtsam.Point3(1, 2, 3)))

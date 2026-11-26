@@ -54,22 +54,30 @@ urban-Nagoya drives
 
 ## Quick start
 
-Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). **Stock PyPI `gtsam`/`cssrlib` will
-not work** — both come from forks:
+Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). Requires `cmake`, `g++`, and `git`
+to build the local C++ extension (`gnss_fgo._extra_factors`: `SingleDifferenceDopplerFactor*`
+and `NhcFactor*`) against your installed `gtsam` shared library.
 
 ```bash
-python3.12 -m venv venv && . venv/bin/activate
-pip install numpy matplotlib
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install numpy matplotlib setuptools
 
-# GTSAM wheel with the custom factors (DD, Doppler, SD Doppler, NHC),
-# rebuilt weekly against upstream develop:
+# GTSAM with DoubleDifference* factors (upstream develop or custom wheel):
 gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
-pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
+uv pip install "$(ls wheels/*.whl | sort | tail -1)"
 
 # cssrlib DD-only RTK core (pinned; carries nav.sat_band_plan,
 # satposs signal-flight-time fix, indexed findeph bisect, and sync_obs_hold dt_fill):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@6f7a56caf3e4eb5e8cd6159e8456a785110d8d09"
+uv pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@6f7a56caf3e4eb5e8cd6159e8456a785110d8d09"
+
+# Build the SD-Doppler & NHC C++ extension locally and install gnss-fgo:
+uv pip install --no-build-isolation --no-deps -e .
 ```
+
+(`setup.py` shallow-clones `borglab/gtsam` headers into `/tmp/gnss_fgo_gtsam_headers` to
+generate `config.h` and links directly against `libgtsam.so` inside your installed `gtsam`
+package without rebuilding GTSAM itself. Set `GTSAM_SRC_DIR` / `GTSAM_BUILD_DIR` if you
+already have a local GTSAM tree.)
 
 Run (datasets not included; lay out PPC-Dataset under
 `data/PPC-Dataset/tokyo/run{1,2,3}/`):

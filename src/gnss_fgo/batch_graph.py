@@ -11,6 +11,11 @@ from cssrlib.gnss import ecef2pos, rSigRnx, sat2prn, uGNSS, uTYP
 from cssrlib.rtk import rtkpos
 from gtsam.symbol_shorthand import B, N, V, X
 
+from ._extra_factors import (
+    NhcFactor,
+    NhcFactorCalib,
+    SingleDifferenceDopplerFactorArm,
+)
 from .utils import enu_frame, huber_noise, make_imu_params
 
 
@@ -401,11 +406,11 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
         graph.add(gtsam.PriorFactorVector(MOUNT, np.zeros(3), gtsam.noiseModel.Diagonal.Sigmas(
             np.array([0.01, 0.1, 0.1]))))
         for k in range(n_ep):
-            graph.add(gtsam.NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
+            graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
                                            float(speed[k]), calib_noise))
     else:
         for k in range(n_ep):
-            graph.add(gtsam.NhcFactor(X(k), V(k), omega[k], np.zeros(3), nhc_noise))
+            graph.add(NhcFactor(X(k), V(k), omega[k], np.zeros(3), nhc_noise))
 
     n_zupt = 0
     if cfg.zupt:
@@ -457,7 +462,7 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
             s_t = cfg.dop_sigma0 / max(np.sin(t[D_EL]), 0.1)
             idx["dop"].append(graph.size())
             idx["dop_k"].append(k)
-            graph.add(gtsam.SingleDifferenceDopplerFactorArm(
+            graph.add(SingleDifferenceDopplerFactorArm(
                 X(k), V(k), t[D_HZ], ref[D_HZ], t[D_LAM], ref[D_LAM],
                 gtsam.Point3(*t[D_SATPOS]), gtsam.Point3(*t[D_SATVEL]),
                 gtsam.Point3(*ref[D_SATPOS]), gtsam.Point3(*ref[D_SATVEL]),

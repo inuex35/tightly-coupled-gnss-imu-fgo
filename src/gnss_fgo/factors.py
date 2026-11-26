@@ -7,6 +7,7 @@ import gtsam
 import numpy as np
 from cssrlib.gnss import SAT_SYS_ARR, sat2prn, uGNSS
 
+from ._extra_factors import NhcFactor, SingleDifferenceDopplerFactorArm
 from .utils import get_wavelengths, huber_noise
 
 
@@ -371,7 +372,7 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
         if row is ref:
             continue
         noise = huber_noise(np.hypot(sig, sigma_ref))
-        graph.add(gtsam.SingleDifferenceDopplerFactorArm(
+        graph.add(SingleDifferenceDopplerFactorArm(
             tc.Pose(key_idx), tc.Vel(key_idx),
             row[3], ref[3],
             row[4], ref[4],
@@ -404,7 +405,7 @@ def add_nhc_factor(tc, graph, key_idx, gyro_mean=None):
         omega = np.zeros(3)
     noise = gtsam.noiseModel.Diagonal.Sigmas(
         np.array([sig_lat, sig_vert]))
-    graph.add(gtsam.NhcFactor(
+    graph.add(NhcFactor(
         tc.Pose(key_idx), tc.Vel(key_idx), omega,
         np.asarray(lever, dtype=float), noise))
     return True

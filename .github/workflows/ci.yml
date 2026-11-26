@@ -23,7 +23,8 @@ jobs:
           pip install "$(ls /tmp/wheels/*.whl | sort | tail -1)"
       - name: Install dependencies
         run: |
-          pip install pytest -r requirements.txt
+          pip install pytest setuptools -r requirements.txt
+          pip install --no-build-isolation --no-deps -e .
       - name: Lint (pyflakes)
         run: |
           pip install pyflakes
