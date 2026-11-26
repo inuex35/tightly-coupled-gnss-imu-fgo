@@ -124,7 +124,7 @@ def main():
     results = []
     ref_match_dt_max = 0.0
     maxage = float(os.environ.get('BASE_MAXAGE', '30.0'))
-    sync_gen = rn.sync_obs_hold(dec, decb, maxage=maxage)
+    sync_gen = rn.sync_obs_hold(dec, decb, maxage=maxage, dt_fill=0.2)
     for ne in range(nep):
         try:
             obs, obsb, dt_sync = next(sync_gen)
