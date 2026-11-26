@@ -15,12 +15,13 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev gdb
+          c++ --version
           pip install pytest setuptools gtsam -r requirements.txt
-          pip install --no-build-isolation --no-deps -e .
+          pip install --no-build-isolation --no-deps -e . -v
       - name: Lint (pyflakes)
         run: |
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: pytest tests/ -v -s
+        run: gdb -batch -ex "set pagination off" -ex "run" -ex "bt" -ex "quit \$_exitcode" --args python -m pytest tests/ -v -s
