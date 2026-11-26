@@ -23,4 +23,7 @@ jobs:
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: gdb -batch -ex "set breakpoint pending on" -ex "b *('gtsam::NoiseModelFactor::linearize(gtsam::Values const&) const'+0x218)" -ex "run" -ex "info reg rdi rsi rbp rsp" -ex "x/4gx \$rdi-16" -ex "c" -ex "bt" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
+        run: |
+          python -m pytest tests/test_jacobians.py -k test_tdcp_factor -v -s || true
+          gdb -batch -ex "set breakpoint pending on" -ex "b *(_ZNK5gtsam16NoiseModelFactor9linearizeERKNS_6ValuesE+0x218)" -ex "run" -ex "info reg rdi rsi rbp rsp" -ex "x/4gx \$rdi-16" -ex "c" -ex "bt" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
+          exit 1
