@@ -54,9 +54,10 @@ urban-Nagoya drives
 
 ## Quick start
 
-Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). Requires `cmake`, `g++`, and `git`
-to build the local C++ extension (`gnss_fgo._extra_factors`: `SingleDifferenceDopplerFactor*`
-and `NhcFactor*`) against your installed `gtsam` shared library.
+Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). Requires `g++`, `git`, and
+Boost headers (`libboost-dev`) to build the local C++ extension
+(`gnss_fgo._extra_factors`: `SingleDifferenceDopplerFactor*`, `NhcFactor*`, and
+`TdcpFactor*`) against your installed `gtsam` shared library.
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
