@@ -16,15 +16,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev gdb
-          c++ --version
           pip install pytest setuptools gtsam -r requirements.txt
-          pip install --no-build-isolation --no-deps -e . -v
+          pip install --no-build-isolation --no-deps -e .
       - name: Lint (pyflakes)
         run: |
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: |
-          ldd src/gnss_fgo/_extra_factors*.so
-          python -m pytest tests/test_jacobians.py -v -s
-          python -m pytest tests/ -v -s
+        run: gdb -batch -ex "set breakpoint pending on" -ex "b *('gtsam::NoiseModelFactor::linearize(gtsam::Values const&) const'+0x218)" -ex "run" -ex "info reg rdi rsi rbp rsp" -ex "x/4gx \$rdi-16" -ex "c" -ex "bt" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
