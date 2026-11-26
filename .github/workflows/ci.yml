@@ -24,6 +24,5 @@ jobs:
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
         run: |
-          python -m pytest tests/test_jacobians.py -k test_tdcp_factor -v -s || true
-          gdb -batch -ex "set breakpoint pending on" -ex "b *(_ZNK5gtsam16NoiseModelFactor9linearizeERKNS_6ValuesE+0x218)" -ex "run" -ex "info reg rdi rsi rbp rsp" -ex "x/4gx \$rdi-16" -ex "c" -ex "bt" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
+          gdb -batch -ex "run" -ex "frame 10" -ex "info reg" -ex "x/4gx \$rdi-16" -ex "x/4gx \$rsi-16" -ex "bt 15" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
           exit 1
