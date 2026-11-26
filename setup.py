@@ -26,6 +26,19 @@ def _find_gtsam_pkg_dir() -> Path:
         )
 
 
+def _find_gtsam_lib(gtsam_pkg_dir: Path) -> tuple[Path, Path]:
+    """Return (lib_dir, lib_file) for either custom (libgtsam.so) or PyPI wheel (gtsam.libs/libgtsam-*.so*)."""
+    direct = gtsam_pkg_dir / "libgtsam.so"
+    if direct.exists():
+        return gtsam_pkg_dir, direct
+    libs_dir = gtsam_pkg_dir.parent / "gtsam.libs"
+    if libs_dir.is_dir():
+        matches = sorted(libs_dir.glob("libgtsam-*.so*"))
+        if matches:
+            return libs_dir, matches[0]
+    raise RuntimeError(f"Could not find libgtsam shared library under {gtsam_pkg_dir}")
+
+
 def _has_tbb_symbols(lib_path: Path) -> bool:
     if not lib_path.exists():
         return False
@@ -33,22 +46,40 @@ def _has_tbb_symbols(lib_path: Path) -> bool:
     return b"tbb_allocator" in data or b"libtbb" in data
 
 
-def _ensure_gtsam_headers(gtsam_pkg_dir: Path) -> tuple[Path, Path]:
+def _find_gtsam_version(gtsam_pkg_dir: Path) -> str | None:
+    try:
+        from importlib.metadata import version
+        return version("gtsam")
+    except Exception:
+        for dist_info in gtsam_pkg_dir.parent.glob("gtsam-*.dist-info"):
+            name = dist_info.name
+            if name.startswith("gtsam-") and name.endswith(".dist-info"):
+                return name[len("gtsam-"):-len(".dist-info")]
+    return None
+
+
+def _ensure_gtsam_headers(lib_file: Path, gtsam_version: str | None) -> tuple[Path, Path]:
     src_env = os.environ.get("GTSAM_SRC_DIR")
     bld_env = os.environ.get("GTSAM_BUILD_DIR")
     if src_env and bld_env:
         return Path(src_env), Path(bld_env)
 
-    cache_root = Path(tempfile.gettempdir()) / "gnss_fgo_gtsam_headers"
+    tag = gtsam_version or "develop"
+    cache_root = Path(tempfile.gettempdir()) / f"gnss_fgo_gtsam_headers_{tag}"
     bld_dir = cache_root / "build"
     if not (cache_root / "gtsam").is_dir():
         cache_root.parent.mkdir(parents=True, exist_ok=True)
         repo = os.environ.get("GTSAM_GIT_URL", "https://github.com/borglab/gtsam.git")
-        subprocess.check_call(
-            ["git", "clone", "--depth", "1", repo, str(cache_root)]
-        )
+        try:
+            subprocess.check_call(
+                ["git", "clone", "--depth", "1", "--branch", tag, repo, str(cache_root)]
+            )
+        except subprocess.CalledProcessError:
+            subprocess.check_call(
+                ["git", "clone", "--depth", "1", repo, str(cache_root)]
+            )
     if not (bld_dir / "gtsam" / "config.h").is_file():
-        use_tbb = "ON" if _has_tbb_symbols(gtsam_pkg_dir / "libgtsam.so") else "OFF"
+        use_tbb = "ON" if _has_tbb_symbols(lib_file) else "OFF"
         subprocess.check_call([
             "cmake",
             "-S", str(cache_root),
@@ -63,7 +94,10 @@ def _ensure_gtsam_headers(gtsam_pkg_dir: Path) -> tuple[Path, Path]:
 
 
 gtsam_pkg_dir = _find_gtsam_pkg_dir()
-gtsam_src, gtsam_bld = _ensure_gtsam_headers(gtsam_pkg_dir)
+gtsam_lib_dir, gtsam_lib_file = _find_gtsam_lib(gtsam_pkg_dir)
+gtsam_src, gtsam_bld = _ensure_gtsam_headers(
+    gtsam_lib_file, _find_gtsam_version(gtsam_pkg_dir)
+)
 
 ext = Extension(
     "gnss_fgo._extra_factors",
@@ -75,9 +109,8 @@ ext = Extension(
         str(gtsam_src / "wrap" / "pybind11" / "include"),
         "/usr/include",
     ],
-    library_dirs=[str(gtsam_pkg_dir)],
-    libraries=["gtsam"],
-    runtime_library_dirs=[str(gtsam_pkg_dir)],
+    runtime_library_dirs=[str(gtsam_lib_dir)],
+    extra_link_args=[str(gtsam_lib_file)],
     extra_compile_args=["-O3", "-std=c++17"],
     language="c++",
 )
