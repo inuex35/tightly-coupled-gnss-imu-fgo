@@ -58,6 +58,47 @@ def _find_gtsam_version(gtsam_pkg_dir: Path) -> str | None:
     return None
 
 
+def _write_gtsam_config_h(config_h: Path, lib_file: Path, gtsam_version: str | None) -> None:
+    """Generate minimal gtsam/config.h matching the installed wheel without CMake/Boost libs."""
+    use_tbb = _has_tbb_symbols(lib_file)
+    ver = (gtsam_version or "4.3.0").split(".")
+    major = int(ver[0]) if len(ver) > 0 and ver[0].isdigit() else 4
+    minor = int(ver[1]) if len(ver) > 1 and ver[1].isdigit() else 3
+    patch = int(ver[2]) if len(ver) > 2 and ver[2].isdigit() else 0
+    numeric = major * 10000 + minor * 100 + patch
+    tbb_defs = (
+        "#define GTSAM_USE_TBB\n#define GTSAM_ALLOCATOR_TBB\n"
+        if use_tbb
+        else "#define GTSAM_ALLOCATOR_STL\n"
+    )
+    config_h.parent.mkdir(parents=True, exist_ok=True)
+    config_h.write_text(
+        f"""#pragma once
+#define GTSAM_VERSION_MAJOR {major}
+#define GTSAM_VERSION_MINOR {minor}
+#define GTSAM_VERSION_PATCH {patch}
+#define GTSAM_VERSION_NUMERIC {numeric}
+#define GTSAM_VERSION_STRING "{gtsam_version or '4.3.0'}"
+#define GTSAM_POSE3_EXPMAP
+#ifndef GTSAM_USE_QUATERNIONS
+#define GTSAM_ROT3_EXPMAP
+#endif
+#define GTSAM_DT_MERGING
+#define GTSAM_HYBRID_TIMING 0
+{tbb_defs}#define GTSAM_EIGEN_VERSION_WORLD 3
+#define GTSAM_EIGEN_VERSION_MAJOR 4
+#define GTSAM_THROW_CHEIRALITY_EXCEPTION
+#define GTSAM_SUPPORT_NESTED_DISSECTION
+#define GTSAM_TANGENT_PREINTEGRATION
+#define GTSAM_SLOW_BUT_CORRECT_BETWEENFACTOR
+#define GTSAM_SLOW_BUT_CORRECT_EXPMAP
+#define GTSAM_ENABLE_BOOST_SERIALIZATION 0
+#define GTSAM_USE_BOOST_FEATURES 1
+""",
+        encoding="utf-8",
+    )
+
+
 def _ensure_gtsam_headers(lib_file: Path, gtsam_version: str | None) -> tuple[Path, Path]:
     src_env = os.environ.get("GTSAM_SRC_DIR")
     bld_env = os.environ.get("GTSAM_BUILD_DIR")
@@ -78,18 +119,19 @@ def _ensure_gtsam_headers(lib_file: Path, gtsam_version: str | None) -> tuple[Pa
             subprocess.check_call(
                 ["git", "clone", "--depth", "1", repo, str(cache_root)]
             )
-    if not (bld_dir / "gtsam" / "config.h").is_file():
-        use_tbb = "ON" if _has_tbb_symbols(lib_file) else "OFF"
-        subprocess.check_call([
-            "cmake",
-            "-S", str(cache_root),
-            "-B", str(bld_dir),
-            "-DGTSAM_BUILD_PYTHON=OFF",
-            "-DGTSAM_BUILD_TESTS=OFF",
-            "-DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF",
-            "-DGTSAM_USE_SYSTEM_EIGEN=OFF",
-            f"-DGTSAM_WITH_TBB={use_tbb}",
-        ])
+    config_h = bld_dir / "gtsam" / "config.h"
+    dllexport_h = bld_dir / "gtsam" / "dllexport.h"
+    if not config_h.is_file():
+        _write_gtsam_config_h(config_h, lib_file, gtsam_version)
+    if not dllexport_h.is_file():
+        dllexport_h.parent.mkdir(parents=True, exist_ok=True)
+        dllexport_h.write_text(
+            "#pragma once\n"
+            "#define GTSAM_EXPORT\n"
+            "#define GTSAM_EXTERN_EXPORT extern\n"
+            "#define GTSAM_LOCAL\n",
+            encoding="utf-8",
+        )
     return cache_root, bld_dir
 
 
