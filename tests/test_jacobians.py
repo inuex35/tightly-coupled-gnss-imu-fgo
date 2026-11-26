@@ -9,7 +9,7 @@ import gtsam
 
 from cssrlib.gnss import ecef2pos
 from factor_check import check_factor_jacobians
-from gnss_fgo._extra_factors import NhcFactor
+from gnss_fgo._extra_factors import NhcFactor, TdcpFactor, TdcpFactorArm
 
 BASE = np.array([-3961905.0, 3348994.0, 3698212.0])
 
@@ -52,4 +52,31 @@ def test_cpp_ddcp_factor():
                             gtsam.Point3(310.0, -220.0, 4.0)))
     v.insert(2, 100.0)
     v.insert(3, 88.0)
+    check_factor_jacobians(f, v, atol=2e-4)
+
+
+def test_tdcp_factor():
+    sat1 = gtsam.Point3(-15200000.0, 12000000.0, 18300000.0)
+    sat2 = gtsam.Point3(-15199500.0, 12000300.0, 18300200.0)
+    noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
+    f = TdcpFactor(1, 2, 3, 120.5, sat1, sat2, 1e-4, 1.0001e-4, noise)
+    v = gtsam.Values()
+    v.insert(1, gtsam.Point3(*(BASE + np.array([10.0, -5.0, 2.0]))))
+    v.insert(2, gtsam.Point3(*(BASE + np.array([14.0, -3.0, 2.5]))))
+    v.insert(3, 0.25)
+    check_factor_jacobians(f, v, atol=2e-4)
+
+
+def test_tdcp_factor_arm():
+    sat1 = gtsam.Point3(-15200000.0, 12000000.0, 18300000.0)
+    sat2 = gtsam.Point3(-15199500.0, 12000300.0, 18300200.0)
+    noise = gtsam.noiseModel.Isotropic.Sigma(1, 0.01)
+    f = TdcpFactorArm(1, 2, 3, 120.5, sat1, sat2, 1e-4, 1.0001e-4,
+                      gtsam.Point3(0.31, 0.0, 0.55), enu_frame(BASE), noise)
+    v = gtsam.Values()
+    v.insert(1, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.05, -0.12, 2.2),
+                            gtsam.Point3(310.0, -220.0, 4.0)))
+    v.insert(2, gtsam.Pose3(gtsam.Rot3.RzRyRx(0.06, -0.10, 2.25),
+                            gtsam.Point3(314.0, -218.0, 4.2)))
+    v.insert(3, 0.25)
     check_factor_jacobians(f, v, atol=2e-4)

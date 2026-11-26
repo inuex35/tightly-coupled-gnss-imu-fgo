@@ -23,6 +23,12 @@ inline double geodist(const gtsam::Point3& rs, const gtsam::Point3& rr,
   return r + kOmge * (rs.x() * rr.y() - rs.y() * rr.x()) / kClight;
 }
 
+inline gtsam::Vector3 geodistJacobian(const gtsam::Point3& rs,
+                                       const gtsam::Point3& e) {
+  return gtsam::Vector3(-e.x() - kOmge * rs.y() / kClight,
+                        -e.y() + kOmge * rs.x() / kClight, -e.z());
+}
+
 inline void initGeometry(const gtsam::Point3& satPosTarget,
                          const gtsam::Point3& satVelTarget,
                          const gtsam::Point3& satPosRef,
@@ -280,6 +286,127 @@ class NhcFactorCalib
   }
 };
 
+class TdcpFactor
+    : public gtsam::NoiseModelFactorN<gtsam::Point3, gtsam::Point3, double> {
+ private:
+  using Base = gtsam::NoiseModelFactorN<gtsam::Point3, gtsam::Point3, double>;
+  double deltaPhaseM_ = 0.0;
+  gtsam::Point3 satPos1_{0, 0, 0};
+  gtsam::Point3 satPos2_{0, 0, 0};
+  double satClkDiffM_ = 0.0;
+
+ public:
+  using Base::evaluateError;
+  using shared_ptr = std::shared_ptr<TdcpFactor>;
+
+  TdcpFactor(gtsam::Key pos1Key, gtsam::Key pos2Key, gtsam::Key deltaClockKey,
+             double deltaCarrierPhaseMeters, const gtsam::Point3& satPos1,
+             const gtsam::Point3& satPos2, double satClk1, double satClk2,
+             const gtsam::SharedNoiseModel& model)
+      : Base(model, pos1Key, pos2Key, deltaClockKey),
+        deltaPhaseM_(deltaCarrierPhaseMeters),
+        satPos1_(satPos1),
+        satPos2_(satPos2),
+        satClkDiffM_(kClight * (satClk2 - satClk1)) {}
+
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return std::make_shared<TdcpFactor>(*this);
+  }
+
+  gtsam::Vector evaluateError(
+      const gtsam::Point3& pos1, const gtsam::Point3& pos2,
+      const double& deltaClock, gtsam::OptionalMatrixType H1,
+      gtsam::OptionalMatrixType H2,
+      gtsam::OptionalMatrixType H3) const override {
+    gtsam::Point3 e1, e2;
+    const double rho1 = geodist(satPos1_, pos1, e1);
+    const double rho2 = geodist(satPos2_, pos2, e2);
+    if (H1) *H1 = -geodistJacobian(satPos1_, e1).transpose();
+    if (H2) *H2 = geodistJacobian(satPos2_, e2).transpose();
+    if (H3) *H3 = gtsam::Matrix11::Ones();
+    return gtsam::Vector1((rho2 - rho1) - satClkDiffM_ + deltaClock -
+                          deltaPhaseM_);
+  }
+};
+
+class TdcpFactorArm
+    : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Pose3, double> {
+ private:
+  using Base = gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Pose3, double>;
+  double deltaPhaseM_ = 0.0;
+  gtsam::Point3 satPos1_{0, 0, 0};
+  gtsam::Point3 satPos2_{0, 0, 0};
+  double satClkDiffM_ = 0.0;
+  gtsam::Point3 leverArm_{0, 0, 0};
+  std::optional<gtsam::Pose3> ecefTnav_;
+
+ public:
+  using Base::evaluateError;
+  using shared_ptr = std::shared_ptr<TdcpFactorArm>;
+
+  TdcpFactorArm(gtsam::Key pose1Key, gtsam::Key pose2Key,
+                gtsam::Key deltaClockKey, double deltaCarrierPhaseMeters,
+                const gtsam::Point3& satPos1, const gtsam::Point3& satPos2,
+                double satClk1, double satClk2, const gtsam::Point3& leverArm,
+                const gtsam::SharedNoiseModel& model)
+      : Base(model, pose1Key, pose2Key, deltaClockKey),
+        deltaPhaseM_(deltaCarrierPhaseMeters),
+        satPos1_(satPos1),
+        satPos2_(satPos2),
+        satClkDiffM_(kClight * (satClk2 - satClk1)),
+        leverArm_(leverArm) {}
+
+  TdcpFactorArm(gtsam::Key pose1Key, gtsam::Key pose2Key,
+                gtsam::Key deltaClockKey, double deltaCarrierPhaseMeters,
+                const gtsam::Point3& satPos1, const gtsam::Point3& satPos2,
+                double satClk1, double satClk2, const gtsam::Point3& leverArm,
+                const gtsam::Pose3& ecef_T_nav,
+                const gtsam::SharedNoiseModel& model)
+      : Base(model, pose1Key, pose2Key, deltaClockKey),
+        deltaPhaseM_(deltaCarrierPhaseMeters),
+        satPos1_(satPos1),
+        satPos2_(satPos2),
+        satClkDiffM_(kClight * (satClk2 - satClk1)),
+        leverArm_(leverArm),
+        ecefTnav_(ecef_T_nav) {}
+
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return std::make_shared<TdcpFactorArm>(*this);
+  }
+
+  gtsam::Vector evaluateError(
+      const gtsam::Pose3& pose1, const gtsam::Pose3& pose2,
+      const double& deltaClock, gtsam::OptionalMatrixType H1,
+      gtsam::OptionalMatrixType H2,
+      gtsam::OptionalMatrixType H3) const override {
+    auto antPos = [&](const gtsam::Pose3& pose, gtsam::Matrix36* H_ant) {
+      gtsam::Matrix36 H_local;
+      const gtsam::Point3 pNav =
+          pose.transformFrom(leverArm_, H_ant ? &H_local : nullptr);
+      if (ecefTnav_) {
+        const gtsam::Point3 pEcef = ecefTnav_->transformFrom(pNav);
+        if (H_ant) *H_ant = ecefTnav_->rotation().matrix() * H_local;
+        return pEcef;
+      }
+      if (H_ant) *H_ant = H_local;
+      return pNav;
+    };
+
+    gtsam::Matrix36 H_ant1, H_ant2;
+    const gtsam::Point3 pos1 = antPos(pose1, H1 ? &H_ant1 : nullptr);
+    const gtsam::Point3 pos2 = antPos(pose2, H2 ? &H_ant2 : nullptr);
+    gtsam::Point3 e1, e2;
+    const double rho1 = geodist(satPos1_, pos1, e1);
+    const double rho2 = geodist(satPos2_, pos2, e2);
+
+    if (H1) *H1 = -geodistJacobian(satPos1_, e1).transpose() * H_ant1;
+    if (H2) *H2 = geodistJacobian(satPos2_, e2).transpose() * H_ant2;
+    if (H3) *H3 = gtsam::Matrix11::Ones();
+    return gtsam::Vector1((rho2 - rho1) - satClkDiffM_ + deltaClock -
+                          deltaPhaseM_);
+  }
+};
+
 }  // namespace gnss_fgo_factors
 
 PYBIND11_MODULE(_extra_factors, m) {
@@ -347,5 +474,32 @@ PYBIND11_MODULE(_extra_factors, m) {
               const gtsam::Pose3& p, const gtsam::Vector3& v,
               const gtsam::Rot3& r) {
              return self.evaluateError(p, v, r, nullptr, nullptr, nullptr);
+           });
+
+  py::class_<gnss_fgo_factors::TdcpFactor, gtsam::NoiseModelFactor,
+             std::shared_ptr<gnss_fgo_factors::TdcpFactor>>(m, "TdcpFactor")
+      .def(py::init<gtsam::Key, gtsam::Key, gtsam::Key, double,
+                    const gtsam::Point3&, const gtsam::Point3&, double, double,
+                    const gtsam::SharedNoiseModel&>())
+      .def("evaluateError",
+           [](const gnss_fgo_factors::TdcpFactor& self, const gtsam::Point3& p1,
+              const gtsam::Point3& p2, double dclk) {
+             return self.evaluateError(p1, p2, dclk, nullptr, nullptr, nullptr);
+           });
+
+  py::class_<gnss_fgo_factors::TdcpFactorArm, gtsam::NoiseModelFactor,
+             std::shared_ptr<gnss_fgo_factors::TdcpFactorArm>>(m,
+                                                               "TdcpFactorArm")
+      .def(py::init<gtsam::Key, gtsam::Key, gtsam::Key, double,
+                    const gtsam::Point3&, const gtsam::Point3&, double, double,
+                    const gtsam::Point3&, const gtsam::SharedNoiseModel&>())
+      .def(py::init<gtsam::Key, gtsam::Key, gtsam::Key, double,
+                    const gtsam::Point3&, const gtsam::Point3&, double, double,
+                    const gtsam::Point3&, const gtsam::Pose3&,
+                    const gtsam::SharedNoiseModel&>())
+      .def("evaluateError",
+           [](const gnss_fgo_factors::TdcpFactorArm& self,
+              const gtsam::Pose3& p1, const gtsam::Pose3& p2, double dclk) {
+             return self.evaluateError(p1, p2, dclk, nullptr, nullptr, nullptr);
            });
 }
