@@ -33,7 +33,8 @@ jobs:
           #include <gtsam/nonlinear/Values.h>
           #include <iostream>
           struct F : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3> {
-            F(gtsam::Key k1, gtsam::Key k2, const gtsam::SharedNoiseModel& m) : NoiseModelFactorN(m, k1, k2) {}
+            using Base = gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3>;
+            F(gtsam::Key k1, gtsam::Key k2, const gtsam::SharedNoiseModel& m) : Base(m, k1, k2) {}
             gtsam::NonlinearFactor::shared_ptr clone() const override { return std::make_shared<F>(*this); }
             gtsam::Vector evaluateError(const gtsam::Pose3&, const gtsam::Vector3&, gtsam::OptionalMatrixType H1, gtsam::OptionalMatrixType H2) const override {
               if (H1) *H1 = gtsam::Matrix::Zero(2, 6);
