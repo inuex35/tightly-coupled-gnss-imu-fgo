@@ -46,7 +46,7 @@ jobs:
             F f(1, 2, m);
             gtsam::Values v;
             v.insert(1, gtsam::Pose3());
-            v.insert(2, gtsam::Vector3::Zero());
+            v.insert(2, gtsam::Vector3(0, 0, 0));
             auto g = f.linearize(v);
             std::cout << "OK " << g->jacobian().first.rows() << std::endl;
           }
