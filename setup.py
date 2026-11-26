@@ -1,6 +1,7 @@
 """Build gnss_fgo._extra_factors against the installed gtsam shared library."""
 
 import os
+import platform
 import subprocess
 import tempfile
 from pathlib import Path
@@ -141,6 +142,12 @@ gtsam_src, gtsam_bld = _ensure_gtsam_headers(
     gtsam_lib_file, _find_gtsam_version(gtsam_pkg_dir)
 )
 
+compile_args = ["-O3", "-std=c++17", "-fvisibility=hidden"]
+if platform.machine() in ("x86_64", "AMD64"):
+    # Match baseline manylinux wheels (EIGEN_DEFAULT_ALIGN_BYTES=16 / malloc-aligned)
+    # on distros whose g++ defaults to x86-64-v3 (AVX enabled -> 32-byte Eigen align).
+    compile_args.append("-mno-avx")
+
 ext = Extension(
     "gnss_fgo._extra_factors",
     sources=["src/gnss_fgo/cpp/extra_factors.cpp"],
@@ -153,7 +160,7 @@ ext = Extension(
     ],
     runtime_library_dirs=[str(gtsam_lib_dir)],
     extra_link_args=[str(gtsam_lib_file)],
-    extra_compile_args=["-O3", "-std=c++17", "-fvisibility=hidden"],
+    extra_compile_args=compile_args,
     language="c++",
 )
 

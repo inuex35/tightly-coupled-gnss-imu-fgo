@@ -15,7 +15,7 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev gdb
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev
           pip install pytest setuptools gtsam -r requirements.txt
           pip install --no-build-isolation --no-deps -e .
       - name: Lint (pyflakes)
@@ -23,44 +23,4 @@ jobs:
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: |
-          python - << 'EOF'
-          import glob, gtsam, pathlib, subprocess
-          lib = glob.glob(str(pathlib.Path(gtsam.__file__).parent.parent / "gtsam.libs" / "libgtsam-*.so*"))[0]
-          code = r'''
-          #include <gtsam/geometry/Pose3.h>
-          #include <gtsam/nonlinear/NoiseModelFactorN.h>
-          #include <gtsam/nonlinear/Values.h>
-          #include <iostream>
-          struct F : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3> {
-            using Base = gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3>;
-            F(gtsam::Key k1, gtsam::Key k2, const gtsam::SharedNoiseModel& m) : Base(m, k1, k2) {}
-            gtsam::NonlinearFactor::shared_ptr clone() const override { return std::make_shared<F>(*this); }
-            gtsam::Vector evaluateError(const gtsam::Pose3&, const gtsam::Vector3&, gtsam::OptionalMatrixType H1, gtsam::OptionalMatrixType H2) const override {
-              if (H1) *H1 = gtsam::Matrix::Zero(2, 6);
-              if (H2) *H2 = gtsam::Matrix::Zero(2, 3);
-              return gtsam::Vector2::Zero();
-            }
-          };
-          int main() {
-            std::cout << "ALIGN=" << EIGEN_DEFAULT_ALIGN_BYTES << " ALREADY=" << EIGEN_MALLOC_ALREADY_ALIGNED << std::endl;
-            auto m = gtsam::noiseModel::Isotropic::Sigma(2, 0.1);
-            F f(1, 2, m);
-            gtsam::Values v;
-            v.insert(1, gtsam::Pose3());
-            v.insert(2, gtsam::Vector3(0, 0, 0));
-            auto g = f.linearize(v);
-            std::cout << "OK " << g->jacobian().first.rows() << std::endl;
-          }
-          '''
-          pathlib.Path("/tmp/repro.cpp").write_text(code)
-          subprocess.check_call([
-              "g++", "-O3", "-std=c++17", "-DEIGEN_MAX_ALIGN_BYTES=16", "/tmp/repro.cpp",
-              "-I/tmp/gnss_fgo_gtsam_headers_4.3.0",
-              "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/build",
-              "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/gtsam/3rdparty/Eigen",
-              lib, f"-Wl,-rpath,{pathlib.Path(lib).parent}", "-o", "/tmp/repro"
-          ])
-          subprocess.check_call(["/tmp/repro"])
-          EOF
-          exit 1
+        run: pytest tests/ -v -s
