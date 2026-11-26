@@ -23,4 +23,4 @@ jobs:
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: pytest tests/ -q
+        run: pytest tests/ -v -s

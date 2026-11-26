@@ -153,7 +153,7 @@ ext = Extension(
     ],
     runtime_library_dirs=[str(gtsam_lib_dir)],
     extra_link_args=[str(gtsam_lib_file)],
-    extra_compile_args=["-O3", "-std=c++17"],
+    extra_compile_args=["-O3", "-std=c++17", "-fvisibility=hidden"],
     language="c++",
 )
 
