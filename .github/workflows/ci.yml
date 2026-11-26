@@ -24,4 +24,7 @@ jobs:
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: gdb -batch -ex "set pagination off" -ex "run" -ex "bt" -ex "quit \$_exitcode" --args python -m pytest tests/ -v -s
+        run: |
+          ldd src/gnss_fgo/_extra_factors*.so
+          python -m pytest tests/test_jacobians.py -v -s
+          python -m pytest tests/ -v -s
