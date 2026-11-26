@@ -15,14 +15,13 @@ from .utils import (
     estimate_stationary_bias,
     euler_to_R_body2enu,
     make_imu_params,
-    sorted_amb_items,
 )
 
 
 # ── FixedLagSmoother helpers ──────────────────────────────────────────
 
-def update_smoother(tc, graph, values, key_idx, keep_keys=()):
-    """Update FLS while keeping the previous pose/vel/bias and live N keys alive."""
+def update_smoother(tc, graph, values, key_idx):
+    """Update FLS while keeping the previous pose/vel/bias alive."""
     tc.tc_time += tc._epoch_dt
     ts = gtsam.FixedLagSmootherKeyTimestampMap()
     t = tc.tc_time
@@ -34,21 +33,14 @@ def update_smoother(tc, graph, values, key_idx, keep_keys=()):
         ts[tc.Vel(key_idx - 1)] = t
         ts[tc.Bias(key_idx - 1)] = t
     for k in values.keys():
-        if k not in ts:
-            ts[k] = t
-    for k in keep_keys:
         ts[k] = t
     tc.isam2.update(graph, values, ts)
 
 
-def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
+def _solve_isam2(tc, graph, values, key_idx, R_enu2ecef, info):
     """Update FixedLagSmoother and return (pose_tc, ecef_tc, early_result)."""
     try:
-        live_amb_keys = [
-            k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())
-            if (estimate is not None and estimate.exists(k)) or values.exists(k)
-        ]
-        update_smoother(tc, graph, values, key_idx, keep_keys=live_amb_keys)
+        update_smoother(tc, graph, values, key_idx)
         new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
@@ -65,7 +57,7 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
 
 def _decide_fix_or_flt(tc, float_antenna_ecef, n_fixed, fixed_pos, info):
     """Pure FIX/FLT decision directly from LAMBDA acceptance (nav.smode == 4)."""
-    if tc.nav.smode == 4 and n_fixed > 0 and fixed_pos is not None:
+    if tc.nav.smode == 4:
         info['lambda_correction'] = float(np.linalg.norm(fixed_pos[0:3] - float_antenna_ecef))
         return fixed_pos[0:3], 'FIX', n_fixed
     return float_antenna_ecef, 'FLT', n_fixed
@@ -187,7 +179,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
 
     # 4. Fixed-lag smoother update
     pose_tc, ecef_tc, early = _solve_isam2(
-        tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info)
+        tc, graph, values, key_idx, R_enu2ecef, info)
     if early is not None:
         return early
 

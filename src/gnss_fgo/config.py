@@ -34,7 +34,7 @@ class TcConfig:
 
     # 3. Cycle slip, ambiguity random walk, AR & sliding window (4)
     thres_slip: float = 0.15       # geometry-free cycle slip threshold [m]
-    amb_rw_sigma: float = 0.001    # carrier-phase ambiguity random walk σ [cyc/epoch]
+    amb_rw_sigma: float = 0.001    # carrier-phase ambiguity random walk σ [cyc/epoch] (> 0)
     armode: int = 2                # AR mode (0=off, 1=continuous, 2=fix-and-hold)
     fls_lag: float = 1.0           # FixedLagSmoother window [s]
 
@@ -47,7 +47,7 @@ class TcConfig:
             default = f.default
             if isinstance(default, str):
                 kw[name] = os.environ.get(envname, default)
-            elif isinstance(default, int) and not isinstance(default, bool):
+            elif isinstance(default, int):
                 kw[name] = env_int(envname, default)
             else:
                 kw[name] = env_float(envname, default)

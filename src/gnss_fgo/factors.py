@@ -177,28 +177,26 @@ def _is_bds_geo(prn_sat: int) -> bool:
 def _resolve_arc_amb_key(tc, graph, values, new_amb, existing_estimate, sat_id, freq):
     """Return the active ambiguity symbol for (sat_id, freq).
 
-    Reuses the existing symbol while the arc stays in the smoother, chains a
-    random-walk ``BetweenFactorDouble`` step when ``amb_rw_sigma > 0``, or
-    allocates a fresh symbol if the previous arc was marginalized out.
+    Chains a random-walk ``BetweenFactorDouble`` step while the previous arc
+    symbol stays in the smoother, or allocates a fresh symbol if it was
+    marginalized out.
     """
     sf = (int(sat_id), int(freq))
     if sf in new_amb:
         return new_amb[sf]
     st = tc._sat_states.get(sat_id, freq)
-    rw = float(tc.cfg.amb_rw_sigma)
-    if (rw > 0.0 and st.amb_key is not None
+    if (st.amb_key is not None
             and existing_estimate is not None
             and existing_estimate.exists(st.amb_key)):
         k_old = st.amb_key
         st.amb_gen += 1
         k_new = tc.N(sat_id, freq, st.amb_gen)
         values.insert(k_new, existing_estimate.atDouble(k_old))
-        graph.add(gtsam.BetweenFactorDouble(k_old, k_new, 0.0, tc._noise1(rw)))
+        graph.add(gtsam.BetweenFactorDouble(
+            k_old, k_new, 0.0, tc._noise1(float(tc.cfg.amb_rw_sigma))))
         new_amb[sf] = k_new
         return k_new
     if st.amb_key is not None:
-        if existing_estimate is None or existing_estimate.exists(st.amb_key):
-            return st.amb_key
         st.amb_key = None
         st.amb_gen += 1
     return tc.N(sat_id, freq, st.amb_gen)
@@ -213,9 +211,9 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         return 0
     lam = lams[f]
     cp_ref_r = obs.L[iu[ref_idx], f] * lam
-    cp_ref_b = obsb.L[ir_map[ref_sat], f] * lam if ref_sat in ir_map else 0
+    cp_ref_b = obsb.L[ir_map[ref_sat], f] * lam
     cp_j_r = obs.L[iu[j_idx], f] * lam
-    cp_j_b = obsb.L[ir_map[j_sat], f] * lam if j_sat in ir_map else 0
+    cp_j_b = obsb.L[ir_map[j_sat], f] * lam
     if cp_ref_r == 0 or cp_ref_b == 0 or cp_j_r == 0 or cp_j_b == 0:
         return 0
 
@@ -262,36 +260,38 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
             continue
         ref_idx, ref_sat = _pick_ref_sat_idx(tc, sys_id, idx_sys, sat, el)
         tc._sat_states.ref_sats[sys_id] = ref_sat
+        if ref_sat not in ir_map:
+            continue
         lams = get_wavelengths(obs_sd, ref_sat, glo_ch=tc.nav.glo_ch)
         ref_pt = gtsam.Point3(*rs[iu[ref_idx], :3])
-        ref_base_pt = (gtsam.Point3(*rsb[ir_map[ref_sat], :3])
-                       if ref_sat in ir_map else ref_pt)
+        ref_base_pt = gtsam.Point3(*rsb[ir_map[ref_sat], :3])
         for j_idx in idx_sys:
             if j_idx == ref_idx:
                 continue
             j_sat = sat[j_idx]
-            if SAT_SYS_ARR[j_sat] == uGNSS.BDS and _is_bds_geo(j_sat):
+            if j_sat not in ir_map or (SAT_SYS_ARR[j_sat] == uGNSS.BDS and _is_bds_geo(j_sat)):
                 continue
             j_pt = gtsam.Point3(*rs[iu[j_idx], :3])
-            j_base_pt = (gtsam.Point3(*rsb[ir_map[j_sat], :3])
-                         if j_sat in ir_map else j_pt)
+            j_base_pt = gtsam.Point3(*rsb[ir_map[j_sat], :3])
             sat_pts = (ref_pt, j_pt, ref_base_pt, j_base_pt)
             for f in range(nf):
                 if obs_sd.P[ref_idx, f] == 0 or obs_sd.P[j_idx, f] == 0:
                     continue
                 pr_obs = (
                     obs.P[iu[ref_idx], f],
-                    obsb.P[ir_map[ref_sat], f] if ref_sat in ir_map else 0,
+                    obsb.P[ir_map[ref_sat], f],
                     obs.P[iu[j_idx], f],
-                    obsb.P[ir_map[j_sat], f] if j_sat in ir_map else 0,
+                    obsb.P[ir_map[j_sat], f],
                 )
                 if 0 in pr_obs:
                     continue
+                has_s_r = hasattr(obs, "S")
+                has_s_b = hasattr(obsb, "S")
                 snrs = (
-                    obs.S[iu[ref_idx], f] if hasattr(obs, "S") else 0.0,
-                    obsb.S[ir_map[ref_sat], f] if (hasattr(obsb, "S") and ref_sat in ir_map) else 0.0,
-                    obs.S[iu[j_idx], f] if hasattr(obs, "S") else 0.0,
-                    obsb.S[ir_map[j_sat], f] if (hasattr(obsb, "S") and j_sat in ir_map) else 0.0,
+                    obs.S[iu[ref_idx], f] if has_s_r else 0.0,
+                    obsb.S[ir_map[ref_sat], f] if has_s_b else 0.0,
+                    obs.S[iu[j_idx], f] if has_s_r else 0.0,
+                    obsb.S[ir_map[j_sat], f] if has_s_b else 0.0,
                 )
                 sigma_pr = dd_obs_sigma(tc, True, snrs, dt_s)
                 sigma_cp = dd_obs_sigma(tc, False, snrs, dt_s)
@@ -381,9 +381,8 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
             0.0, 0.0,
             noise))
         n += 1
-    if n:
-        info['doppler_sd_n'] = n
-        info['doppler_sd_ref'] = int(ref[0])
+    info['doppler_sd_n'] = n
+    info['doppler_sd_ref'] = int(ref[0])
 
 
 # ── Non-Holonomic Constraint (NHC) ────────────────────────────────────

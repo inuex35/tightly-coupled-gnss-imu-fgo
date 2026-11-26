@@ -140,10 +140,9 @@ class AmbiguityResolver:
     par_p0 = 0.995
     par_trials = 8
 
-    def __init__(self, thresar=3.0, min_pairs=2,
+    def __init__(self, thresar=3.0,
                  el_mask=0.0, thresar_min=0.0, thresar_max=0.0):
         self.thresar = float(thresar)
-        self.min_pairs = int(min_pairs)
         self.el_mask = float(el_mask)
         self.thresar_min = float(thresar_min)
         self.thresar_max = float(thresar_max)
@@ -202,8 +201,7 @@ class AmbiguityResolver:
         keys = list(keys)
         pairs = self.double_difference(keys, elevations)
         full_sats = {s for ref, tgt in pairs for s in (ref[0], tgt[0])}
-        if (len(pairs) < max(self.min_pairs, self.min_fix)
-                or len(full_sats) < self.min_sats):
+        if len(pairs) < self.min_fix or len(full_sats) < self.min_sats:
             return ResolverResult(pairs=pairs)
 
         index = {k: i for i, k in enumerate(keys)}
@@ -221,13 +219,12 @@ class AmbiguityResolver:
         sqnorm_second = float(sqnorms[1]) if len(sqnorms) > 1 else 0.0
         if sqnorm_best <= 1e-12 * max(sqnorm_second, 1.0):
             sqnorm_best = 0.0
-        ratio = 0.0 if sqnorm_best <= 0.0 else sqnorm_second / sqnorm_best
         thres = self.ratio_threshold(len(pairs))
         result = ResolverResult(
             s0=sqnorm_best, s1=sqnorm_second, pairs=pairs, thres_used=thres)
         if nfix <= 0:
             return result
-        if not (sqnorm_best <= 0.0 or ratio >= thres):
+        if sqnorm_best > 0.0 and sqnorm_second / sqnorm_best < thres:
             par = self._partial(y, Q, pairs) if allow_partial else None
             if par is None:
                 return result
@@ -347,18 +344,9 @@ def run_ar(tc, sat, el, amb_dict, key_pose=None,
         n_fixed, fixed_pos = _resolve(
             tc, sat_list, amb_dict, key_pose, el=el,
             visible_sat_freqs=visible_sat_freqs,
-            seeded_sat_freqs=seeded_sat_freqs, allow_partial=False)
+            seeded_sat_freqs=seeded_sat_freqs, allow_partial=True)
     except Exception:
         return 0, None
-
-    if n_fixed <= 0:
-        try:
-            n_fixed, fixed_pos = _resolve(
-                tc, sat_list, amb_dict, key_pose, el=el,
-                visible_sat_freqs=visible_sat_freqs,
-                seeded_sat_freqs=seeded_sat_freqs, allow_partial=True)
-        except Exception:
-            return 0, None
 
     if n_fixed <= 0 or fixed_pos is None:
         return 0, None
