@@ -25,12 +25,11 @@ and tunnels.
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected on every epoch
 - **Integrity & recovery** — LLI + geometry-free cycle-slip detection
-  and IMU-only outage bridging
-- **Contributed upstream** — the DD, Doppler, SD Doppler, and NHC
-  factors are developed for and contributed to
-  [GTSAM](https://github.com/borglab/gtsam); see the
-  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)
-  for the technique
+  and ambiguity reset/re-seeding
+- **GTSAM integration** — DD and Doppler factors are upstream in
+  [GTSAM](https://github.com/borglab/gtsam) (see the
+  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html));
+  NHC and SD Doppler are contributed / pending upstream
 
 ## Results
 
@@ -41,12 +40,12 @@ urban-Nagoya drives
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11928 ep  |  0.80 m | 0.039 m | 0.11 m  | 79.3 % | 86.3 % |
-| tokyo run2  |  9151 ep  |  1.38 m | 0.032 m | 0.06 m  | 84.4 % | 89.6 % |
-| tokyo run3  | 15301 ep  |  1.57 m | 0.030 m | 0.16 m  | 88.0 % | 92.3 % |
-| nagoya run1 |  7602 ep  |  2.89 m | 0.127 m | 0.12 m  | 80.8 % | 83.9 % |
-| nagoya run2 |  9451 ep  |  2.90 m | 0.232 m | 0.37 m  | 63.1 % | 56.8 % |
-| nagoya run3 |  5201 ep  |  1.00 m | 0.131 m | 0.13 m  | 64.6 % | 81.7 % |
+| tokyo run1  | 11928 ep  |  0.80 m | 0.040 m | 0.11 m  | 79.3 % | 86.3 % |
+| tokyo run2  |  9151 ep  |  1.37 m | 0.032 m | 0.06 m  | 84.4 % | 89.6 % |
+| tokyo run3  | 15301 ep  |  1.58 m | 0.030 m | 0.17 m  | 88.0 % | 92.3 % |
+| nagoya run1 |  7602 ep  |  2.61 m | 0.126 m | 0.12 m  | 81.4 % | 85.3 % |
+| nagoya run2 |  9451 ep  |  2.87 m | 0.231 m | 0.37 m  | 63.8 % | 57.4 % |
+| nagoya run3 |  5201 ep  |  0.98 m | 0.130 m | 0.13 m  | 64.7 % | 82.5 % |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
