@@ -67,8 +67,8 @@ gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*'
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
 # cssrlib DD-only RTK core (pinned; carries nav.sat_band_plan,
-# satposs signal-flight-time fix, and indexed findeph bisect):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@854d959be30d316823be07b332c0da08a0801ff6"
+# satposs signal-flight-time fix, indexed findeph bisect, and sync_obs_hold dt_fill):
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@6f7a56caf3e4eb5e8cd6159e8456a785110d8d09"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
