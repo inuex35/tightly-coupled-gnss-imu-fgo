@@ -43,6 +43,7 @@ jobs:
             }
           };
           int main() {
+            std::cout << "ALIGN=" << EIGEN_DEFAULT_ALIGN_BYTES << " ALREADY=" << EIGEN_MALLOC_ALREADY_ALIGNED << std::endl;
             auto m = gtsam::noiseModel::Isotropic::Sigma(2, 0.1);
             F f(1, 2, m);
             gtsam::Values v;
@@ -54,7 +55,7 @@ jobs:
           '''
           pathlib.Path("/tmp/repro.cpp").write_text(code)
           subprocess.check_call([
-              "g++", "-O0", "-g", "-fsanitize=address", "-std=c++17", "/tmp/repro.cpp",
+              "g++", "-O3", "-std=c++17", "-DEIGEN_MAX_ALIGN_BYTES=16", "/tmp/repro.cpp",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/build",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/gtsam/3rdparty/Eigen",
