@@ -54,7 +54,7 @@ jobs:
           '''
           pathlib.Path("/tmp/repro.cpp").write_text(code)
           subprocess.check_call([
-              "g++", "-O3", "-std=c++17", "/tmp/repro.cpp",
+              "g++", "-O0", "-g", "-fsanitize=address", "-std=c++17", "/tmp/repro.cpp",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/build",
               "-I/tmp/gnss_fgo_gtsam_headers_4.3.0/gtsam/3rdparty/Eigen",
