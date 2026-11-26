@@ -24,5 +24,10 @@ jobs:
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
         run: |
-          gdb -batch -ex "run" -ex "frame 10" -ex "info reg" -ex "x/4gx \$rdi-16" -ex "x/4gx \$rsi-16" -ex "bt 15" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s
+          gdb -batch -ex "run" -ex "frame 7" -ex "info reg" -ex "x/8gx \$rsp" --args python -m pytest tests/test_jacobians.py -k test_nhc_factor -v -s || true
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          ~/.local/bin/uv venv --python 3.12.16 /tmp/uvtest
+          ~/.local/bin/uv pip install --python /tmp/uvtest/bin/python pytest setuptools gtsam -r requirements.txt
+          ~/.local/bin/uv pip install --python /tmp/uvtest/bin/python --no-build-isolation --no-deps -e .
+          /tmp/uvtest/bin/pytest tests/ -v -s
           exit 1
