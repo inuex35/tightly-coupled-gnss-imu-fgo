@@ -62,9 +62,8 @@ and `NhcFactor*`) against your installed `gtsam` shared library.
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install numpy matplotlib setuptools
 
-# GTSAM with DoubleDifference* factors (upstream develop or custom wheel):
-gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
-uv pip install "$(ls wheels/*.whl | sort | tail -1)"
+# Official GTSAM (with DoubleDifference* factors; or a prebuilt wheel from inuex35/gtsam):
+uv pip install gtsam
 
 # cssrlib DD-only RTK core (pinned; carries nav.sat_band_plan,
 # satposs signal-flight-time fix, indexed findeph bisect, and sync_obs_hold dt_fill):
@@ -77,7 +76,8 @@ uv pip install --no-build-isolation --no-deps -e .
 (`setup.py` shallow-clones `borglab/gtsam` headers into `/tmp/gnss_fgo_gtsam_headers` to
 generate `config.h` and links directly against `libgtsam.so` inside your installed `gtsam`
 package without rebuilding GTSAM itself. Set `GTSAM_SRC_DIR` / `GTSAM_BUILD_DIR` if you
-already have a local GTSAM tree.)
+already have a local GTSAM tree. Once `NhcFactor*` is merged upstream into GTSAM,
+only `SingleDifferenceDopplerFactor*` remains in the local extension.)
 
 Run (datasets not included; lay out PPC-Dataset under
 `data/PPC-Dataset/tokyo/run{1,2,3}/`):
