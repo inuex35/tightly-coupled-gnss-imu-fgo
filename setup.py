@@ -27,15 +27,15 @@ def _find_gtsam_pkg_dir() -> Path:
 
 
 def _find_gtsam_lib(gtsam_pkg_dir: Path) -> tuple[Path, Path]:
-    """Return (lib_dir, lib_file) for either custom (libgtsam.so) or PyPI wheel (gtsam.libs/libgtsam-*.so*)."""
+    """Return (lib_dir, lib_file) for custom (gtsam/libgtsam*.so*) or PyPI (gtsam.libs/libgtsam*.so*)."""
     direct = gtsam_pkg_dir / "libgtsam.so"
     if direct.exists():
         return gtsam_pkg_dir, direct
-    libs_dir = gtsam_pkg_dir.parent / "gtsam.libs"
-    if libs_dir.is_dir():
-        matches = sorted(libs_dir.glob("libgtsam-*.so*"))
-        if matches:
-            return libs_dir, matches[0]
+    for search_dir in (gtsam_pkg_dir, gtsam_pkg_dir.parent / "gtsam.libs"):
+        if search_dir.is_dir():
+            matches = sorted(search_dir.glob("libgtsam*.so*"))
+            if matches:
+                return search_dir, matches[0]
     raise RuntimeError(f"Could not find libgtsam shared library under {gtsam_pkg_dir}")
 
 
