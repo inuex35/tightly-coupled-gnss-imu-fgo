@@ -67,10 +67,9 @@ pip install numpy matplotlib
 gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D wheels
 pip install "$(ls wheels/*.whl | sort | tail -1)"   # newest, in case the rolling release carries a stale one
 
-# cssrlib DD-only RTK core (pinned; this revision carries the
-# nav.sat_band_plan admission policy the defaults use and the satposs
-# signal-flight-time fix the results below depend on):
-pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@5b3711a73f6d8eb3a4b5429d7cf31783cb41927d"
+# cssrlib DD-only RTK core (pinned; carries nav.sat_band_plan,
+# satposs signal-flight-time fix, and indexed findeph bisect):
+pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@854d959be30d316823be07b332c0da08a0801ff6"
 ```
 
 Run (datasets not included; lay out PPC-Dataset under
