@@ -13,20 +13,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install gtsam wheel (custom/develop with NHC + SD-Doppler factors)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download custom-wheels-latest -R inuex35/gtsam -p '*cp312*manylinux*' -D /tmp/wheels
-          # The rolling release can carry a stale wheel from an earlier
-          # build; install only the newest (version-datestamped) one.
-          pip install "$(ls /tmp/wheels/*.whl | sort | tail -1)"
       - name: Install dependencies
         run: |
-          pip install pytest -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libboost-dev
+          pip install pytest setuptools gtsam -r requirements.txt
+          pip install --no-build-isolation --no-deps -e .
       - name: Lint (pyflakes)
         run: |
           pip install pyflakes
           python -m pyflakes src/gnss_fgo/ tests/ examples/
       - name: Unit tests
-        run: pytest tests/ -q
+        run: pytest tests/ -v -s

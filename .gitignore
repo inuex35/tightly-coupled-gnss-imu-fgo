@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
+*.so
 *.log
+build/
 ref/
 results/
 data/
