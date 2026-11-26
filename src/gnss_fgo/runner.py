@@ -46,9 +46,13 @@ def _solve_isam2(tc, graph, values, estimate, key_idx, R_enu2ecef, obs, info):
     try:
         live_amb_keys = [
             k for (_sf, k) in sorted_amb_items(tc._sat_states.amb_keys_dict())
-            if estimate.exists(k) or values.exists(k)
+            if (estimate is not None and estimate.exists(k)) or values.exists(k)
         ]
         update_smoother(tc, graph, values, key_idx, keep_keys=live_amb_keys)
+        if key_idx == 0:
+            for _ in range(3):
+                tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
+                                gtsam.FixedLagSmootherKeyTimestampMap())
         new_est = tc.isam2.calculateEstimate()
     except (RuntimeError, IndexError, ValueError) as ex:
         info['error'] = str(ex)
@@ -95,15 +99,11 @@ def _init_pose_and_bias_epoch0(tc, obs, init_ecef, R_enu2ecef):
     return pose0, bias0
 
 
-def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
-                      init_ecef, R_enu2ecef, info):
-    """Initialize the single smoother at the first valid GNSS epoch."""
-    # 1. Stationary IMU alignment (bias, roll/pitch, lever-arm-compensated pose0)
+def _setup_epoch0(tc, obs, init_ecef, R_enu2ecef, graph, values):
+    """Initialize FixedLagSmoother and add epoch-0 priors for Pose(0), Vel(0), Bias(0)."""
     pose0, bias0 = _init_pose_and_bias_epoch0(tc, obs, init_ecef, R_enu2ecef)
     tc.imu_params = make_imu_params()
     tc.lever_arm_tc = gtsam.Point3(*tc.lever_arm)
-
-    # 2. FixedLagSmoother setup and epoch-0 priors + DD factors
     params = gtsam.ISAM2Params()
     params.setFactorization("QR")
     params.setRelinearizeThreshold(0.01)
@@ -111,80 +111,61 @@ def _bootstrap_epoch0(tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
     tc.isam2 = gtsam.IncrementalFixedLagSmoother(tc.cfg.fls_lag, params)
     tc.tc_time = 0.0
     tc.smoother_node_idx = 0
-    info['tc_epoch'] = 0
 
-    g = gtsam.NonlinearFactorGraph()
-    v = gtsam.Values()
-    v.insert(tc.Pose(0), pose0)
-    v.insert(tc.Vel(0), np.zeros(3))
-    v.insert(tc.Bias(0), bias0)
+    values.insert(tc.Pose(0), pose0)
+    values.insert(tc.Vel(0), np.zeros(3))
+    values.insert(tc.Bias(0), bias0)
     rot_sigma = np.deg2rad(2.0)
-    g.addPriorPose3(tc.Pose(0), pose0,
-                    gtsam.noiseModel.Diagonal.Sigmas(
-                        np.array([rot_sigma, rot_sigma, np.pi, 1e4, 1e4, 1e4])))
-    g.addPriorVector(tc.Vel(0), np.zeros(3),
-                     gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
-    g.addPriorConstantBias(tc.Bias(0), bias0,
-                           gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
-
-    _tc_factors.build_dd_factors(
-        tc, g, v, obs, obsb, obs_sd, rs, rsb, sat, el, iu, ir_map,
-        tc.Pose(0), tc.lever_arm_tc, existing_estimate=None)
-
-    # 3. Solve + extra relinearization passes to settle unobservably-yawed pose0
-    update_smoother(tc, g, v, 0)
-    for _ in range(3):
-        tc.isam2.update(gtsam.NonlinearFactorGraph(), gtsam.Values(),
-                        gtsam.FixedLagSmootherKeyTimestampMap())
-    est = tc.isam2.calculateEstimate()
-    pose_tc = est.atPose3(tc.Pose(0))
-    ecef_tc = R_enu2ecef @ np.array(pose_tc.translation()) + tc.base_ecef
-    sol = tc._antenna_ecef(pose_tc, ecef_tc)
-    tc.nav.x[0:3] = sol
-    tc.nav.smode = 5
-    return sol, 'FLT', 0, info
+    graph.addPriorPose3(tc.Pose(0), pose0,
+                        gtsam.noiseModel.Diagonal.Sigmas(
+                            np.array([rot_sigma, rot_sigma, np.pi, 1e4, 1e4, 1e4])))
+    graph.addPriorVector(tc.Vel(0), np.zeros(3),
+                         gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
+    graph.addPriorConstantBias(tc.Bias(0), bias0,
+                               gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
+    return gtsam.NavState(pose0, np.zeros(3))
 
 
 def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
                  obs_sd, ir_map, info, ns, init_ecef, R_enu2ecef):
     """Single-phase IMU/GNSS TC epoch flow."""
+    graph = gtsam.NonlinearFactorGraph()
+    values = gtsam.Values()
     if tc.isam2 is None:
         if ns < 4:
             return np.array(tc.nav.x[0:3]), 'FLT', 0, info
-        return _bootstrap_epoch0(
-            tc, obs, obsb, rs, rsb, sat, el, iu, obs_sd, ir_map,
-            init_ecef, R_enu2ecef, info)
+        key_idx = 0
+        info['tc_epoch'] = 0
+        pred_nav = _setup_epoch0(tc, obs, init_ecef, R_enu2ecef, graph, values)
+        gyro_mean, estimate = None, None
+    else:
+        # 1. IMU preintegration & state prediction
+        tc.smoother_node_idx += 1
+        key_idx = tc.smoother_node_idx
+        info['tc_epoch'] = key_idx
+        _, tow_obs = time2gpst(obs.t)
+        pim, n_imu, gyro_mean, tc.imu_idx = build_imu_preintegration(
+            tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
+        info['n_imu'] = n_imu
+        if n_imu == 0:
+            return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
-    # 1. IMU preintegration & state prediction
-    tc.smoother_node_idx += 1
-    key_idx = tc.smoother_node_idx
-    info['tc_epoch'] = key_idx
-    _, tow_obs = time2gpst(obs.t)
-    pim, n_imu, gyro_mean, tc.imu_idx = build_imu_preintegration(
-        tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
-    info['n_imu'] = n_imu
-    if n_imu == 0:
-        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
+        estimate = tc.isam2.calculateEstimate()
+        if not estimate.exists(tc.Pose(key_idx - 1)):
+            info['prev_pose_missing'] = key_idx - 1
+            return np.array(tc.nav.x[0:3]), 'FLT', 0, info
 
-    graph = gtsam.NonlinearFactorGraph()
-    values = gtsam.Values()
-    estimate = tc.isam2.calculateEstimate()
-
-    if not estimate.exists(tc.Pose(key_idx - 1)):
-        info['prev_pose_missing'] = key_idx - 1
-        return np.array(tc.nav.x[0:3]), 'FLT', 0, info
-
-    pose_prev = estimate.atPose3(tc.Pose(key_idx - 1))
-    vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
-    bias_prev = estimate.atConstantBias(tc.Bias(key_idx - 1))
-    pred_nav = pim.predict(gtsam.NavState(pose_prev, vel_prev), bias_prev)
-    values.insert(tc.Pose(key_idx), pred_nav.pose())
-    values.insert(tc.Vel(key_idx), pred_nav.velocity())
-    values.insert(tc.Bias(key_idx), bias_prev)
-    graph.add(gtsam.CombinedImuFactor(
-        tc.Pose(key_idx - 1), tc.Vel(key_idx - 1),
-        tc.Pose(key_idx), tc.Vel(key_idx),
-        tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
+        pose_prev = estimate.atPose3(tc.Pose(key_idx - 1))
+        vel_prev = estimate.atVector(tc.Vel(key_idx - 1))
+        bias_prev = estimate.atConstantBias(tc.Bias(key_idx - 1))
+        pred_nav = pim.predict(gtsam.NavState(pose_prev, vel_prev), bias_prev)
+        values.insert(tc.Pose(key_idx), pred_nav.pose())
+        values.insert(tc.Vel(key_idx), pred_nav.velocity())
+        values.insert(tc.Bias(key_idx), bias_prev)
+        graph.add(gtsam.CombinedImuFactor(
+            tc.Pose(key_idx - 1), tc.Vel(key_idx - 1),
+            tc.Pose(key_idx), tc.Vel(key_idx),
+            tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
