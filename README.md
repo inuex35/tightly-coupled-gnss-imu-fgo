@@ -25,12 +25,11 @@ and tunnels.
 - **Velocity through outages** — between-satellite single-differenced
   Doppler (clock-free), injected on every epoch
 - **Integrity & recovery** — LLI + geometry-free cycle-slip detection
-  and IMU-only outage bridging
-- **Contributed upstream** — the DD, Doppler, SD Doppler, and NHC
-  factors are developed for and contributed to
-  [GTSAM](https://github.com/borglab/gtsam); see the
-  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)
-  for the technique
+  and ambiguity reset/re-seeding
+- **GTSAM integration** — DD and Doppler factors are upstream in
+  [GTSAM](https://github.com/borglab/gtsam) (see the
+  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html));
+  NHC and SD Doppler are contributed / pending upstream
 
 ## Results
 
