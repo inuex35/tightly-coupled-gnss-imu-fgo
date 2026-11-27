@@ -1,4 +1,4 @@
-"""Batch graph construction, RINEX frontend, FDE, and whole-run LM solver."""
+"""Batch graph construction, RINEX frontend, and whole-run LM solver."""
 
 import time
 
@@ -12,11 +12,10 @@ from cssrlib.rtk import rtkpos
 from gtsam.symbol_shorthand import B, N, V, X
 
 from ._extra_factors import (
-    NhcFactor,
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .utils import enu_frame, huber_noise, make_imu_params
+from .utils import cauchy_noise, enu_frame, huber_noise, make_imu_params
 
 
 def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
@@ -363,8 +362,12 @@ def tropo_correct(rows, rover_ecef, rb):
     return out
 
 
-def build_tc_graph(meas, imu, ant_ecef, cfg):
-    """Graph, initial values, ecef_T_nav and factor-index map (for FDE)."""
+def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
+    """Graph, initial values, ecef_T_nav and factor-index map."""
+    gnss_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
+        lambda s: huber_noise(s, cfg.huber))
+    dop_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
+        lambda s: huber_noise(s, cfg.huber_dop))
     rows, dop, tow, rb = meas["rows"], meas["dop"], meas["tow"], meas["rb"]
     R_enu2ecef, ecef_T_nav = enu_frame(rb)
     poses, vel, speed = initial_trajectory(ant_ecef, tow, R_enu2ecef, rb, cfg.lever)
@@ -399,18 +402,12 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
             pim.integrateMeasurement(acc[cut[k] - 1], gyr[cut[k] - 1], tow[k] - tprev)
         graph.add(gtsam.CombinedImuFactor(X(k - 1), V(k - 1), X(k), V(k), B(k - 1), B(k), pim))
 
-    if cfg.nhc_calib:
-        calib_noise = gtsam.noiseModel.Diagonal.Sigmas(
-            np.array((1e3, *cfg.nhc_sigmas)))
-        init.insert(MOUNT, np.zeros(3))
-        graph.add(gtsam.PriorFactorVector(MOUNT, np.zeros(3), gtsam.noiseModel.Diagonal.Sigmas(
-            np.array([0.01, 0.1, 0.1]))))
-        for k in range(n_ep):
-            graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
-                                           float(speed[k]), calib_noise))
-    else:
-        for k in range(n_ep):
-            graph.add(NhcFactor(X(k), V(k), omega[k], np.zeros(3), nhc_noise))
+    init.insert(MOUNT, gtsam.Rot3())
+    graph.add(gtsam.PriorFactorRot3(MOUNT, gtsam.Rot3(), gtsam.noiseModel.Diagonal.Sigmas(
+        np.array([0.01, 0.1, 0.1]))))
+    for k in range(n_ep):
+        graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
+                                 nhc_noise))
 
     n_zupt = 0
     if cfg.zupt:
@@ -440,12 +437,12 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
         idx["pr"].append(graph.size())
         graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
             X(k), r[PR_RR], r[PR_BR], r[PR_RT], r[PR_BT], sr, st, sbr, sbt, base,
-            lever, ecef_T_nav, huber_noise(cfg.sig_pr * w, cfg.huber)))
+            lever, ecef_T_nav, gnss_noise(cfg.sig_pr * w)))
         idx["cp"].append(graph.size())
         graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
             X(k), N(int(r[ARC_REF])), N(int(r[ARC_TGT])),
             r[CP_RR], r[CP_BR], r[CP_RT], r[CP_BT], sr, st, sbr, sbt, base,
-            lam, lever, ecef_T_nav, huber_noise(cfg.sig_cp * w, cfg.huber)))
+            lam, lever, ecef_T_nav, gnss_noise(cfg.sig_cp * w)))
 
     starts = np.searchsorted(dop[:, D_EPOCH].astype(int), np.arange(n_ep + 1))
     for k in range(n_ep):
@@ -467,7 +464,7 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
                 gtsam.Point3(*t[D_SATPOS]), gtsam.Point3(*t[D_SATVEL]),
                 gtsam.Point3(*ref[D_SATPOS]), gtsam.Point3(*ref[D_SATVEL]),
                 rr, lever, ecef_T_nav, gtsam.Point3(*omega[k]), 0.0, 0.0,
-                huber_noise(np.hypot(s_t, s_ref), cfg.huber_dop)))
+                dop_noise(np.hypot(s_t, s_ref))))
     idx = {key: np.array(val, dtype=np.int64) for key, val in idx.items()}
     idx["n_zupt"] = n_zupt
     return graph, init, ecef_T_nav, idx
@@ -494,41 +491,6 @@ def residuals(graph, values, idx):
                 out[j] = f.unwhitenedError(values)[0]
         return out
     return res(idx["pr"]), res(idx["cp"]), res(idx["dop"], dop=True)
-
-
-def _flag(r, thresh, epoch, alive, max_frac):
-    over = np.where(alive & (np.abs(r) > thresh))[0]
-    out = []
-    for k in np.unique(epoch[over]):
-        cand = over[epoch[over] == k]
-        cap = int(max_frac * np.sum(alive & (epoch == k)))
-        out.extend(cand[np.argsort(-np.abs(r[cand]))][:cap])
-    return np.array(out, dtype=np.int64)
-
-
-def fde(graph, values, idx, rows, cfg, solve_fn, log=print):
-    """Iterative post-fit exclusion: remove (null) DD/Doppler factors over thresholds."""
-    ep = {"pr": rows[:, EPOCH].astype(int), "cp": rows[:, EPOCH].astype(int),
-          "dop": idx["dop_k"]}
-    alive = {key: np.ones(len(idx[key]), bool) for key in ("pr", "cp", "dop")}
-    thresh = {"pr": cfg.fde_pr, "cp": cfg.fde_cp, "dop": cfg.fde_dop}
-    for it in range(cfg.fde_iters):
-        t0 = time.perf_counter()
-        r = dict(zip(("pr", "cp", "dop"), residuals(graph, values, idx)))
-        n_new = {}
-        for key in ("pr", "cp", "dop"):
-            bad = _flag(r[key], thresh[key], ep[key], alive[key], cfg.fde_max_frac)
-            for j in bad:
-                graph.remove(int(idx[key][j]))
-            alive[key][bad] = False
-            n_new[key] = len(bad)
-        if sum(n_new.values()) == 0:
-            log(f"FDE {it}: nothing over threshold")
-            break
-        values, dt, info = solve_fn(graph, values)
-        log(f"FDE {it}: removed PR {n_new['pr']} CP {n_new['cp']} Dop {n_new['dop']} "
-            f"(residuals {time.perf_counter() - t0 - dt:.1f}s, re-solve {dt:.2f}s {info})")
-    return values, alive["cp"]
 
 
 # ── Whole-run LM solver ───────────────────────────────────────────────
@@ -565,7 +527,12 @@ def solve(graph, init, backend="auto", max_iters=200):
         p = _lm_params(gtsam.LevenbergMarquardtParams(), max_iters)
         p.setOrderingType("METIS")
         p.setDiagonalDamping(True)
-        opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
-        v = gtsam.Values(opt.optimize())
+        try:
+            opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
+            v = gtsam.Values(opt.optimize())
+        except (IndexError, RuntimeError):
+            p.setOrderingType("COLAMD")
+            opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
+            v = gtsam.Values(opt.optimize())
         info = f"cpu iters={opt.iterations()}"
     return v, time.perf_counter() - t, info

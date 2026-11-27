@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .utils import (
+    CAUCHY_K,
     HUBER_K,
     IMU_ACCEL_BIAS_SIGMA,
     IMU_ACCEL_NOISE,
@@ -71,6 +72,7 @@ class BatchConfig:
     sig_pr: float = field(default_factory=lambda: env_float("BATCH_SIG_PR", 0.5))     # [m]
     sig_cp: float = field(default_factory=lambda: env_float("BATCH_SIG_CP", 0.01))    # [m]
     huber: float = field(default_factory=lambda: env_float("BATCH_HUBER", HUBER_K))
+    cauchy: float = field(default_factory=lambda: env_float("BATCH_CAUCHY", CAUCHY_K))
     sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
     sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
     dop_sigma0: float = field(default_factory=lambda: env_float("DOP_SIGMA0", 0.1))   # [m/s]
@@ -86,7 +88,6 @@ class BatchConfig:
     integ_cov: float = 1e-3
     gravity: float = field(default_factory=lambda: env_float("BATCH_GRAVITY", 9.81))
     nhc_sigmas: tuple = (_TC_DEFAULTS.nhc_sigma_lat, _TC_DEFAULTS.nhc_sigma_vert)
-    nhc_calib: int = field(default_factory=lambda: env_int("NHC_CALIB", 0))   # mount angle state
 
     # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)
     zupt: int = field(default_factory=lambda: env_int("ZUPT", 1))
@@ -96,13 +97,6 @@ class BatchConfig:
     zupt_vel_sigma: float = 0.1     # [m/s]
     zupt_rot_sigma: float = 0.01    # [rad]
     zupt_pos_sigma: float = 0.05    # [m]
-
-    # --- post-fit FDE on the float solution
-    fde_iters: int = field(default_factory=lambda: env_int("FDE_ITERS", 2))
-    fde_pr: float = field(default_factory=lambda: env_float("FDE_PR", 4.0))      # [m]
-    fde_cp: float = field(default_factory=lambda: env_float("FDE_CP", 0.5))      # [m]
-    fde_dop: float = field(default_factory=lambda: env_float("FDE_DOP", 2.0))    # [m/s]
-    fde_max_frac: float = 0.5        # at most this share of an epoch's rows per pass
 
     # --- ambiguity resolution
     ratio: float = field(default_factory=lambda: env_float("AR_RATIO", 3.0))

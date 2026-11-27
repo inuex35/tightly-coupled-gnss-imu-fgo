@@ -1,4 +1,4 @@
-"""Whole-run batch pipeline: GNSS-only batch -> TC float -> FDE -> AR -> TC fix."""
+"""Whole-run batch pipeline: GNSS-only batch -> TC float -> AR -> TC fix."""
 
 import time
 
@@ -48,17 +48,22 @@ def run_batch(meas, imu, cfg=None, log=print):
     log(f"GNSS-only batch: {len(acc)} integer relations, "
         f"{time.perf_counter() - t0:.1f}s")
 
-    # --- tightly coupled float.
+    # --- tightly coupled float: Huber initial convergence -> Cauchy polish.
     t0 = time.perf_counter()
     if cfg.tropo:
         rows = _graph.tropo_correct(rows_raw, out["gnss_fix"], rb)
     tc_meas = dict(meas, rows=rows)
-    graph, init, ecef_T_nav, idx = _graph.build_tc_graph(tc_meas, imu, out["gnss_fix"], cfg)
-    log(f"TC graph: {n_ep} keyframes, {graph.size()} factors, {init.size()} variables, "
-        f"ZUPT on {idx['n_zupt']} epochs ({time.perf_counter() - t0:.1f}s)")
-    flt, dt, info = solve(graph, init)
-    log(f"TC float: {dt:.2f}s {info}")
-    flt, keep_cp = _graph.fde(graph, flt, idx, rows, cfg, solve, log)
+    h_graph, init, ecef_T_nav, _ = _graph.build_tc_graph(
+        tc_meas, imu, out["gnss_fix"], cfg, use_cauchy=False)
+    log(f"TC graph: {n_ep} keyframes, {h_graph.size()} factors, {init.size()} variables, "
+        f"ZUPT on {_.get('n_zupt', 0)} epochs ({time.perf_counter() - t0:.1f}s)")
+    flt, dt, info = solve(h_graph, init)
+    log(f"TC float (Huber): {dt:.2f}s {info}")
+    graph, _, _, idx = _graph.build_tc_graph(
+        tc_meas, imu, out["gnss_fix"], cfg, use_cauchy=True)
+    flt, dt, info = solve(graph, flt)
+    log(f"TC float (Cauchy): {dt:.2f}s {info}")
+    keep_cp = np.ones(len(rows), dtype=bool)
     out["tc_float"] = _graph.antenna_ecef(flt, ecef_T_nav, n_ep, cfg.lever)
 
     # --- ambiguity resolution on the surviving carrier rows.
@@ -80,8 +85,7 @@ def run_batch(meas, imu, cfg=None, log=print):
                fix=fix_ok, fix_rejected=fix_rej, accepted=np.array(acc, np.int64).reshape(-1, 3),
                sources=np.array(sources, float).reshape(-1, 2), keep_cp=keep_cp, cp_res=cp_res,
                ratio_pass=np.isin(np.arange(n_ep), list(passed)))
-    if cfg.nhc_calib:
-        out["mount_deg"] = np.degrees(fix.atVector(_graph.MOUNT))
+    out["mount_deg"] = np.degrees(fix.atRot3(_graph.MOUNT).rpy())
     out["stats"] = dict(st, fix_rate=float(fix_ok.mean()), seconds=time.perf_counter() - t_all)
     log(f"FIX {100 * fix_ok.mean():.1f}% (rejected by residual {100 * fix_rej.mean():.1f}%), "
         f"total {out['stats']['seconds']:.1f}s")
