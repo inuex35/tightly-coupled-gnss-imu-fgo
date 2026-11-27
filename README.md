@@ -38,6 +38,8 @@ reproducible end to end — three full urban-Tokyo drives and three
 urban-Nagoya drives
 ([PPC-Dataset](https://github.com/taroz/PPC-Dataset)):
 
+### Sequential (`examples/run_imu_gnss_tc.py`)
+
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
 |-------------|-----------|---------|---------|---------|--------|--------|---------|
 | tokyo run1  | 11951 ep  |  0.96 m | 0.039 m | 0.09 m  | 78.1 % | 88.6 % | 13.91 m |
@@ -46,6 +48,19 @@ urban-Nagoya drives
 | nagoya run1 |  7651 ep  |  0.74 m | 0.122 m | 0.12 m  | 81.6 % | 88.6 % |  8.31 m |
 | nagoya run2 |  9451 ep  |  1.24 m | 0.232 m | 0.36 m  | 63.6 % | 59.6 % |  4.73 m |
 | nagoya run3 |  5201 ep  |  0.35 m | 0.127 m | 0.13 m  | 66.7 % | 88.1 % |  1.69 m |
+
+### Batch (`examples/run_batch_tc.py`)
+
+Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish, Partial AR + FFRT):
+
+| run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
+|-------------|-----------|---------|---------|---------|--------|--------|---------|
+| tokyo run1  | 11928 ep  |  0.22 m | 0.041 m | 0.09 m  | 62.0 % | 95.6 % |  1.82 m |
+| tokyo run2  |  9151 ep  |  0.24 m | 0.031 m | 0.06 m  | 66.2 % | 96.1 % |  1.99 m |
+| tokyo run3  | 15301 ep  |  0.14 m | 0.035 m | 0.07 m  | 72.1 % | 98.5 % |  1.83 m |
+| nagoya run1 |  7602 ep  |  0.69 m | 0.120 m | 0.12 m  | 69.8 % | 91.9 % |  5.68 m |
+| nagoya run2 |  9451 ep  |  1.16 m | 0.212 m | 0.43 m  | 53.1 % | 65.6 % |  5.05 m |
+| nagoya run3 |  5201 ep  |  0.21 m | 0.117 m | 0.17 m  | 54.0 % | 97.6 % |  1.35 m |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
