@@ -10,9 +10,12 @@ from cssrlib.core.mlambda import mlambda
 from gtsam.symbol_shorthand import N
 from scipy.linalg import cho_factor, cho_solve
 
+from .ar import AmbiguityResolver, _FFRT_MAX_RATIO, _FFRT_MIN_RATIO
 from .batch_graph import ARC_REF, ARC_TGT, EPOCH, SATNO_TGT
 
 _MIN_PARALLEL = 256     # below this, pool start-up costs more than it saves
+_FFRT = AmbiguityResolver(
+    thresar=0.001, thresar_min=_FFRT_MIN_RATIO, thresar_max=_FFRT_MAX_RATIO)
 
 
 def _solve_one(a, Q):
@@ -219,7 +222,27 @@ def dd_problems(groups, values, cov):
     return probs
 
 
-def resolve(groups, values, cov, ratio_min=3.0, workers=0):
+def _solve_partial_one(a, Q, min_pairs=4):
+    """Full LAMBDA, falling back to Partial AR with dimension-adaptive FFRT."""
+    keep = np.arange(len(a))
+    while len(keep) >= min_pairs:
+        best, _, s, info = _solve_one(a[keep], Q[np.ix_(keep, keep)])
+        if info == 0:
+            ratio = float(s[1] / max(s[0], 1e-12))
+            if ratio >= _FFRT.ratio_threshold(len(keep)):
+                return keep, best, ratio
+        if len(keep) == min_pairs:
+            break
+        drop = int(np.argmax(np.diag(Q[np.ix_(keep, keep)])))
+        keep = np.delete(keep, drop)
+    return None, None, 0.0
+
+
+def _solve_partial_chunk(chunk):
+    return [_solve_partial_one(a, Q, min_pairs) for a, Q, min_pairs in chunk]
+
+
+def resolve(groups, values, cov, ratio_min=None, workers=0, min_pairs=4):
     """Returns (accepted relations [(r, t, n)], sources [(epoch, ratio)], passed, stats)."""
     probs = dd_problems(groups, values, cov)
     stats = {"problems": len(probs), "new": 0, "same": 0, "conflict": 0}
@@ -227,19 +250,49 @@ def resolve(groups, values, cov, ratio_min=3.0, workers=0):
         return [], [], set(), stats
     best, _, s, info = lambda_batch([p[2] for p in probs], [p[3] for p in probs], workers)
     ratio = np.where(info == 0, s[:, 1] / np.maximum(s[:, 0], 1e-12), 0.0)
-    cand = [(ratio[i], p[0], p[1], best[i]) for i, p in enumerate(probs)
-            if ratio[i] >= ratio_min]
+
+    cand = []
+    retry = []
+    for i, p in enumerate(probs):
+        nb = len(p[1])
+        thresh = ratio_min if ratio_min is not None else _FFRT.ratio_threshold(nb)
+        if ratio[i] >= thresh:
+            cand.append((float(ratio[i]), p[0], p[1], best[i]))
+        elif nb > min_pairs:
+            retry.append((i, p[2], p[3]))
+
+    if retry:
+        tasks = [(a, Q, min_pairs) for _, a, Q in retry]
+        w = workers or os.cpu_count() or 1
+        if w <= 1 or len(tasks) < _MIN_PARALLEL:
+            par_out = _solve_partial_chunk(tasks)
+        else:
+            size = max(1, -(-len(tasks) // (4 * w)))
+            chunks = [tasks[j:j + size] for j in range(0, len(tasks), size)]
+            with ProcessPoolExecutor(max_workers=w) as ex:
+                par_out = [r for part in ex.map(_solve_partial_chunk, chunks) for r in part]
+        for (i, _, _), (keep, p_best, p_rat) in zip(retry, par_out):
+            if keep is not None:
+                p = probs[i]
+                cand.append((p_rat, p[0], p[1][keep], p_best))
+
     cand.sort(key=lambda c: -c[0])
     uf, accepted, sources, passed = ArcUnion(), [], [], set()
     for rat, k, pairs, ints in cand:
-        res = [uf.add(int(r), int(t), int(n)) for (r, t), n in zip(pairs, ints)]
+        trial = ArcUnion()
+        trial.parent = uf.parent.copy()
+        trial.off = uf.off.copy()
+        res = [trial.add(int(r), int(t), int(n)) for (r, t), n in zip(pairs, ints)]
+        if "conflict" in res:
+            stats["conflict"] += res.count("conflict")
+            continue
+        uf = trial
         for (r, t), n, st in zip(pairs, ints, res):
             stats[st] += 1
             if st == "new":
                 accepted.append((int(r), int(t), int(n)))
                 sources.append((k, float(rat)))
-        if "conflict" not in res:
-            passed.add(k)
+        passed.add(k)
     stats["ratio_pass"] = len(cand)
     return accepted, sources, passed, stats
 

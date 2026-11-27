@@ -15,7 +15,16 @@ from ._extra_factors import (
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .utils import cauchy_noise, enu_frame, huber_noise, make_imu_params
+from .config import _TC_DEFAULTS
+from .factors import _is_bds_geo, _snr_var_scale
+from .slip import _DOP_SLIP_MAX_DT_S, _DOP_SLIP_THRES_CYC
+from .utils import (
+    auto_detect_signals,
+    cauchy_noise,
+    enu_frame,
+    huber_noise,
+    make_imu_params,
+)
 
 
 def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
@@ -53,7 +62,7 @@ def sat_points(r):
 
 # ── Batch RINEX front end ─────────────────────────────────────────────
 
-SYSTEMS = (uGNSS.GPS, uGNSS.GAL, uGNSS.QZS)
+SYSTEMS = (uGNSS.GPS, uGNSS.GAL, uGNSS.QZS, uGNSS.BDS)
 SIGS_ROVER = ["GC1C", "GC2W", "GL1C", "GL2W", "GS1C", "GS2W", "GD1C", "GD2W",
               "EC1C", "EC5Q", "EL1C", "EL5Q", "ES1C", "ES5Q", "ED1C", "ED5Q",
               "JC1C", "JC2L", "JL1C", "JL2L", "JS1C", "JS2L", "JD1C", "JD2L"]
@@ -86,16 +95,40 @@ def _doppler_rows(out, k, obs, rs, vs, pos0, up, elmin):
 
 
 def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
-            elmin_deg=15.0, gf_jump=0.05, sigs_rover=SIGS_ROVER, sigs_base=SIGS_BASE,
-            log=print):
+            elmin_deg=15.0, gf_jump=_TC_DEFAULTS.thres_slip,
+            sigs_rover=None, sigs_base=None, log=print):
     """Decode the RINEX files and build the batch measurement arrays."""
+    nav_nf = 3
     dec, decb = rn.rnxdec(), rn.rnxdec()
-    dec.setSignals([rSigRnx(s) for s in sigs_rover])
-    decb.setSignals([rSigRnx(s) for s in sigs_base])
-    nav = gn.Nav()
+    nav = gn.Nav(nf=nav_nf)
     dec.decode_nav(nav_file, nav)
     dec.decode_obsh(rover_obs)
     decb.decode_obsh(base_obs)
+    if sigs_rover is not None and sigs_base is not None:
+        dec.setSignals([rSigRnx(s) for s in sigs_rover])
+        decb.setSignals([rSigRnx(s) for s in sigs_base])
+    else:
+        sigs, sigsb = auto_detect_signals(
+            dec.sig_map, decb.sig_map, max_freq=nav_nf,
+            required=(uTYP.C, uTYP.L, uTYP.S),
+            systems=list(SYSTEMS), strict_freq=False)
+        rov_picks_by_sys = {}
+        for s in sigs:
+            if s.typ != uTYP.L:
+                continue
+            band = int(s.sig) // 100
+            bands = rov_picks_by_sys.setdefault(s.sys, [])
+            if band not in bands:
+                bands.append(band)
+        for sys_id, bands in rov_picks_by_sys.items():
+            rov_typ_d = {int(s.sig) // 100: s
+                         for s in dec.sig_map.get(sys_id, {}).values()
+                         if s.typ == uTYP.D}
+            for band in bands:
+                if band in rov_typ_d:
+                    sigs.append(rov_typ_d[band])
+        dec.setSignals(sigs)
+        decb.setSignals(sigsb)
     rb = np.asarray(base_ecef if base_ecef is not None else decb.pos, float)
     nav.rb = list(rb)
     nav.elmin = np.deg2rad(elmin_deg)
@@ -105,7 +138,7 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
     up = _up(pos0)
 
     rows, dop, tow = [], [], []
-    arc_of, last_used, last_gf = {}, {}, {}
+    arc_of, last_used, last_gf, last_dop = {}, {}, {}, {}
     last_tb, n_arc = None, 0
     t0 = time.perf_counter()
     for ne, (obs, obsb, _) in enumerate(rn.sync_obs_hold(dec, decb, maxage=nav.maxtdiff)):
@@ -132,20 +165,49 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
         for kk, s in enumerate(dd.sat):
             s, iu = int(s), dd.iu[kk]
             sys_ = sat2prn(s)[0]
-            if sys_ not in SYSTEMS or obs.L[iu, 0] == 0.0 or obs.L[iu, 1] == 0.0:
+            if sys_ not in SYSTEMS:
                 continue
-            gf = (obs.L[iu, 0] * obs.sig[sys_][uTYP.L][0].wavelength()
-                  - obs.L[iu, 1] * obs.sig[sys_][uTYP.L][1].wavelength())
-            prev = last_gf.get(s)
-            if prev is not None and prev[0] == k - 1 and abs(gf - prev[1]) > gf_jump:
-                slip_gf.add(s)
-            last_gf[s] = (k, gf)
+            lams_s = [sig.wavelength() for sig in obs.sig[sys_][uTYP.L]]
+            n_f = min(nav.nf, len(lams_s), obs.L.shape[1])
+            for fa in range(n_f):
+                La = float(obs.L[iu, fa])
+                if La == 0.0 or lams_s[fa] <= 0.0:
+                    continue
+                for fb in range(fa + 1, n_f):
+                    Lb = float(obs.L[iu, fb])
+                    if Lb == 0.0 or lams_s[fb] <= 0.0:
+                        continue
+                    gf = La * lams_s[fa] - Lb * lams_s[fb]
+                    gkey = (s, fa, fb)
+                    prev = last_gf.get(gkey)
+                    if prev is not None and prev[0] == k - 1 and abs(gf - prev[1]) > gf_jump:
+                        slip_gf.add(s)
+                    last_gf[gkey] = (k, gf)
+
+        slip_dop = set()
+        if hasattr(obs, "D"):
+            tow_k = tow[-1]
+            for kk, s in enumerate(dd.sat):
+                s, iu = int(s), dd.iu[kk]
+                for f in range(min(nav.nf, obs.L.shape[1], obs.D.shape[1])):
+                    L_val, D_val = float(obs.L[iu, f]), float(obs.D[iu, f])
+                    if L_val == 0.0 or D_val == 0.0:
+                        continue
+                    key = (s, f)
+                    if key in last_dop:
+                        pL, pD, ptow = last_dop[key]
+                        dt = tow_k - ptow
+                        if 0.0 < dt <= _DOP_SLIP_MAX_DT_S:
+                            if abs((L_val - pL) + 0.5 * (D_val + pD) * dt) > _DOP_SLIP_THRES_CYC:
+                                slip_dop.add(key)
+                    last_dop[key] = (L_val, D_val, tow_k)
 
         def arc(s, f, iu, ir):
             nonlocal n_arc
             key = (s, f)
             slip = (last_used.get(key) != k - 1 or (obs.lli[iu, f] & 1)
-                    or (fresh_base and (obsb.lli[ir, f] & 1)) or s in slip_gf)
+                    or (fresh_base and (obsb.lli[ir, f] & 1))
+                    or s in slip_gf or key in slip_dop)
             if key not in arc_of or slip:
                 arc_of[key], n_arc = n_arc, n_arc + 1
             return arc_of[key]
@@ -164,7 +226,8 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
                                      obs.L[dd.iu[kk], f], obsb.L[dd.ir[kk], f])]
                 if len(ok) < 2:
                     continue
-                ridx = max(ok, key=lambda kk: dd.el[kk])
+                pool = [kk for kk in ok if not (sys_ == uGNSS.BDS and _is_bds_geo(int(dd.sat[kk])))] or ok
+                ridx = max(pool, key=lambda kk: dd.el[kk])
                 sr, iur, irr = int(dd.sat[ridx]), dd.iu[ridx], dd.ir[ridx]
                 a_ref = arc(sr, f, iur, irr)
                 used_now.append((sr, f))
@@ -174,7 +237,14 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
                     st, iut, irt = int(dd.sat[kk]), dd.iu[kk], dd.ir[kk]
                     a_tgt = arc(st, f, iut, irt)
                     used_now.append((st, f))
-                    w = 1.0 / max(np.sin(min(dd.el[kk], dd.el[ridx])), 0.1)
+                    has_sr, has_sb = hasattr(obs, "S"), hasattr(obsb, "S")
+                    snrs = (
+                        obs.S[iur, f] if has_sr else 0.0,
+                        obsb.S[irr, f] if has_sb else 0.0,
+                        obs.S[iut, f] if has_sr else 0.0,
+                        obsb.S[irt, f] if has_sb else 0.0,
+                    )
+                    w = float(np.sqrt(sum(2.0 * _snr_var_scale(s) for s in snrs)))
                     rows.append((
                         k, f, lam, w, a_ref, a_tgt,
                         obs.P[iur, f], obsb.P[irr, f], obs.P[iut, f], obsb.P[irt, f],

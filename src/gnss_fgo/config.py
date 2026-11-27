@@ -69,8 +69,8 @@ class BatchConfig:
     max_iters: int = field(default_factory=lambda: env_int("BATCH_MAX_ITERS", 200))
 
     # --- GNSS measurement model (defaults shared with TcConfig)
-    sig_pr: float = field(default_factory=lambda: env_float("BATCH_SIG_PR", 0.5))     # [m]
-    sig_cp: float = field(default_factory=lambda: env_float("BATCH_SIG_CP", 0.01))    # [m]
+    sig_pr: float = field(default_factory=lambda: env_float("BATCH_SIG_PR", _TC_DEFAULTS.err_a * _TC_DEFAULTS.err_eratio_pr))     # [m]
+    sig_cp: float = field(default_factory=lambda: env_float("BATCH_SIG_CP", _TC_DEFAULTS.err_a))    # [m]
     huber: float = field(default_factory=lambda: env_float("BATCH_HUBER", HUBER_K))
     cauchy: float = field(default_factory=lambda: env_float("BATCH_CAUCHY", CAUCHY_K))
     sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
@@ -99,7 +99,8 @@ class BatchConfig:
     zupt_pos_sigma: float = 0.05    # [m]
 
     # --- ambiguity resolution
-    ratio: float = field(default_factory=lambda: env_float("AR_RATIO", 3.0))
+    ratio: float | None = field(
+        default_factory=lambda: env_float("AR_RATIO", 0.0) or None)  # None = FFRT
     sig_fix: float = 1e-3            # [cyc] integer DD constraint
     lambda_workers: int = field(
         default_factory=lambda: env_int("AR_LAMBDA_WORKERS", 0))   # 0 = all cores, 1 = serial
