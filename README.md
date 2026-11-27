@@ -11,6 +11,8 @@ continuous integer ambiguity resolution (LAMBDA + partial AR), and
 canyons, with IMU + single-differenced Doppler bridging NLOS storms
 and tunnels.
 
+![overview](docs/overview.png)
+
 ## What's inside
 
 - **RTK in the graph** — DD pseudorange + DD carrier-phase factors with
