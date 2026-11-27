@@ -51,6 +51,10 @@ urban-Nagoya drives
 | nagoya run2 |  9451 ep  |  1.24 m | 0.232 m | 0.36 m  | 63.6 % | 59.6 % |  4.73 m |
 | nagoya run3 |  5201 ep  |  0.35 m | 0.127 m | 0.13 m  | 66.7 % | 88.1 % |  1.69 m |
 
+![tokyo_defaults](docs/tokyo_defaults.png)
+
+![nagoya_defaults](docs/nagoya_defaults.png)
+
 ### Batch (`examples/run_batch_tc.py`)
 
 Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish, Partial AR + FFRT):
@@ -63,11 +67,6 @@ Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish
 | nagoya run1 |  7602 ep  |  0.69 m | 0.120 m | 0.12 m  | 69.8 % | 91.9 % |  5.68 m |
 | nagoya run2 |  9451 ep  |  1.16 m | 0.212 m | 0.43 m  | 53.1 % | 65.6 % |  5.05 m |
 | nagoya run3 |  5201 ep  |  0.21 m | 0.117 m | 0.17 m  | 54.0 % | 97.6 % |  1.35 m |
-
-
-![tokyo_defaults](docs/tokyo_defaults.png)
-
-![nagoya_defaults](docs/nagoya_defaults.png)
 
 ## Quick start
 

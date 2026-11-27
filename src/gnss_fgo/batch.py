@@ -71,7 +71,8 @@ def run_batch(meas, imu, cfg=None, log=print):
     groups = _ar.group_epochs(rows[keep_cp])
     cov = _ar.arc_covariances(graph, flt, groups, n_ep, _graph.TC_DIMS)
     acc, sources, passed, st = _ar.resolve(groups, flt, cov, cfg.ratio, cfg.lambda_workers)
-    log(f"AR: {st['ratio_pass']}/{n_ep} epochs pass ratio >= {cfg.ratio}, "
+    ratio_label = f"ratio >= {cfg.ratio}" if cfg.ratio is not None else "FFRT"
+    log(f"AR: {st['ratio_pass']}/{n_ep} epochs pass {ratio_label}, "
         f"{len(acc)} integer relations, {st['conflict']} conflicts "
         f"({time.perf_counter() - t0:.1f}s)")
 
