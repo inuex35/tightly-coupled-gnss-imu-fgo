@@ -8,7 +8,7 @@ from ._extra_factors import (
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .utils import get_wavelengths, huber_noise
+from .utils import cauchy_noise, get_wavelengths
 
 # ── Ambiguity seeding ─────────────────────────────────────────────────
 
@@ -148,7 +148,7 @@ def _build_cp_pair(tc, graph, values, obs, obsb, iu, ir_map, key_pose, lever,
         key_pose, key_n_ref, key_n_j,
         cp_ref_r, cp_ref_b, cp_j_r, cp_j_b,
         ref_pt, j_pt, ref_base_pt, j_base_pt, tc.base_pt, lam,
-        lever, tc.ecef_T_nav, huber_noise(sigma)))
+        lever, tc.ecef_T_nav, cauchy_noise(sigma)))
     return 1
 
 
@@ -208,7 +208,7 @@ def build_dd_factors(tc, graph, values, obs, obsb, obs_sd,
                 sigma_cp = dd_obs_sigma(tc, False, snrs, dt_s)
                 graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
                     key_pose, *pr_obs, *sat_pts, tc.base_pt, lever,
-                    tc.ecef_T_nav, huber_noise(sigma_pr)))
+                    tc.ecef_T_nav, cauchy_noise(sigma_pr)))
                 n_dd += 1
                 if obs_sd.L[ref_idx, f] == 0 or obs_sd.L[j_idx, f] == 0:
                     continue
@@ -289,7 +289,7 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
             np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float),
             rr, lever, tc.ecef_T_nav, omega,
             0.0, 0.0,
-            huber_noise(np.hypot(sig, sigma_ref))))
+            cauchy_noise(np.hypot(sig, sigma_ref))))
         n += 1
     info['doppler_sd_n'] = n
     info['doppler_sd_ref'] = int(ref[0])

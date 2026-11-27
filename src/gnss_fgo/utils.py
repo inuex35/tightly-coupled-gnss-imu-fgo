@@ -112,15 +112,26 @@ def get_wavelengths(obs_sd, sat: int, glo_ch: dict | None = None) -> List[float]
 # ── Pipeline helpers ──────────────────────────────────────────────────
 
 HUBER_K = 1.345  # 95% asymptotic relative efficiency under Gaussian noise
+CAUCHY_K = 2.385  # 95% asymptotic relative efficiency under Gaussian noise (Holland & Welsch 1977)
 
 
-def huber_noise(sigma: float, k: float = HUBER_K):
-    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
+def _robust_noise(sigma: float, k: float, estimator_cls):
+    """Build 1-D Gaussian or GTSAM M-estimator robust noise model."""
     base = gtsam.noiseModel.Isotropic.Sigma(1, float(sigma))
     if float(k) <= 0.0:
         return base
     return gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(float(k)), base)
+        estimator_cls.Create(float(k)), base)
+
+
+def huber_noise(sigma: float, k: float = HUBER_K):
+    """Build 1-D Gaussian or GTSAM Huber robust noise model."""
+    return _robust_noise(sigma, k, gtsam.noiseModel.mEstimator.Huber)
+
+
+def cauchy_noise(sigma: float, k: float = CAUCHY_K):
+    """Build 1-D Gaussian or GTSAM Cauchy robust noise model."""
+    return _robust_noise(sigma, k, gtsam.noiseModel.mEstimator.Cauchy)
 
 
 def sorted_amb_items(amb_dict):
