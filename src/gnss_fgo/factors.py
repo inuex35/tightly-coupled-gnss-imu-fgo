@@ -314,8 +314,7 @@ def add_nhc_factor(tc, graph, key_idx, gyro_mean=None):
         omega = np.zeros(3)
     noise = gtsam.noiseModel.Diagonal.Sigmas(
         np.array([sig_lat, sig_vert]))
-    m_idx = key_idx if getattr(tc.cfg, 'nhc_calib_rw', 0.0) > 0 else 0
     graph.add(NhcFactorCalib(
-        tc.Pose(key_idx), tc.Vel(key_idx), tc.Mount(m_idx), omega,
+        tc.Pose(key_idx), tc.Vel(key_idx), tc.Mount(key_idx), omega,
         np.asarray(lever, dtype=float), noise))
     return True

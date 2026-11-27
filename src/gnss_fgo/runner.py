@@ -33,13 +33,9 @@ def update_smoother(tc, graph, values, key_idx):
         ts[tc.Pose(key_idx - 1)] = t
         ts[tc.Vel(key_idx - 1)] = t
         ts[tc.Bias(key_idx - 1)] = t
+        ts[tc.Mount(key_idx - 1)] = t
     for k in values.keys():
         ts[k] = t
-    if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0:
-        if key_idx > 0:
-            ts[tc.Mount(key_idx - 1)] = t
-    else:
-        ts[tc.Mount(0)] = t
     tc.isam2.update(graph, values, ts)
 
 
@@ -70,11 +66,10 @@ def _solve_isam2(tc, graph, values, key_idx, R_enu2ecef, info):
         bcov = np.diag(tc.isam2.marginalCovariance(tc.Bias(key_idx)))
         info['bias_acc_std'] = np.sqrt(np.maximum(bcov[:3], 0.0))
         info['bias_gyro_std'] = np.sqrt(np.maximum(bcov[3:], 0.0))
-        m_idx = key_idx if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0 else 0
-        if new_est.exists(tc.Mount(m_idx)):
+        if new_est.exists(tc.Mount(key_idx)):
             info['mount_rpy_deg'] = np.rad2deg(
-                new_est.atRot3(tc.Mount(m_idx)).rpy())
-            mcov = np.diag(tc.isam2.marginalCovariance(tc.Mount(m_idx)))
+                new_est.atRot3(tc.Mount(key_idx)).rpy())
+            mcov = np.diag(tc.isam2.marginalCovariance(tc.Mount(key_idx)))
             info['mount_std_deg'] = np.rad2deg(
                 np.sqrt(np.maximum(mcov, 0.0)))
     except RuntimeError:
@@ -195,13 +190,12 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
             tc.Pose(key_idx - 1), tc.Vel(key_idx - 1),
             tc.Pose(key_idx), tc.Vel(key_idx),
             tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
-        if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0:
-            mount_prev = estimate.atRot3(tc.Mount(key_idx - 1))
-            values.insert(tc.Mount(key_idx), mount_prev)
-            rw = float(tc.cfg.nhc_calib_rw)
-            graph.add(gtsam.BetweenFactorRot3(
-                tc.Mount(key_idx - 1), tc.Mount(key_idx), gtsam.Rot3(),
-                gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-6, rw, rw]))))
+        mount_prev = estimate.atRot3(tc.Mount(key_idx - 1))
+        values.insert(tc.Mount(key_idx), mount_prev)
+        rw = float(tc.cfg.nhc_calib_rw)
+        graph.add(gtsam.BetweenFactorRot3(
+            tc.Mount(key_idx - 1), tc.Mount(key_idx), gtsam.Rot3(),
+            gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-6, rw, rw]))))
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
