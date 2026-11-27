@@ -1,4 +1,4 @@
-"""Batch graph construction, RINEX frontend, FDE, and whole-run LM solver."""
+"""Batch graph construction, RINEX frontend, and whole-run LM solver."""
 
 import time
 
@@ -12,11 +12,19 @@ from cssrlib.rtk import rtkpos
 from gtsam.symbol_shorthand import B, N, V, X
 
 from ._extra_factors import (
-    NhcFactor,
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .utils import enu_frame, huber_noise, make_imu_params
+from .config import _TC_DEFAULTS
+from .factors import _is_bds_geo, _snr_var_scale
+from .slip import _DOP_SLIP_MAX_DT_S, _DOP_SLIP_THRES_CYC
+from .utils import (
+    auto_detect_signals,
+    cauchy_noise,
+    enu_frame,
+    huber_noise,
+    make_imu_params,
+)
 
 
 def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
@@ -54,7 +62,7 @@ def sat_points(r):
 
 # ── Batch RINEX front end ─────────────────────────────────────────────
 
-SYSTEMS = (uGNSS.GPS, uGNSS.GAL, uGNSS.QZS)
+SYSTEMS = (uGNSS.GPS, uGNSS.GAL, uGNSS.QZS, uGNSS.BDS)
 SIGS_ROVER = ["GC1C", "GC2W", "GL1C", "GL2W", "GS1C", "GS2W", "GD1C", "GD2W",
               "EC1C", "EC5Q", "EL1C", "EL5Q", "ES1C", "ES5Q", "ED1C", "ED5Q",
               "JC1C", "JC2L", "JL1C", "JL2L", "JS1C", "JS2L", "JD1C", "JD2L"]
@@ -87,16 +95,40 @@ def _doppler_rows(out, k, obs, rs, vs, pos0, up, elmin):
 
 
 def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
-            elmin_deg=15.0, gf_jump=0.05, sigs_rover=SIGS_ROVER, sigs_base=SIGS_BASE,
-            log=print):
+            elmin_deg=15.0, gf_jump=_TC_DEFAULTS.thres_slip,
+            sigs_rover=None, sigs_base=None, log=print):
     """Decode the RINEX files and build the batch measurement arrays."""
+    nav_nf = 3
     dec, decb = rn.rnxdec(), rn.rnxdec()
-    dec.setSignals([rSigRnx(s) for s in sigs_rover])
-    decb.setSignals([rSigRnx(s) for s in sigs_base])
-    nav = gn.Nav()
+    nav = gn.Nav(nf=nav_nf)
     dec.decode_nav(nav_file, nav)
     dec.decode_obsh(rover_obs)
     decb.decode_obsh(base_obs)
+    if sigs_rover is not None and sigs_base is not None:
+        dec.setSignals([rSigRnx(s) for s in sigs_rover])
+        decb.setSignals([rSigRnx(s) for s in sigs_base])
+    else:
+        sigs, sigsb = auto_detect_signals(
+            dec.sig_map, decb.sig_map, max_freq=nav_nf,
+            required=(uTYP.C, uTYP.L, uTYP.S),
+            systems=list(SYSTEMS), strict_freq=False)
+        rov_picks_by_sys = {}
+        for s in sigs:
+            if s.typ != uTYP.L:
+                continue
+            band = int(s.sig) // 100
+            bands = rov_picks_by_sys.setdefault(s.sys, [])
+            if band not in bands:
+                bands.append(band)
+        for sys_id, bands in rov_picks_by_sys.items():
+            rov_typ_d = {int(s.sig) // 100: s
+                         for s in dec.sig_map.get(sys_id, {}).values()
+                         if s.typ == uTYP.D}
+            for band in bands:
+                if band in rov_typ_d:
+                    sigs.append(rov_typ_d[band])
+        dec.setSignals(sigs)
+        decb.setSignals(sigsb)
     rb = np.asarray(base_ecef if base_ecef is not None else decb.pos, float)
     nav.rb = list(rb)
     nav.elmin = np.deg2rad(elmin_deg)
@@ -106,7 +138,7 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
     up = _up(pos0)
 
     rows, dop, tow = [], [], []
-    arc_of, last_used, last_gf = {}, {}, {}
+    arc_of, last_used, last_gf, last_dop = {}, {}, {}, {}
     last_tb, n_arc = None, 0
     t0 = time.perf_counter()
     for ne, (obs, obsb, _) in enumerate(rn.sync_obs_hold(dec, decb, maxage=nav.maxtdiff)):
@@ -133,20 +165,49 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
         for kk, s in enumerate(dd.sat):
             s, iu = int(s), dd.iu[kk]
             sys_ = sat2prn(s)[0]
-            if sys_ not in SYSTEMS or obs.L[iu, 0] == 0.0 or obs.L[iu, 1] == 0.0:
+            if sys_ not in SYSTEMS:
                 continue
-            gf = (obs.L[iu, 0] * obs.sig[sys_][uTYP.L][0].wavelength()
-                  - obs.L[iu, 1] * obs.sig[sys_][uTYP.L][1].wavelength())
-            prev = last_gf.get(s)
-            if prev is not None and prev[0] == k - 1 and abs(gf - prev[1]) > gf_jump:
-                slip_gf.add(s)
-            last_gf[s] = (k, gf)
+            lams_s = [sig.wavelength() for sig in obs.sig[sys_][uTYP.L]]
+            n_f = min(nav.nf, len(lams_s), obs.L.shape[1])
+            for fa in range(n_f):
+                La = float(obs.L[iu, fa])
+                if La == 0.0 or lams_s[fa] <= 0.0:
+                    continue
+                for fb in range(fa + 1, n_f):
+                    Lb = float(obs.L[iu, fb])
+                    if Lb == 0.0 or lams_s[fb] <= 0.0:
+                        continue
+                    gf = La * lams_s[fa] - Lb * lams_s[fb]
+                    gkey = (s, fa, fb)
+                    prev = last_gf.get(gkey)
+                    if prev is not None and prev[0] == k - 1 and abs(gf - prev[1]) > gf_jump:
+                        slip_gf.add(s)
+                    last_gf[gkey] = (k, gf)
+
+        slip_dop = set()
+        if hasattr(obs, "D"):
+            tow_k = tow[-1]
+            for kk, s in enumerate(dd.sat):
+                s, iu = int(s), dd.iu[kk]
+                for f in range(min(nav.nf, obs.L.shape[1], obs.D.shape[1])):
+                    L_val, D_val = float(obs.L[iu, f]), float(obs.D[iu, f])
+                    if L_val == 0.0 or D_val == 0.0:
+                        continue
+                    key = (s, f)
+                    if key in last_dop:
+                        pL, pD, ptow = last_dop[key]
+                        dt = tow_k - ptow
+                        if 0.0 < dt <= _DOP_SLIP_MAX_DT_S:
+                            if abs((L_val - pL) + 0.5 * (D_val + pD) * dt) > _DOP_SLIP_THRES_CYC:
+                                slip_dop.add(key)
+                    last_dop[key] = (L_val, D_val, tow_k)
 
         def arc(s, f, iu, ir):
             nonlocal n_arc
             key = (s, f)
             slip = (last_used.get(key) != k - 1 or (obs.lli[iu, f] & 1)
-                    or (fresh_base and (obsb.lli[ir, f] & 1)) or s in slip_gf)
+                    or (fresh_base and (obsb.lli[ir, f] & 1))
+                    or s in slip_gf or key in slip_dop)
             if key not in arc_of or slip:
                 arc_of[key], n_arc = n_arc, n_arc + 1
             return arc_of[key]
@@ -165,7 +226,8 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
                                      obs.L[dd.iu[kk], f], obsb.L[dd.ir[kk], f])]
                 if len(ok) < 2:
                     continue
-                ridx = max(ok, key=lambda kk: dd.el[kk])
+                pool = [kk for kk in ok if not (sys_ == uGNSS.BDS and _is_bds_geo(int(dd.sat[kk])))] or ok
+                ridx = max(pool, key=lambda kk: dd.el[kk])
                 sr, iur, irr = int(dd.sat[ridx]), dd.iu[ridx], dd.ir[ridx]
                 a_ref = arc(sr, f, iur, irr)
                 used_now.append((sr, f))
@@ -175,7 +237,14 @@ def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
                     st, iut, irt = int(dd.sat[kk]), dd.iu[kk], dd.ir[kk]
                     a_tgt = arc(st, f, iut, irt)
                     used_now.append((st, f))
-                    w = 1.0 / max(np.sin(min(dd.el[kk], dd.el[ridx])), 0.1)
+                    has_sr, has_sb = hasattr(obs, "S"), hasattr(obsb, "S")
+                    snrs = (
+                        obs.S[iur, f] if has_sr else 0.0,
+                        obsb.S[irr, f] if has_sb else 0.0,
+                        obs.S[iut, f] if has_sr else 0.0,
+                        obsb.S[irt, f] if has_sb else 0.0,
+                    )
+                    w = float(np.sqrt(sum(2.0 * _snr_var_scale(s) for s in snrs)))
                     rows.append((
                         k, f, lam, w, a_ref, a_tgt,
                         obs.P[iur, f], obsb.P[irr, f], obs.P[iut, f], obsb.P[irt, f],
@@ -363,8 +432,12 @@ def tropo_correct(rows, rover_ecef, rb):
     return out
 
 
-def build_tc_graph(meas, imu, ant_ecef, cfg):
-    """Graph, initial values, ecef_T_nav and factor-index map (for FDE)."""
+def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
+    """Graph, initial values, ecef_T_nav and factor-index map."""
+    gnss_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
+        lambda s: huber_noise(s, cfg.huber))
+    dop_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
+        lambda s: huber_noise(s, cfg.huber_dop))
     rows, dop, tow, rb = meas["rows"], meas["dop"], meas["tow"], meas["rb"]
     R_enu2ecef, ecef_T_nav = enu_frame(rb)
     poses, vel, speed = initial_trajectory(ant_ecef, tow, R_enu2ecef, rb, cfg.lever)
@@ -399,18 +472,12 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
             pim.integrateMeasurement(acc[cut[k] - 1], gyr[cut[k] - 1], tow[k] - tprev)
         graph.add(gtsam.CombinedImuFactor(X(k - 1), V(k - 1), X(k), V(k), B(k - 1), B(k), pim))
 
-    if cfg.nhc_calib:
-        calib_noise = gtsam.noiseModel.Diagonal.Sigmas(
-            np.array((1e3, *cfg.nhc_sigmas)))
-        init.insert(MOUNT, np.zeros(3))
-        graph.add(gtsam.PriorFactorVector(MOUNT, np.zeros(3), gtsam.noiseModel.Diagonal.Sigmas(
-            np.array([0.01, 0.1, 0.1]))))
-        for k in range(n_ep):
-            graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
-                                           float(speed[k]), calib_noise))
-    else:
-        for k in range(n_ep):
-            graph.add(NhcFactor(X(k), V(k), omega[k], np.zeros(3), nhc_noise))
+    init.insert(MOUNT, gtsam.Rot3())
+    graph.add(gtsam.PriorFactorRot3(MOUNT, gtsam.Rot3(), gtsam.noiseModel.Diagonal.Sigmas(
+        np.array([0.01, 0.1, 0.1]))))
+    for k in range(n_ep):
+        graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
+                                 nhc_noise))
 
     n_zupt = 0
     if cfg.zupt:
@@ -440,12 +507,12 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
         idx["pr"].append(graph.size())
         graph.add(gtsam.DoubleDifferencePseudorangeFactorArm(
             X(k), r[PR_RR], r[PR_BR], r[PR_RT], r[PR_BT], sr, st, sbr, sbt, base,
-            lever, ecef_T_nav, huber_noise(cfg.sig_pr * w, cfg.huber)))
+            lever, ecef_T_nav, gnss_noise(cfg.sig_pr * w)))
         idx["cp"].append(graph.size())
         graph.add(gtsam.DoubleDifferenceCarrierPhaseFactorArm(
             X(k), N(int(r[ARC_REF])), N(int(r[ARC_TGT])),
             r[CP_RR], r[CP_BR], r[CP_RT], r[CP_BT], sr, st, sbr, sbt, base,
-            lam, lever, ecef_T_nav, huber_noise(cfg.sig_cp * w, cfg.huber)))
+            lam, lever, ecef_T_nav, gnss_noise(cfg.sig_cp * w)))
 
     starts = np.searchsorted(dop[:, D_EPOCH].astype(int), np.arange(n_ep + 1))
     for k in range(n_ep):
@@ -467,7 +534,7 @@ def build_tc_graph(meas, imu, ant_ecef, cfg):
                 gtsam.Point3(*t[D_SATPOS]), gtsam.Point3(*t[D_SATVEL]),
                 gtsam.Point3(*ref[D_SATPOS]), gtsam.Point3(*ref[D_SATVEL]),
                 rr, lever, ecef_T_nav, gtsam.Point3(*omega[k]), 0.0, 0.0,
-                huber_noise(np.hypot(s_t, s_ref), cfg.huber_dop)))
+                dop_noise(np.hypot(s_t, s_ref))))
     idx = {key: np.array(val, dtype=np.int64) for key, val in idx.items()}
     idx["n_zupt"] = n_zupt
     return graph, init, ecef_T_nav, idx
@@ -494,41 +561,6 @@ def residuals(graph, values, idx):
                 out[j] = f.unwhitenedError(values)[0]
         return out
     return res(idx["pr"]), res(idx["cp"]), res(idx["dop"], dop=True)
-
-
-def _flag(r, thresh, epoch, alive, max_frac):
-    over = np.where(alive & (np.abs(r) > thresh))[0]
-    out = []
-    for k in np.unique(epoch[over]):
-        cand = over[epoch[over] == k]
-        cap = int(max_frac * np.sum(alive & (epoch == k)))
-        out.extend(cand[np.argsort(-np.abs(r[cand]))][:cap])
-    return np.array(out, dtype=np.int64)
-
-
-def fde(graph, values, idx, rows, cfg, solve_fn, log=print):
-    """Iterative post-fit exclusion: remove (null) DD/Doppler factors over thresholds."""
-    ep = {"pr": rows[:, EPOCH].astype(int), "cp": rows[:, EPOCH].astype(int),
-          "dop": idx["dop_k"]}
-    alive = {key: np.ones(len(idx[key]), bool) for key in ("pr", "cp", "dop")}
-    thresh = {"pr": cfg.fde_pr, "cp": cfg.fde_cp, "dop": cfg.fde_dop}
-    for it in range(cfg.fde_iters):
-        t0 = time.perf_counter()
-        r = dict(zip(("pr", "cp", "dop"), residuals(graph, values, idx)))
-        n_new = {}
-        for key in ("pr", "cp", "dop"):
-            bad = _flag(r[key], thresh[key], ep[key], alive[key], cfg.fde_max_frac)
-            for j in bad:
-                graph.remove(int(idx[key][j]))
-            alive[key][bad] = False
-            n_new[key] = len(bad)
-        if sum(n_new.values()) == 0:
-            log(f"FDE {it}: nothing over threshold")
-            break
-        values, dt, info = solve_fn(graph, values)
-        log(f"FDE {it}: removed PR {n_new['pr']} CP {n_new['cp']} Dop {n_new['dop']} "
-            f"(residuals {time.perf_counter() - t0 - dt:.1f}s, re-solve {dt:.2f}s {info})")
-    return values, alive["cp"]
 
 
 # ── Whole-run LM solver ───────────────────────────────────────────────
@@ -565,7 +597,12 @@ def solve(graph, init, backend="auto", max_iters=200):
         p = _lm_params(gtsam.LevenbergMarquardtParams(), max_iters)
         p.setOrderingType("METIS")
         p.setDiagonalDamping(True)
-        opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
-        v = gtsam.Values(opt.optimize())
+        try:
+            opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
+            v = gtsam.Values(opt.optimize())
+        except (IndexError, RuntimeError):
+            p.setOrderingType("COLAMD")
+            opt = gtsam.LevenbergMarquardtOptimizer(graph, init, p)
+            v = gtsam.Values(opt.optimize())
         info = f"cpu iters={opt.iterations()}"
     return v, time.perf_counter() - t, info
