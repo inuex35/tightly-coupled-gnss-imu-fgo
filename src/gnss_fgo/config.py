@@ -31,6 +31,7 @@ class TcConfig:
     nhc_sigma_lat: float = 0.3     # body lateral velocity σ [m/s] (0 = off)
     nhc_sigma_vert: float = 0.2    # body vertical velocity σ [m/s] (0 = off)
     nhc_lever: str = '0,0,0'       # IMU -> rear-axle lever arm [m]
+    nhc_calib_rw: float = 1e-5     # mount Rot3 random walk σ [rad/epoch] (0=shared m(0))
 
     # 3. Cycle slip, ambiguity random walk, AR & sliding window (4)
     thres_slip: float = 0.15       # geometry-free cycle slip threshold [m]

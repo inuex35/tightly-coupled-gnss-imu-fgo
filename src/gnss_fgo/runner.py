@@ -7,8 +7,9 @@ from cssrlib.rtk import rtkpos
 
 from . import ar as _tc_ar
 from . import factors as _tc_factors
+from . import slip as _tc_slip
 from .config import TcConfig
-from .factors import SatStateMap
+from .slip import SatStateMap
 from .utils import (
     build_imu_preintegration,
     enu_frame,
@@ -21,7 +22,7 @@ from .utils import (
 # ── FixedLagSmoother helpers ──────────────────────────────────────────
 
 def update_smoother(tc, graph, values, key_idx):
-    """Update FLS while keeping the previous pose/vel/bias alive."""
+    """Update FLS while keeping the previous pose/vel/bias/mount alive."""
     tc.tc_time += tc._epoch_dt
     ts = gtsam.FixedLagSmootherKeyTimestampMap()
     t = tc.tc_time
@@ -34,6 +35,11 @@ def update_smoother(tc, graph, values, key_idx):
         ts[tc.Bias(key_idx - 1)] = t
     for k in values.keys():
         ts[k] = t
+    if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0:
+        if key_idx > 0:
+            ts[tc.Mount(key_idx - 1)] = t
+    else:
+        ts[tc.Mount(0)] = t
     tc.isam2.update(graph, values, ts)
 
 
@@ -50,6 +56,29 @@ def _solve_isam2(tc, graph, values, key_idx, R_enu2ecef, info):
     tc.tc_bias = new_est.atConstantBias(tc.Bias(key_idx))
     enu_tc = np.array(pose_tc.translation())
     ecef_tc = R_enu2ecef @ enu_tc + tc.base_ecef
+
+    # Record state estimates and marginal STDs for diagnostics / SAVE_NPZ.
+    info['pose_rpy_deg'] = np.rad2deg(pose_tc.rotation().rpy())
+    info['pose_enu'] = enu_tc
+    info['vel_enu'] = np.asarray(new_est.atVector(tc.Vel(key_idx)), dtype=float)
+    try:
+        pcov = np.diag(tc.isam2.marginalCovariance(tc.Pose(key_idx)))
+        info['pose_rot_std_deg'] = np.rad2deg(np.sqrt(np.maximum(pcov[:3], 0.0)))
+        info['pose_pos_std'] = np.sqrt(np.maximum(pcov[3:], 0.0))
+        vcov = np.diag(tc.isam2.marginalCovariance(tc.Vel(key_idx)))
+        info['vel_std'] = np.sqrt(np.maximum(vcov, 0.0))
+        bcov = np.diag(tc.isam2.marginalCovariance(tc.Bias(key_idx)))
+        info['bias_acc_std'] = np.sqrt(np.maximum(bcov[:3], 0.0))
+        info['bias_gyro_std'] = np.sqrt(np.maximum(bcov[3:], 0.0))
+        m_idx = key_idx if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0 else 0
+        if new_est.exists(tc.Mount(m_idx)):
+            info['mount_rpy_deg'] = np.rad2deg(
+                new_est.atRot3(tc.Mount(m_idx)).rpy())
+            mcov = np.diag(tc.isam2.marginalCovariance(tc.Mount(m_idx)))
+            info['mount_std_deg'] = np.rad2deg(
+                np.sqrt(np.maximum(mcov, 0.0)))
+    except RuntimeError:
+        pass
     return pose_tc, ecef_tc, None
 
 
@@ -109,8 +138,20 @@ def _setup_epoch0(tc, obs, init_ecef, R_enu2ecef, graph, values):
                             np.array([rot_sigma, rot_sigma, np.pi, 1e4, 1e4, 1e4])))
     graph.addPriorVector(tc.Vel(0), np.zeros(3),
                          gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
-    graph.addPriorConstantBias(tc.Bias(0), bias0,
-                               gtsam.noiseModel.Isotropic.Sigma(6, 0.01))
+    # Accel bias starts at 0 (gravity/tilt unseparated at rest); combine ADIS16505-2
+    # repeatability (2 mg ≈ 0.02 m/s^2) with gravity-projection uncertainty
+    # g * sin(rot_sigma) under Pose(0) tilt prior. Gyro bias is pre-estimated
+    # from stationary samples (0.01 rad/s residual).
+    ba0_sigma = float(np.hypot(0.02, 9.81 * np.sin(rot_sigma)))
+    graph.addPriorConstantBias(
+        tc.Bias(0), bias0,
+        gtsam.noiseModel.Diagonal.Sigmas(
+            np.array([ba0_sigma, ba0_sigma, ba0_sigma, 0.01, 0.01, 0.01])))
+    mount0 = gtsam.Rot3()
+    values.insert(tc.Mount(0), mount0)
+    graph.add(gtsam.PriorFactorRot3(
+        tc.Mount(0), mount0,
+        gtsam.noiseModel.Diagonal.Sigmas(np.array([0.005, 0.03, 0.03]))))
     return gtsam.NavState(pose0, np.zeros(3))
 
 
@@ -154,10 +195,17 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
             tc.Pose(key_idx - 1), tc.Vel(key_idx - 1),
             tc.Pose(key_idx), tc.Vel(key_idx),
             tc.Bias(key_idx - 1), tc.Bias(key_idx), pim))
+        if getattr(tc.cfg, "nhc_calib_rw", 0.0) > 0:
+            mount_prev = estimate.atRot3(tc.Mount(key_idx - 1))
+            values.insert(tc.Mount(key_idx), mount_prev)
+            rw = float(tc.cfg.nhc_calib_rw)
+            graph.add(gtsam.BetweenFactorRot3(
+                tc.Mount(key_idx - 1), tc.Mount(key_idx), gtsam.Rot3(),
+                gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-6, rw, rw]))))
 
     # 2. Cycle-slip detection & predicted antenna ECEF
     info['nsat'] = ns
-    n_reset, _ = _tc_factors.detect_slips_and_reset_ambiguities(
+    n_reset, _ = _tc_slip.detect_slips_and_reset_ambiguities(
         tc, obs, obs_sd, sat, iu)
     info['n_slip'] = n_reset
     pred_enu = np.array(pred_nav.pose().translation())
@@ -206,6 +254,7 @@ class ImuGnssTc:
     Pose = staticmethod(lambda i: gtsam.symbol('P', i))
     Vel = staticmethod(lambda i: gtsam.symbol('v', i))
     Bias = staticmethod(lambda i: gtsam.symbol('b', i))
+    Mount = staticmethod(lambda i=0: gtsam.symbol('m', i))
     N = staticmethod(lambda s, f, gen=0: gtsam.symbol(
         'n', int(gen) * 1000000 + int(s) * 10 + int(f)))
 

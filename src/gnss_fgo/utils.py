@@ -134,8 +134,13 @@ def sorted_amb_items(amb_dict):
 # 1. Sensor datasheet specs (Tamagawa TAG300N1 / ADIS16505-2)
 _SPEC_ACCEL_NOISE = 2.84e-4      # VRW 0.017 m/s/√hr  -> [m/s²/√Hz]
 _SPEC_GYRO_NOISE = 4.01e-5       # ARW 0.138 °/√hr    -> [rad/s/√Hz]
-_SPEC_ACCEL_BIAS_RW = 3.14e-4    # In-run bias stability 32 µg
-_SPEC_GYRO_BIAS_RW = 9.70e-6     # In-run bias stability 2.0 °/hr
+# In-run bias stability (32 µg = 3.14e-4 m/s²) is the Allan deviation minimum
+# [m/s²], whereas GTSAM setBiasAccCovariance expects random-walk PSD [m/s²/√s]
+# (σ_rw = σ_stab / √τ). With τ = 1000 s (typical tactical MEMS ADEV trough):
+_SPEC_ACCEL_BIAS_STAB = 3.14e-4  # In-run bias stability 32 µg [m/s²]
+_SPEC_BIAS_CORR_TIME_S = 1000.0  # Allan deviation correlation time τ [s]
+_SPEC_ACCEL_BIAS_RW = _SPEC_ACCEL_BIAS_STAB / math.sqrt(_SPEC_BIAS_CORR_TIME_S)
+_SPEC_GYRO_BIAS_RW = 9.70e-6     # 2.0 °/hr [rad/s] (kept as [rad/s/√s] for thermal drift)
 
 # 2. Measured vehicle chassis vibration PSD (idling / urban driving)
 _VIB_ACCEL_NOISE = 2.83e-3       # [m/s²/√Hz]
