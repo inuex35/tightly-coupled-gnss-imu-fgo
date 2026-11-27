@@ -1,5 +1,7 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
+#include <gtsam/linear/LossFunctions.h>
+#include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>

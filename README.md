@@ -40,12 +40,12 @@ urban-Nagoya drives
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
 |-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11951 ep  |  0.91 m | 0.040 m | 0.11 m  | 79.1 % | 86.1 % |
-| tokyo run2  |  9151 ep  |  1.37 m | 0.032 m | 0.06 m  | 84.4 % | 89.6 % |
-| tokyo run3  | 15301 ep  |  1.58 m | 0.030 m | 0.17 m  | 88.0 % | 92.3 % |
-| nagoya run1 |  7651 ep  |  2.63 m | 0.126 m | 0.12 m  | 80.9 % | 84.7 % |
-| nagoya run2 |  9451 ep  |  2.87 m | 0.231 m | 0.37 m  | 63.8 % | 57.4 % |
-| nagoya run3 |  5201 ep  |  0.98 m | 0.130 m | 0.13 m  | 64.7 % | 82.5 % |
+| tokyo run1  | 11951 ep  |  1.21 m | 0.040 m | 0.11 m  | 79.1 % | 87.0 % |
+| tokyo run2  |  9151 ep  |  0.93 m | 0.032 m | 0.06 m  | 85.9 % | 90.0 % |
+| tokyo run3  | 15301 ep  |  0.81 m | 0.029 m | 0.16 m  | 88.7 % | 93.8 % |
+| nagoya run1 |  7651 ep  |  1.26 m | 0.126 m | 0.13 m  | 80.8 % | 85.5 % |
+| nagoya run2 |  9451 ep  |  2.40 m | 0.229 m | 0.36 m  | 65.0 % | 59.3 % |
+| nagoya run3 |  5201 ep  |  0.95 m | 0.127 m | 0.12 m  | 66.2 % | 84.5 % |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)

@@ -1,104 +1,14 @@
-"""Factor builders, arc bookkeeping, and cycle-slip detection."""
-
-from dataclasses import dataclass, field
-from typing import Optional
+"""GTSAM factor builders (DDPR, DDCP, SD Doppler, NHC)."""
 
 import gtsam
 import numpy as np
 from cssrlib.gnss import SAT_SYS_ARR, sat2prn, uGNSS
 
-from ._extra_factors import NhcFactor, SingleDifferenceDopplerFactorArm
+from ._extra_factors import (
+    NhcFactorCalib,
+    SingleDifferenceDopplerFactorArm,
+)
 from .utils import get_wavelengths, huber_noise
-
-
-# ── Satellite / arc state bookkeeping ─────────────────────────────────
-
-@dataclass
-class SatState:
-    """Bookkeeping for a single (sat, freq) continuous carrier-phase arc."""
-
-    outage_count: int = 0            # epochs since last seen
-    amb_key: Optional[int] = None    # persistent GTSAM symbol for this arc's N
-    amb_gen: int = 0                 # monotonic arc generation (++ on slip / reset)
-
-
-@dataclass
-class SatStateMap:
-    """Per-(sat, freq) ``SatState`` map, per-sat GF slip state, and DD ref sats."""
-
-    track: dict = field(default_factory=dict)            # {(sat,f): SatState}
-    prev_gf_m: dict = field(default_factory=dict)        # {sat: geometry-free phase [m]}
-    ref_sats: dict = field(default_factory=dict)         # {sys_id: sat}
-    maxout: int = 5
-
-    def get(self, sat: int, freq: int) -> SatState:
-        key = (int(sat), int(freq))
-        st = self.track.get(key)
-        if st is None:
-            st = SatState()
-            self.track[key] = st
-        return st
-
-    def keys(self):
-        return self.track.keys()
-
-    def amb_keys_dict(self) -> dict:
-        return {k: st.amb_key for k, st in self.track.items()
-                if st.amb_key is not None}
-
-
-# ── Cycle-slip detection & outage arc expiry ──────────────────────────
-
-def _detect_gf_slip(tc, obs, row, s, lams, nf, reset_keys):
-    """Geometry-free L1-L2 jump detector."""
-    L1 = obs.L[row, 0]
-    L2 = obs.L[row, 1]
-    if L1 == 0 or L2 == 0 or lams[0] <= 0 or lams[1] <= 0:
-        return
-    gf = L1 * lams[0] - L2 * lams[1]
-    prev_gf = tc._sat_states.prev_gf_m
-    if s in prev_gf and prev_gf[s] != 0:
-        if abs(gf - prev_gf[s]) > tc.cfg.thres_slip:
-            for f in range(nf):
-                reset_keys.add((s, f))
-    prev_gf[s] = gf
-
-
-def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
-    """LLI + GF slip detection plus outage expiry. Returns (n_reset, reset_keys)."""
-    nf = tc.nav.nf
-    ns = len(sat)
-    reset_keys = set()
-    current_sats = set()
-
-    for i in range(ns):
-        s = sat[i]
-        lams = get_wavelengths(obs_sd, s, glo_ch=tc.nav.glo_ch)
-        for f in range(nf):
-            current_sats.add((s, f))
-            sat_state = tc._sat_states.get(s, f)
-            sat_state.outage_count = 0
-            if hasattr(obs, 'lli') and obs.lli[iu[i], f] == 1:
-                reset_keys.add((s, f))
-        if nf >= 2 and len(lams) >= 2:
-            _detect_gf_slip(tc, obs, iu[i], s, lams, nf, reset_keys)
-
-    maxout = tc._sat_states.maxout
-    for key in list(tc._sat_states.keys()):
-        if key not in current_sats:
-            st = tc._sat_states.get(*key)
-            st.outage_count += 1
-            if st.outage_count > maxout:
-                reset_keys.add(key)
-
-    n_reset = 0
-    for key in reset_keys:
-        sat_st = tc._sat_states.get(*key)
-        if sat_st.amb_key is not None:
-            sat_st.amb_key = None
-            n_reset += 1
-        sat_st.amb_gen += 1
-    return n_reset, reset_keys
 
 # ── Ambiguity seeding ─────────────────────────────────────────────────
 
@@ -371,7 +281,6 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
     for row, sig in zip(rows, sigmas):
         if row is ref:
             continue
-        noise = huber_noise(np.hypot(sig, sigma_ref))
         graph.add(SingleDifferenceDopplerFactorArm(
             tc.Pose(key_idx), tc.Vel(key_idx),
             row[3], ref[3],
@@ -380,7 +289,7 @@ def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
             np.asarray(ref[1], dtype=float), np.asarray(ref[2], dtype=float),
             rr, lever, tc.ecef_T_nav, omega,
             0.0, 0.0,
-            noise))
+            huber_noise(np.hypot(sig, sigma_ref))))
         n += 1
     info['doppler_sd_n'] = n
     info['doppler_sd_ref'] = int(ref[0])
@@ -405,7 +314,8 @@ def add_nhc_factor(tc, graph, key_idx, gyro_mean=None):
         omega = np.zeros(3)
     noise = gtsam.noiseModel.Diagonal.Sigmas(
         np.array([sig_lat, sig_vert]))
-    graph.add(NhcFactor(
-        tc.Pose(key_idx), tc.Vel(key_idx), omega,
+    m_idx = key_idx if getattr(tc.cfg, 'nhc_calib_rw', 0.0) > 0 else 0
+    graph.add(NhcFactorCalib(
+        tc.Pose(key_idx), tc.Vel(key_idx), tc.Mount(m_idx), omega,
         np.asarray(lever, dtype=float), noise))
     return True

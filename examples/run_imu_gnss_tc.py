@@ -59,7 +59,12 @@ def main():
     # detslp_dop is rover-only); skip systems where rover lacks Doppler.
     rov_picks_by_sys = {}
     for s in sigs:
-        rov_picks_by_sys.setdefault(s.sys, set()).add(int(s.sig) // 100)
+        if s.typ != uTYP.L:
+            continue
+        band = int(s.sig) // 100
+        bands = rov_picks_by_sys.setdefault(s.sys, [])
+        if band not in bands:
+            bands.append(band)
     for sys_id, bands in rov_picks_by_sys.items():
         rov_typ_d = {int(s.sig) // 100: s for s in dec.sig_map.get(sys_id, {}).values()
                      if s.typ == uTYP.D}
