@@ -5,7 +5,7 @@
 *carrier-phase RTK · LAMBDA ambiguity resolution · GTSAM · urban driving · reproducible*
 
 The full RTK chain lives inside the graph: double-differenced
-pseudorange **and carrier phase** with Huber M-estimator noise,
+pseudorange **and carrier phase** with Cauchy M-estimator noise,
 continuous integer ambiguity resolution (LAMBDA + partial AR), and
 100 Hz IMU preintegration — targeting centimeter FIX in deep urban
 canyons, with IMU + single-differenced Doppler bridging NLOS storms
@@ -14,7 +14,7 @@ and tunnels.
 ## What's inside
 
 - **RTK in the graph** — DD pseudorange + DD carrier-phase factors with
-  Huber robust noise on a QR-factorized GTSAM
+  Cauchy robust noise (`k = 2.385`) on a QR-factorized GTSAM
   `IncrementalFixedLagSmoother`, float ambiguities chained via per-epoch
   random walk, clock-free seeding (SD phase − SD code)
 - **Integer ambiguity resolution** — continuous LAMBDA + partial AR
@@ -38,14 +38,14 @@ reproducible end to end — three full urban-Tokyo drives and three
 urban-Nagoya drives
 ([PPC-Dataset](https://github.com/taroz/PPC-Dataset)):
 
-| run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm |
-|-------------|-----------|---------|---------|---------|--------|--------|
-| tokyo run1  | 11951 ep  |  1.21 m | 0.040 m | 0.11 m  | 79.1 % | 87.0 % |
-| tokyo run2  |  9151 ep  |  0.93 m | 0.032 m | 0.06 m  | 85.9 % | 90.0 % |
-| tokyo run3  | 15301 ep  |  0.81 m | 0.029 m | 0.16 m  | 88.7 % | 93.8 % |
-| nagoya run1 |  7651 ep  |  1.26 m | 0.126 m | 0.13 m  | 80.8 % | 85.5 % |
-| nagoya run2 |  9451 ep  |  2.40 m | 0.229 m | 0.36 m  | 65.0 % | 59.3 % |
-| nagoya run3 |  5201 ep  |  0.95 m | 0.127 m | 0.12 m  | 66.2 % | 84.5 % |
+| run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
+|-------------|-----------|---------|---------|---------|--------|--------|---------|
+| tokyo run1  | 11951 ep  |  0.96 m | 0.039 m | 0.09 m  | 78.1 % | 88.6 % | 13.91 m |
+| tokyo run2  |  9151 ep  |  0.84 m | 0.032 m | 0.06 m  | 86.2 % | 90.7 % |  9.16 m |
+| tokyo run3  | 15301 ep  |  0.69 m | 0.029 m | 0.06 m  | 89.7 % | 97.6 % | 13.66 m |
+| nagoya run1 |  7651 ep  |  0.74 m | 0.122 m | 0.12 m  | 81.6 % | 88.6 % |  8.31 m |
+| nagoya run2 |  9451 ep  |  1.24 m | 0.232 m | 0.36 m  | 63.6 % | 59.6 % |  4.73 m |
+| nagoya run3 |  5201 ep  |  0.35 m | 0.127 m | 0.13 m  | 66.7 % | 88.1 % |  1.69 m |
 
 
 ![tokyo_defaults](docs/tokyo_defaults.png)
@@ -99,7 +99,7 @@ Flat module layout under `src/gnss_fgo/`:
 | `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding), `SatStateMap`, and cycle-slip detection |
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
 | `config.py` | `TcConfig` and `BatchConfig` |
-| `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber noise |
+| `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber / Cauchy robust noise |
 | `batch.py`, `batch_ar.py`, `batch_graph.py` | offline whole-run batch TC pipeline and global AR |
 
 ## Configuration
