@@ -78,7 +78,7 @@ def main():
 
     if ref_csv:
         truth = reference_ecef(ref_csv, res["tow"])
-        print(summary("GNSS-only", res["gnss_fix"], truth))
+        print(summary("GNSS-only", res["gnss_float"], truth))
         print(summary("TC float", res["tc_float"], truth))
         print(summary("TC fix", res["tc_fix"], truth))
         print(summary("  FIX", res["tc_fix"], truth, res["fix"]))

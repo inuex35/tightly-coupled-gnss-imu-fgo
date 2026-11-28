@@ -20,7 +20,7 @@ def run_batch(meas, imu, cfg=None, log=print):
     """Run the batch pipeline on front-end arrays (prepare).
 
     meas: dict(rows, dop, tow, rb, pos0); imu: (tow, acc [m/s^2], gyro [rad/s])
-    in body FLU. Returns a dict with antenna ECEF trajectories (gnss_fix,
+    in body FLU. Returns a dict with antenna ECEF trajectories (gnss_float,
     tc_float, tc_fix), per-epoch FIX flags (fix, fix_rejected), the accepted
     integer relations and stats.
     """
@@ -34,29 +34,24 @@ def run_batch(meas, imu, cfg=None, log=print):
     out = {"tow": tow, "stats": {}}
     t_all = time.perf_counter()
 
-    # --- GNSS-only batch: initial trajectory for the TC graph.
+    # --- GNSS-only batch (float): initial trajectory for the TC graph.
     t0 = time.perf_counter()
     g_graph, g_init = _graph.build_gnss_graph(rows, tow, rb, pos0, cfg)
     g_flt, _, _ = solve(g_graph, g_init)
-    groups = _ar.group_epochs(rows)
-    cov = _ar.arc_covariances(g_graph, g_flt, groups, n_ep, _graph.GNSS_DIMS)
-    acc, _, _, st = _ar.resolve(groups, g_flt, cov, cfg.ratio, cfg.lambda_workers)
-    g_fix, _, _ = solve(_graph.add_fix(g_graph, acc, cfg.sig_fix), g_flt)
-    out["gnss_fix"] = _graph.gnss_positions(g_fix, n_ep)
-    log(f"GNSS-only batch: {len(acc)} integer relations, "
-        f"{time.perf_counter() - t0:.1f}s")
+    out["gnss_float"] = _graph.gnss_positions(g_flt, n_ep)
+    log(f"GNSS-only float: {time.perf_counter() - t0:.1f}s")
 
     # --- tightly coupled float: Huber initial convergence -> Cauchy polish.
     t0 = time.perf_counter()
     tc_meas = meas
     h_graph, init, ecef_T_nav, _ = _graph.build_tc_graph(
-        tc_meas, imu, out["gnss_fix"], cfg, use_cauchy=False)
+        tc_meas, imu, out["gnss_float"], cfg, use_cauchy=False)
     log(f"TC graph: {n_ep} keyframes, {h_graph.size()} factors, {init.size()} variables, "
         f"ZUPT on {_.get('n_zupt', 0)} epochs ({time.perf_counter() - t0:.1f}s)")
     flt, dt, info = solve(h_graph, init)
     log(f"TC float (Huber): {dt:.2f}s {info}")
     graph, _, _, idx = _graph.build_tc_graph(
-        tc_meas, imu, out["gnss_fix"], cfg, use_cauchy=True)
+        tc_meas, imu, out["gnss_float"], cfg, use_cauchy=True)
     flt, dt, info = solve(graph, flt)
     log(f"TC float (Cauchy): {dt:.2f}s {info}")
     keep_cp = np.ones(len(rows), dtype=bool)

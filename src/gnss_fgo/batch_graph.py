@@ -65,8 +65,6 @@ def sat_points(r):
 
 # ── GNSS-only batch graph ─────────────────────────────────────────────
 
-GNSS_DIMS = {"x": 3, "n": 1}
-
 
 def add_ambiguities(graph, init, rows, sig_amb, seen=None):
     """N(a) per arc, seeded with SD carrier-minus-code, plus a weak prior."""
