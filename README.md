@@ -14,10 +14,10 @@ Turn raw **RINEX GNSS + 100 Hz IMU** logs into centimeter-accurate trajectories 
 
 ## What's inside
 
-- **RTK**: DD pseudorange & carrier phase (Cauchy `k = 2.385`), ambiguity RW, clock-free seeding
-- **AR**: LAMBDA + partial AR (FFRT) + fix-and-hold (`armode=2`)
-- **IMU & velocity**: 100 Hz `CombinedImuFactor`, NHC, clock-free SD Doppler
-- **Integrity**: LLI + geometry-free + Doppler cycle-slip detection
+- **RTK**: Double-differenced pseudorange & carrier-phase factors with robust noise
+- **AR**: LAMBDA + partial integer ambiguity resolution with fix-and-hold
+- **IMU & velocity**: 100 Hz IMU preintegration, vehicle non-holonomic constraint (NHC), and Doppler velocity
+- **Integrity**: Cycle-slip detection and automatic ambiguity reset
 - **GTSAM**: DD factors upstream ([post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)); NHC / SD Doppler pending
 
 ## Results
