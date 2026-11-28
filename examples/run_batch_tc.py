@@ -3,7 +3,7 @@
 Usage:
   python examples/run_batch_tc.py rover.obs base.obs base.nav imu.csv [reference.csv]
 
-Env (besides the BatchConfig ones, see src/gnss_fgo/batch/config.py):
+Env (besides the BatchConfig ones, see src/gnss_fgo/config.py):
   BASE_LLH   base antenna "lat,lon,h" [deg, deg, m]; default base.obs header.
              PPC-Dataset README: tokyo 35.66633426,139.79220181,59.82,
              nagoya 35.13470947,136.97757427,104.718
