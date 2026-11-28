@@ -2,9 +2,9 @@
 
 **Open-source tightly-coupled GNSS RTK + IMU factor-graph optimization**
 
-*carrier-phase RTK · LAMBDA ambiguity resolution · GTSAM · urban driving · reproducible*
+*carrier-phase RTK · LAMBDA AR · GTSAM · minimal parameters · ~2.5k LOC Python*
 
-Turn raw **RINEX GNSS + 100 Hz IMU** logs into centimeter-accurate trajectories in deep urban canyons:
+Turn raw **RINEX GNSS + 100 Hz IMU** logs into centimeter-accurate trajectories in deep urban canyons — **zero per-drive tuning** (just pass `LEVER_ARM`):
 
 - **Run on your own data** — supply `rover.obs`, `base.obs`, `base.nav`, `imu.csv`, and `LEVER_ARM` for online-style **Sequential** or highest-accuracy **Batch** post-processing
 - **Reproduce urban benchmarks** — end-to-end evaluation on 6 full urban drives in Tokyo & Nagoya ([PPC-Dataset](https://github.com/taroz/PPC-Dataset))
@@ -95,7 +95,7 @@ Flat module layout under `src/gnss_fgo/`:
 
 ## Configuration
 
-All `TcConfig` and `BatchConfig` fields in `src/gnss_fgo/config.py` can be overridden via env vars (`ERR_A`, `ARMODE`, `FLS_LAG`, `BATCH_SOLVER`, `LEVER_ARM`, …).
+Minimal parameter surface — `TcConfig` has only **12** physical/statistical parameters (and `BatchConfig` shares its GNSS/NHC defaults), working out of the box with defaults and overridable via env vars (`ERR_A`, `ARMODE`, `FLS_LAG`, `BATCH_SOLVER`, `LEVER_ARM`, …).
 
 ## License
 
