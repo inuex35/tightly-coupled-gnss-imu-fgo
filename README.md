@@ -50,6 +50,10 @@ Measured on [PPC-Dataset](https://github.com/taroz/PPC-Dataset) with default set
 | nagoya run2 |  9451 ep  |  1.03 m | 0.212 m | 0.42 m  | 53.0 % | 73.1 % |  3.84 m |
 | nagoya run3 |  5201 ep  |  0.21 m | 0.117 m | 0.17 m  | 54.0 % | 97.6 % |  1.36 m |
 
+![tokyo_batch](docs/tokyo_batch.png)
+
+![nagoya_batch](docs/nagoya_batch.png)
+
 ## Quick start
 
 Linux x86_64, Python 3.12 (`g++`, `git`, `libboost-dev` required to build `gnss_fgo._extra_factors`):

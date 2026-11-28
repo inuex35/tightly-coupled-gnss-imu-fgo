@@ -84,9 +84,17 @@ def main():
         print(summary("  FIX", res["tc_fix"], truth, res["fix"]))
         print(summary("  not FIX", res["tc_fix"], truth, ~res["fix"]))
         res["truth"] = truth
-    if "OUT_NPZ" in os.environ:
-        np.savez(os.environ["OUT_NPZ"], **{k: v for k, v in res.items() if k != "stats"})
-        print(f"saved {os.environ['OUT_NPZ']}")
+        res["truth_xyz"] = truth
+        res["err3d"] = np.linalg.norm(res["tc_fix"] - truth, axis=1)
+    out_npz = os.environ.get("OUT_NPZ") or os.environ.get("SAVE_NPZ")
+    if out_npz:
+        res.update(
+            sol_xyz=res["tc_fix"],
+            base_xyz=meas["rb"],
+            smode=np.where(res["fix"], 4, 5),
+        )
+        np.savez(out_npz, **{k: v for k, v in res.items() if k != "stats"})
+        print(f"saved {out_npz}")
 
 
 if __name__ == "__main__":

@@ -37,6 +37,23 @@ def to_enu(xyz, base):
     return (xyz - base) @ r.T
 
 
+def load_run(npz_path):
+    """Load sequential or batch OUT_NPZ into a common plotting dict."""
+    raw = np.load(npz_path)
+    if 'sol_xyz' in raw:
+        return {k: raw[k] for k in ('base_xyz', 'truth_xyz', 'sol_xyz', 'err3d', 'smode')}
+    truth, sol, fix = raw['truth'], raw['tc_fix'], raw['fix']
+    valid = np.all(np.isfinite(truth), axis=1)
+    truth, sol, fix = truth[valid], sol[valid], fix[valid]
+    return {
+        'base_xyz': truth[0],
+        'truth_xyz': truth,
+        'sol_xyz': sol,
+        'err3d': np.linalg.norm(sol - truth, axis=1),
+        'smode': np.where(fix, 4, 5),
+    }
+
+
 def panel_metrics(d):
     err = d['err3d']
     smode = d['smode']
@@ -125,7 +142,7 @@ def main():
 
     sc = None
     for col, npz_path in enumerate(files):
-        d = np.load(npz_path)
+        d = load_run(npz_path)
         n, all_rms, fix_rms, fix_pct = panel_metrics(d)
 
         ax_top = fig.add_subplot(gs[0, col])
