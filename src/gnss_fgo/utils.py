@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import math
 import os
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import gtsam
 import numpy as np
