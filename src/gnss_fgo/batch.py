@@ -34,9 +34,9 @@ def run_batch(meas, imu, cfg=None, log=print):
     out = {"tow": tow, "stats": {}}
     t_all = time.perf_counter()
 
-    # --- GNSS-only batch: initial trajectory for the TC graph.
+    # --- GNSS-only batch (PR + CP + SD Doppler + WNOA): initial trajectory.
     t0 = time.perf_counter()
-    g_graph, g_init = _graph.build_gnss_graph(rows, tow, rb, pos0, cfg)
+    g_graph, g_init = _graph.build_gnss_graph(rows, meas["dop"], tow, rb, pos0, cfg)
     g_flt, _, _ = solve(g_graph, g_init)
     groups = _ar.group_epochs(rows)
     cov = _ar.arc_covariances(g_graph, g_flt, groups, n_ep, _graph.GNSS_DIMS)

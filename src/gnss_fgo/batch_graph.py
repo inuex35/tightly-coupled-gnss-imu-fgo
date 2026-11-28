@@ -6,7 +6,11 @@ import gtsam
 import numpy as np
 from gtsam.symbol_shorthand import B, N, V, X
 
-from ._extra_factors import NhcFactorCalib, SingleDifferenceDopplerFactorArm
+from ._extra_factors import (
+    NhcFactorCalib,
+    SingleDifferenceDopplerFactor,
+    SingleDifferenceDopplerFactorArm,
+)
 from .batch_preparation import (
     ARC_REF, ARC_TGT, CP_BR, CP_BT, CP_RR, CP_RT, D_EPOCH, D_HZ, D_LAM,
     D_SATPOS, D_SATVEL, D_SNR, EPOCH, LAM, PR_BR, PR_BT, PR_RR, PR_RT,
@@ -24,7 +28,7 @@ def sat_points(r):
 
 # ── GNSS-only batch graph ─────────────────────────────────────────────
 
-GNSS_DIMS = {"x": 3, "n": 1}
+GNSS_DIMS = {"x": 3, "v": 3, "n": 1}
 
 
 def add_ambiguities(graph, init, rows, sig_amb):
@@ -44,18 +48,23 @@ def add_ambiguities(graph, init, rows, sig_amb):
     return seen
 
 
-def build_gnss_graph(rows, tow, rb, pos0, cfg):
+def build_gnss_graph(rows, dop, tow, rb, pos0, cfg):
+    """PR + CP + SD-Doppler + WNOA GNSS-only graph for initial trajectory."""
+    n_ep = len(tow)
     graph, init = gtsam.NonlinearFactorGraph(), gtsam.Values()
-    base = gtsam.Point3(*rb)
-    for k in range(len(tow)):
-        init.insert(X(k), gtsam.Point3(*pos0))
+    pos0_pt, base = gtsam.Point3(*pos0), gtsam.Point3(*rb)
+    q_psd = np.full(3, 10.0)
+    for k in range(n_ep):
+        init.insert(X(k), pos0_pt)
+        init.insert(V(k), np.zeros(3))
         if k > 0:
-            dt = max(tow[k] - tow[k - 1], 0.2)
-            graph.add(gtsam.BetweenFactorPoint3(
-                X(k - 1), X(k), gtsam.Point3(0, 0, 0),
-                gtsam.noiseModel.Isotropic.Sigma(3, cfg.sig_rw * np.sqrt(dt / 0.2))))
+            graph.add(gtsam.WnoaMotionFactorPoint3(
+                gtsam.StateData(X(k - 1), V(k - 1), float(tow[k - 1])),
+                gtsam.StateData(X(k), V(k), float(tow[k])), q_psd))
     graph.add(gtsam.PriorFactorPoint3(
-        X(0), gtsam.Point3(*pos0), gtsam.noiseModel.Isotropic.Sigma(3, 100.0)))
+        X(0), pos0_pt, gtsam.noiseModel.Isotropic.Sigma(3, 100.0)))
+    graph.add(gtsam.PriorFactorVector(
+        V(0), np.zeros(3), gtsam.noiseModel.Isotropic.Sigma(3, 50.0)))
     add_ambiguities(graph, init, rows, cfg.sig_amb)
     for r in rows:
         k, lam, w = int(r[EPOCH]), r[LAM], r[WEIGHT]
@@ -67,6 +76,23 @@ def build_gnss_graph(rows, tow, rb, pos0, cfg):
             X(k), N(int(r[ARC_REF])), N(int(r[ARC_TGT])),
             r[CP_RR], r[CP_BR], r[CP_RT], r[CP_BT], sr, st, sbr, sbt, base, lam,
             huber_noise(cfg.sig_cp * w, cfg.huber)))
+    starts = np.searchsorted(dop[:, D_EPOCH].astype(int), np.arange(n_ep + 1))
+    for k in range(n_ep):
+        d = dop[starts[k]:starts[k + 1]]
+        if len(d) < 2:
+            continue
+        has_snr = d.shape[1] > D_SNR
+        sigmas = [sd_doppler_sat_sigma(cfg.dop_sigma0, t[D_SNR] if has_snr else 0.0) for t in d]
+        ir = int(np.argmin(sigmas))
+        ref, s_ref = d[ir], sigmas[ir]
+        for j, (t, s_t) in enumerate(zip(d, sigmas)):
+            if j == ir:
+                continue
+            graph.add(SingleDifferenceDopplerFactor(
+                V(k), t[D_HZ], ref[D_HZ], t[D_LAM], ref[D_LAM],
+                gtsam.Point3(*t[D_SATPOS]), gtsam.Point3(*t[D_SATVEL]),
+                gtsam.Point3(*ref[D_SATPOS]), gtsam.Point3(*ref[D_SATVEL]),
+                pos0_pt, 0.0, 0.0, huber_noise(np.hypot(s_t, s_ref), cfg.huber_dop)))
     return graph, init
 
 
