@@ -197,18 +197,8 @@ def as_imu_arrays(imu_data):
     )
 
 
-def integrate_imu_segment(
-    params: gtsam.PreintegrationCombinedParams,
-    bias: gtsam.imuBias.ConstantBias,
-    t_imu: np.ndarray,
-    acc: np.ndarray,
-    gyr: np.ndarray,
-    start_idx: int,
-    end_idx: int,
-    t_prev: Optional[float] = None,
-    t_end: Optional[float] = None,
-    dt_default: float = 0.01,
-) -> Tuple[gtsam.PreintegratedCombinedMeasurements, int, np.ndarray]:
+def integrate_imu_segment(params, bias, t_imu, acc, gyr, start_idx, end_idx,
+                          t_prev=None, t_end=None, dt_default=0.01):
     """Integrate IMU array slice ``[start_idx, end_idx)`` into a PIM."""
     pim = gtsam.PreintegratedCombinedMeasurements(params, bias)
     if t_prev is not None:
@@ -221,30 +211,15 @@ def integrate_imu_segment(
             pim.integrateMeasurement(acc[end_idx - 1], gyr[end_idx - 1], float(t_end - tcur))
     else:
         for i in range(start_idx, end_idx):
-            dt_i = dt_default
-            if i > 0:
-                d = round(float(t_imu[i] - t_imu[i - 1]), 4)
-                if 0.0 < d <= 10 * dt_default:
-                    dt_i = d
-            pim.integrateMeasurement(acc[i], gyr[i], dt_i)
+            d = round(float(t_imu[i] - t_imu[i - 1]), 4) if i > 0 else 0.0
+            pim.integrateMeasurement(acc[i], gyr[i], d if 0.0 < d <= 10 * dt_default else dt_default)
     n = max(0, end_idx - start_idx)
-    gyro_mean = gyr[start_idx:end_idx].mean(axis=0) if n > 0 else np.zeros(3)
-    return pim, n, gyro_mean
+    return pim, n, (gyr[start_idx:end_idx].mean(axis=0) if n > 0 else np.zeros(3))
 
 
-def build_imu_preintegration(
-    params: gtsam.PreintegrationCombinedParams,
-    bias: gtsam.imuBias.ConstantBias,
-    imu_data,
-    imu_idx: int,
-    target_tow: Optional[float] = None,
-    max_samples: int = 100,
-    dt: float = 0.01,
-) -> Tuple[gtsam.PreintegratedCombinedMeasurements, int, np.ndarray, int]:
-    """Integrate IMU samples up to ``target_tow`` or ``max_samples``.
-
-    Returns (pim, n_integrated, gyro_mean_body_flu, new_imu_idx).
-    """
+def build_imu_preintegration(params, bias, imu_data, imu_idx,
+                             target_tow=None, max_samples=100, dt=0.01):
+    """Integrate IMU samples up to ``target_tow`` or ``max_samples``."""
     t_imu, acc, gyr = as_imu_arrays(imu_data)
     if target_tow is not None:
         end_idx = int(np.searchsorted(t_imu[imu_idx:], target_tow + 1e-6, side="right")) + imu_idx

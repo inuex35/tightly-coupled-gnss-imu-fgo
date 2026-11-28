@@ -6,43 +6,14 @@ import gtsam
 import numpy as np
 from gtsam.symbol_shorthand import B, N, V, X
 
-from ._extra_factors import (
-    NhcFactorCalib,
-    SingleDifferenceDopplerFactorArm,
-)
+from ._extra_factors import NhcFactorCalib, SingleDifferenceDopplerFactorArm
 from .batch_preparation import (
-    ARC_REF,
-    ARC_TGT,
-    CP_BR,
-    CP_BT,
-    CP_RR,
-    CP_RT,
-    D_EPOCH,
-    D_HZ,
-    D_LAM,
-    D_SATPOS,
-    D_SATVEL,
-    D_SNR,
-    EPOCH,
-    LAM,
-    PR_BR,
-    PR_BT,
-    PR_RR,
-    PR_RT,
-    SAT_BR,
-    SAT_BT,
-    SAT_RR,
-    SAT_RT,
-    WEIGHT,
+    ARC_REF, ARC_TGT, CP_BR, CP_BT, CP_RR, CP_RT, D_EPOCH, D_HZ, D_LAM,
+    D_SATPOS, D_SATVEL, D_SNR, EPOCH, LAM, PR_BR, PR_BT, PR_RR, PR_RT,
+    SAT_BR, SAT_BT, SAT_RR, SAT_RT, WEIGHT,
 )
 from .factors import sd_doppler_sat_sigma
-from .utils import (
-    cauchy_noise,
-    enu_frame,
-    huber_noise,
-    integrate_imu_segment,
-    make_imu_params,
-)
+from .utils import cauchy_noise, enu_frame, huber_noise, integrate_imu_segment, make_imu_params
 
 
 def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,

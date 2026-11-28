@@ -59,17 +59,15 @@ class TcConfig:
 _TC_DEFAULTS = TcConfig()
 
 
-def _env_field(envname: str, default):
+def _env_field(envname: str, default, vec: bool = False):
     """Dataclass field whose default is read from ``envname`` at construction."""
+    if vec:
+        return field(default_factory=lambda: env_vector(envname, default))
     if isinstance(default, int):
         return field(default_factory=lambda: env_int(envname, default))
     if isinstance(default, float):
         return field(default_factory=lambda: env_float(envname, default))
     return field(default_factory=lambda: os.environ.get(envname, default))
-
-
-def _env_vec_field(envname: str, default: str):
-    return field(default_factory=lambda: env_vector(envname, default))
 
 
 @dataclass
@@ -92,9 +90,9 @@ class BatchConfig:
     huber_dop: float = 1.0
 
     # --- IMU (datasheet + vehicle vibration PSD from utils)
-    lever: np.ndarray = _env_vec_field("LEVER_ARM", "0.31,0,0.55")
-    acc_noise: np.ndarray = _env_vec_field("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}")
-    gyro_noise: np.ndarray = _env_vec_field("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}")
+    lever: np.ndarray = _env_field("LEVER_ARM", "0.31,0,0.55", vec=True)
+    acc_noise: np.ndarray = _env_field("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}", vec=True)
+    gyro_noise: np.ndarray = _env_field("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}", vec=True)
     acc_bias_rw: float = _env_field("IMU_ACC_BIAS_RW", IMU_ACCEL_BIAS_SIGMA)
     gyro_bias_rw: float = _env_field("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA)
     integ_cov: float = 1e-3
