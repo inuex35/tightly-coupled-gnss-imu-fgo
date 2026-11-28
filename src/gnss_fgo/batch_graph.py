@@ -16,18 +16,6 @@ from .factors import sd_doppler_sat_sigma
 from .utils import cauchy_noise, enu_frame, huber_noise, integrate_imu_segment, make_imu_params
 
 
-def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
-                        bias_gyro_ref: np.ndarray | None = None) -> bool:
-    """IMU stillness check for batch ZUPT."""
-    if len(acc) < 5:
-        return False
-    acc_std = float(np.sqrt(np.mean(np.sum((acc - acc.mean(axis=0)) ** 2, axis=1))))
-    gyro_std = float(np.sqrt(np.mean(np.sum((gyro - gyro.mean(axis=0)) ** 2, axis=1))))
-    resid = gyro if bias_gyro_ref is None else (gyro - bias_gyro_ref)
-    gyro_med = float(np.median(np.linalg.norm(resid, axis=1)))
-    return acc_std <= 0.55 and gyro_std <= 0.030 and gyro_med <= 0.020
-
-
 def sat_points(r):
     """(ref@rover, tgt@rover, ref@base, tgt@base) satellite positions."""
     return (gtsam.Point3(*r[SAT_RR]), gtsam.Point3(*r[SAT_RT]),
@@ -137,32 +125,6 @@ def initial_trajectory(ant_ecef, tow, R_enu2ecef, rb, lever):
     return poses, vel, speed
 
 
-def doppler_speed(dop, n_ep, pos_ecef, fallback):
-    """Per-epoch receiver speed from undifferenced Doppler least squares."""
-    out = np.array(fallback, dtype=float)
-    starts = np.searchsorted(dop[:, D_EPOCH].astype(int), np.arange(n_ep + 1))
-    for k in range(n_ep):
-        d = dop[starts[k]:starts[k + 1]]
-        if len(d) < 5 or not np.all(np.isfinite(pos_ecef[k])):
-            continue
-        e = d[:, D_SATPOS] - pos_ecef[k]
-        e /= np.linalg.norm(e, axis=1)[:, None]
-        y = -d[:, D_LAM] * d[:, D_HZ] - np.sum(e * d[:, D_SATVEL], axis=1)
-        A = np.column_stack([-e, np.ones(len(d))])
-        use = np.ones(len(d), bool)
-        for _ in range(2):
-            x, *_ = np.linalg.lstsq(A[use], y[use], rcond=None)
-            r = y - A @ x
-            mad = 1.4826 * np.median(np.abs(r[use] - np.median(r[use]))) + 1e-3
-            new = np.abs(r) < 4 * mad
-            if new.sum() < 5 or np.array_equal(new, use):
-                break
-            use = new
-        if use.sum() >= 5:
-            out[k] = np.linalg.norm(x[:3])
-    return out
-
-
 def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
     """Graph, initial values, ecef_T_nav and factor-index map."""
     gnss_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
@@ -204,20 +166,6 @@ def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
     for k in range(n_ep):
         graph.add(NhcFactorCalib(X(k), V(k), MOUNT, omega[k], np.zeros(3),
                                  nhc_noise))
-
-    n_zupt = 0
-    if cfg.zupt:
-        gate = (doppler_speed(dop, n_ep, ant_ecef, speed)
-                if cfg.zupt_speed_src == "doppler" else speed)
-        zv = gtsam.noiseModel.Isotropic.Sigma(3, cfg.zupt_vel_sigma)
-        zp = gtsam.noiseModel.Diagonal.Sigmas(np.array(
-            [cfg.zupt_rot_sigma] * 3 + [cfg.zupt_pos_sigma] * 3))
-        for k in range(1, n_ep):
-            a, g = acc[cut[k - 1]:cut[k]], gyr[cut[k - 1]:cut[k]]
-            if is_still_imu_window(a, g, bg0) and gate[k] < cfg.zupt_speed:
-                graph.add(gtsam.PriorFactorVector(V(k), np.zeros(3), zv))
-                graph.add(gtsam.BetweenFactorPose3(X(k - 1), X(k), gtsam.Pose3(), zp))
-                n_zupt += 1
 
     graph.add(gtsam.PriorFactorPose3(X(0), poses[0], gtsam.noiseModel.Diagonal.Sigmas(
         np.array([0.05, 0.05, 0.5, 1.0, 1.0, 1.0]))))
@@ -263,7 +211,6 @@ def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
                 rr, lever, ecef_T_nav, gtsam.Point3(*omega[k]), 0.0, 0.0,
                 dop_noise(np.hypot(s_t, s_ref))))
     idx = {key: np.array(val, dtype=np.int64) for key, val in idx.items()}
-    idx["n_zupt"] = n_zupt
     return graph, init, ecef_T_nav, idx
 
 

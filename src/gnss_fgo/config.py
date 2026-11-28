@@ -99,14 +99,6 @@ class BatchConfig:
     gravity: float = _env_field("BATCH_GRAVITY", 9.81)
     nhc_sigmas: tuple = (_TC_DEFAULTS.nhc_sigma_lat, _TC_DEFAULTS.nhc_sigma_vert)
 
-    # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)
-    zupt: int = _env_field("ZUPT", 1)
-    zupt_speed: float = _env_field("ZUPT_SPEED", 0.2)   # [m/s]
-    zupt_speed_src: str = _env_field("ZUPT_SPEED_SRC", "doppler")  # doppler | gnss
-    zupt_vel_sigma: float = 0.1     # [m/s]
-    zupt_rot_sigma: float = 0.01    # [rad]
-    zupt_pos_sigma: float = 0.05    # [m]
-
     # --- ambiguity resolution
     ratio: float | None = field(
         default_factory=lambda: env_float("AR_RATIO", 0.0) or None)  # None = FFRT

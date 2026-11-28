@@ -50,8 +50,8 @@ def run_batch(meas, imu, cfg=None, log=print):
     t0 = time.perf_counter()
     h_graph, init, ecef_T_nav, _ = _graph.build_tc_graph(
         meas, imu, out["gnss_fix"], cfg, use_cauchy=False)
-    log(f"TC graph: {n_ep} keyframes, {h_graph.size()} factors, {init.size()} variables, "
-        f"ZUPT on {_.get('n_zupt', 0)} epochs ({time.perf_counter() - t0:.1f}s)")
+    log(f"TC graph: {n_ep} keyframes, {h_graph.size()} factors, {init.size()} variables "
+        f"({time.perf_counter() - t0:.1f}s)")
     flt, dt, info = solve(h_graph, init)
     log(f"TC float (Huber): {dt:.2f}s {info}")
     huber_ant = _graph.antenna_ecef(flt, ecef_T_nav, n_ep, cfg.lever)
