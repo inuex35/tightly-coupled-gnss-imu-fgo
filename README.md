@@ -4,12 +4,11 @@
 
 *carrier-phase RTK · LAMBDA ambiguity resolution · GTSAM · urban driving · reproducible*
 
-The full RTK chain lives inside the graph: double-differenced
-pseudorange **and carrier phase** with Cauchy M-estimator noise,
-continuous integer ambiguity resolution (LAMBDA + partial AR), and
-100 Hz IMU preintegration — targeting centimeter FIX in deep urban
-canyons, with IMU + single-differenced Doppler bridging NLOS storms
-and tunnels.
+Turn raw **RINEX GNSS + 100 Hz IMU** logs into centimeter-accurate trajectories in deep urban canyons:
+
+- **Run on your own data** — supply `rover.obs`, `base.obs`, `base.nav`, `imu.csv`, and `LEVER_ARM` for online-style **Sequential** or highest-accuracy **Batch** post-processing
+- **Reproduce urban benchmarks** — end-to-end evaluation on 6 full urban drives in Tokyo & Nagoya ([PPC-Dataset](https://github.com/taroz/PPC-Dataset))
+- **Embed or extend in Python** — call `ImuGnssTc` / `run_batch` as a library or swap GTSAM factors, robust noise, and AR strategies
 
 ![overview](docs/overview.png)
 
@@ -23,12 +22,9 @@ and tunnels.
 
 ## Results
 
-Everything is measured on open data with all-default settings, and is
-reproducible end to end — three full urban-Tokyo drives and three
-urban-Nagoya drives
-([PPC-Dataset](https://github.com/taroz/PPC-Dataset)):
+Measured on [PPC-Dataset](https://github.com/taroz/PPC-Dataset) with default settings:
 
-### Sequential (`examples/run_imu_gnss_tc.py`)
+### Sequential (`examples/run_imu_gnss_tc.py`) — online Fixed-Lag Smoother
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
 |-------------|-----------|---------|---------|---------|--------|--------|---------|
@@ -43,9 +39,7 @@ urban-Nagoya drives
 
 ![nagoya_defaults](docs/nagoya_defaults.png)
 
-### Batch (`examples/run_batch_tc.py`)
-
-Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish, Partial AR + FFRT):
+### Batch (`examples/run_batch_tc.py`) — offline whole-run MAP smoothing
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
 |-------------|-----------|---------|---------|---------|--------|--------|---------|
@@ -69,11 +63,20 @@ uv pip install --no-build-isolation --no-deps -e .
 
 (`setup.py` fetches GTSAM headers into `/tmp/gnss_fgo_gtsam_headers` and links against your installed `libgtsam.so`; set `GTSAM_SRC_DIR` / `GTSAM_BUILD_DIR` to use a local tree.)
 
-Run sequential or batch on [PPC-Dataset](https://github.com/taroz/PPC-Dataset):
+Run from the CLI (`reference.csv` is optional; set `SAVE_NPZ` / `OUT_NPZ` to export trajectories, FIX flags, and residuals, and plot with `examples/plot_defaults.py`):
 
 ```bash
 LEVER_ARM=0.31,0,0.55 python examples/run_imu_gnss_tc.py rover.obs base.obs base.nav imu.csv reference.csv
 LEVER_ARM=0.31,0,0.55 python examples/run_batch_tc.py    rover.obs base.obs base.nav imu.csv reference.csv
+```
+
+Or call the batch pipeline from Python:
+
+```python
+from gnss_fgo.batch import load_imu_csv, prepare, run_batch
+
+meas = prepare("rover.obs", "base.obs", "base.nav")
+res = run_batch(meas, load_imu_csv("imu.csv"))  # res["tc_fix"], res["fix"]
 ```
 
 ## Architecture
@@ -82,7 +85,7 @@ Flat module layout under `src/gnss_fgo/`:
 
 | Module | Role |
 |---|---|
-| `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point and epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) |
+| `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point and epoch flow (IMU prediction → slip check → factors → iSAM2 → `run_ar`) |
 | `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding) |
 | `slip.py` | `SatStateMap` and cycle-slip detection (LLI, geometry-free, Doppler-phase) |
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
@@ -96,6 +99,4 @@ All `TcConfig` and `BatchConfig` fields in `src/gnss_fgo/config.py` can be overr
 
 ## License
 
-BSD 3-Clause. Built on [GTSAM](https://github.com/borglab/gtsam) and
-[cssrlib](https://github.com/hirokawa/cssrlib); evaluated on
-[PPC-Dataset](https://github.com/taroz/PPC-Dataset).
+BSD 3-Clause. Built on [GTSAM](https://github.com/borglab/gtsam) and [cssrlib](https://github.com/hirokawa/cssrlib); evaluated on [PPC-Dataset](https://github.com/taroz/PPC-Dataset).
