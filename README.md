@@ -15,23 +15,11 @@ and tunnels.
 
 ## What's inside
 
-- **RTK in the graph** — DD pseudorange + DD carrier-phase factors with
-  Cauchy robust noise (`k = 2.385`) on a QR-factorized GTSAM
-  `IncrementalFixedLagSmoother`, float ambiguities chained via per-epoch
-  random walk, clock-free seeding (SD phase − SD code)
-- **Integer ambiguity resolution** — continuous LAMBDA + partial AR
-  with a dimension-adaptive fixed-failure-rate ratio test (FFRT) and
-  full-AR DD integer fix-and-hold (`armode=2`)
-- **Tight IMU coupling** — 100 Hz `CombinedImuFactor` preintegration;
-  NHC vehicle constraint (C++ factor with exact Jacobians)
-- **Velocity through outages** — between-satellite single-differenced
-  Doppler (clock-free), injected on every epoch
-- **Integrity & recovery** — LLI + geometry-free cycle-slip detection
-  and ambiguity reset/re-seeding
-- **GTSAM integration** — DD and Doppler factors are upstream in
-  [GTSAM](https://github.com/borglab/gtsam) (see the
-  [gtsam.org post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html));
-  NHC and SD Doppler are contributed / pending upstream
+- **RTK in the graph** — DD pseudorange + DD carrier-phase (Cauchy `k = 2.385`), per-epoch ambiguity random walk, clock-free seeding (SD phase − SD code)
+- **Ambiguity resolution** — LAMBDA + partial AR with dimension-adaptive FFRT and fix-and-hold (`armode=2`)
+- **Tight IMU + velocity** — 100 Hz `CombinedImuFactor`, NHC vehicle constraint, and clock-free SD Doppler
+- **Integrity** — LLI + geometry-free + Doppler-phase cycle-slip detection and ambiguity reset
+- **GTSAM integration** — DD and Doppler factors are upstream in [GTSAM](https://github.com/borglab/gtsam) ([post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)); NHC and SD Doppler are pending upstream
 
 ## Results
 
@@ -70,39 +58,22 @@ Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish
 
 ## Quick start
 
-Linux x86_64, Python 3.12 (CI-tested; 3.11 should work). Requires `g++`, `git`, and
-Boost headers (`libboost-dev`) to build the local C++ extension
-(`gnss_fgo._extra_factors`: `SingleDifferenceDopplerFactor*`, `NhcFactor*`, and
-`TdcpFactor*`) against your installed `gtsam` shared library.
+Linux x86_64, Python 3.12 (`g++`, `git`, `libboost-dev` required to build `gnss_fgo._extra_factors`):
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
-uv pip install numpy matplotlib setuptools
-
-# Official GTSAM (with DoubleDifference* factors; or a prebuilt wheel from inuex35/gtsam):
-uv pip install gtsam
-
-# cssrlib DD-only RTK core (pinned; carries nav.sat_band_plan,
-# satposs signal-flight-time fix, indexed findeph bisect, and sync_obs_hold dt_fill):
+uv pip install numpy matplotlib setuptools gtsam
 uv pip install "cssrlib @ git+https://github.com/inuex35/cssrlib.git@6f7a56caf3e4eb5e8cd6159e8456a785110d8d09"
-
-# Build the SD-Doppler & NHC C++ extension locally and install gnss-fgo:
 uv pip install --no-build-isolation --no-deps -e .
 ```
 
-(`setup.py` shallow-clones `borglab/gtsam` headers into `/tmp/gnss_fgo_gtsam_headers` to
-generate `config.h` and links directly against `libgtsam.so` inside your installed `gtsam`
-package without rebuilding GTSAM itself. Set `GTSAM_SRC_DIR` / `GTSAM_BUILD_DIR` if you
-already have a local GTSAM tree. Once `NhcFactor*` is merged upstream into GTSAM,
-only `SingleDifferenceDopplerFactor*` remains in the local extension.)
+(`setup.py` fetches GTSAM headers into `/tmp/gnss_fgo_gtsam_headers` and links against your installed `libgtsam.so`; set `GTSAM_SRC_DIR` / `GTSAM_BUILD_DIR` to use a local tree.)
 
-Run (datasets not included; lay out PPC-Dataset under
-`data/PPC-Dataset/tokyo/run{1,2,3}/`):
+Run sequential or batch on [PPC-Dataset](https://github.com/taroz/PPC-Dataset):
 
 ```bash
-LEVER_ARM=0.31,0,0.55 \
-python examples/run_imu_gnss_tc.py \
-  rover.obs base.obs base.nav imu.csv reference.csv
+LEVER_ARM=0.31,0,0.55 python examples/run_imu_gnss_tc.py rover.obs base.obs base.nav imu.csv reference.csv
+LEVER_ARM=0.31,0,0.55 python examples/run_batch_tc.py    rover.obs base.obs base.nav imu.csv reference.csv
 ```
 
 ## Architecture
@@ -121,10 +92,7 @@ Flat module layout under `src/gnss_fgo/`:
 
 ## Configuration
 
-Every `TcConfig` field in `config.py` is an env var (`ERR_A`, `ERR_ERATIO_PR`,
-`ELMIN_DEG`, `AMB_RW_SIGMA`, `ARMODE`, `FLS_LAG`, …) — see
-`config.py` for all 11 parameters. The example script adds its own
-env switches (`LEVER_ARM`, `MAX_EP`, `SAVE_NPZ`, …).
+All `TcConfig` and `BatchConfig` fields in `src/gnss_fgo/config.py` can be overridden via env vars (`ERR_A`, `ARMODE`, `FLS_LAG`, `BATCH_SOLVER`, `LEVER_ARM`, …).
 
 ## License
 
