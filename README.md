@@ -15,11 +15,11 @@ and tunnels.
 
 ## What's inside
 
-- **RTK in the graph** — DD pseudorange + DD carrier-phase (Cauchy `k = 2.385`), per-epoch ambiguity random walk, clock-free seeding (SD phase − SD code)
-- **Ambiguity resolution** — LAMBDA + partial AR with dimension-adaptive FFRT and fix-and-hold (`armode=2`)
-- **Tight IMU + velocity** — 100 Hz `CombinedImuFactor`, NHC vehicle constraint, and clock-free SD Doppler
-- **Integrity** — LLI + geometry-free + Doppler-phase cycle-slip detection and ambiguity reset
-- **GTSAM integration** — DD and Doppler factors are upstream in [GTSAM](https://github.com/borglab/gtsam) ([post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)); NHC and SD Doppler are pending upstream
+- **RTK**: DD pseudorange & carrier phase (Cauchy `k = 2.385`), ambiguity RW, clock-free seeding
+- **AR**: LAMBDA + partial AR (FFRT) + fix-and-hold (`armode=2`)
+- **IMU & velocity**: 100 Hz `CombinedImuFactor`, NHC, clock-free SD Doppler
+- **Integrity**: LLI + geometry-free + Doppler cycle-slip detection
+- **GTSAM**: DD factors upstream ([post](https://gtsam.org/2026/06/10/rtk-gnss-double-difference.html)); NHC / SD Doppler pending
 
 ## Results
 
