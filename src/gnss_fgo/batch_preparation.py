@@ -22,7 +22,7 @@ PR_RR, PR_BR, PR_RT, PR_BT = 6, 7, 8, 9          # pseudoranges [m]: rover/base 
 CP_RR, CP_BR, CP_RT, CP_BT = 10, 11, 12, 13      # carriers [m]
 SAT_RR, SAT_RT, SAT_BR, SAT_BT = (slice(14, 17), slice(17, 20),   # sat ECEF at rover
                                   slice(20, 23), slice(23, 26))   # / base signal time
-SATNO_REF, SATNO_TGT = 26, 27
+SATNO_TGT = 27
 N_DD_COLS = 28
 
 D_EPOCH, D_SAT, D_HZ, D_LAM, D_EL = 0, 1, 2, 3, 4

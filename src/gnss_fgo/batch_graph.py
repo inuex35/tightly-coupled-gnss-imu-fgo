@@ -66,9 +66,9 @@ def sat_points(r):
 # ── GNSS-only batch graph ─────────────────────────────────────────────
 
 
-def add_ambiguities(graph, init, rows, sig_amb, seen=None):
+def add_ambiguities(graph, init, rows, sig_amb):
     """N(a) per arc, seeded with SD carrier-minus-code, plus a weak prior."""
-    seen = set() if seen is None else seen
+    seen = set()
     prior = gtsam.noiseModel.Isotropic.Sigma(1, sig_amb)
     for r in rows:
         lam = r[LAM]

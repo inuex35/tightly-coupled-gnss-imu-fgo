@@ -295,11 +295,11 @@ def resolve(groups, values, cov, ratio_min=None, workers=0, min_pairs=4):
     return accepted, sources, passed, stats
 
 
-def validate_fix(rows, keep_cp, accepted, cp_res, n_ep, cfg):
+def validate_fix(rows, accepted, cp_res, n_ep, cfg):
     """Per-epoch FIX validation of the fixed solution."""
     uf = ArcUnion(accepted)
     k = rows[:, EPOCH].astype(int)
-    resolved = np.array([keep_cp[i] and uf.resolved(rows[i, ARC_REF], rows[i, ARC_TGT])
+    resolved = np.array([uf.resolved(rows[i, ARC_REF], rows[i, ARC_TGT])
                          for i in range(len(rows))], dtype=bool)
     n_res = np.bincount(k[resolved], minlength=n_ep)
     worst = np.zeros(n_ep)

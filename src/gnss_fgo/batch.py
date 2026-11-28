@@ -43,23 +43,21 @@ def run_batch(meas, imu, cfg=None, log=print):
 
     # --- tightly coupled float: Huber initial convergence -> Cauchy polish.
     t0 = time.perf_counter()
-    tc_meas = meas
     h_graph, init, ecef_T_nav, _ = _graph.build_tc_graph(
-        tc_meas, imu, out["gnss_float"], cfg, use_cauchy=False)
+        meas, imu, out["gnss_float"], cfg, use_cauchy=False)
     log(f"TC graph: {n_ep} keyframes, {h_graph.size()} factors, {init.size()} variables, "
         f"ZUPT on {_.get('n_zupt', 0)} epochs ({time.perf_counter() - t0:.1f}s)")
     flt, dt, info = solve(h_graph, init)
     log(f"TC float (Huber): {dt:.2f}s {info}")
     graph, _, _, idx = _graph.build_tc_graph(
-        tc_meas, imu, out["gnss_float"], cfg, use_cauchy=True)
+        meas, imu, out["gnss_float"], cfg, use_cauchy=True)
     flt, dt, info = solve(graph, flt)
     log(f"TC float (Cauchy): {dt:.2f}s {info}")
-    keep_cp = np.ones(len(rows), dtype=bool)
     out["tc_float"] = _graph.antenna_ecef(flt, ecef_T_nav, n_ep, cfg.lever)
 
-    # --- ambiguity resolution on the surviving carrier rows.
+    # --- ambiguity resolution on carrier rows.
     t0 = time.perf_counter()
-    groups = _ar.group_epochs(rows[keep_cp])
+    groups = _ar.group_epochs(rows)
     cov = _ar.arc_covariances(graph, flt, groups, n_ep, _graph.TC_DIMS)
     acc, sources, passed, st = _ar.resolve(groups, flt, cov, cfg.ratio, cfg.lambda_workers)
     ratio_label = f"ratio >= {cfg.ratio}" if cfg.ratio is not None else "FFRT"
@@ -72,10 +70,10 @@ def run_batch(meas, imu, cfg=None, log=print):
     fix, dt, info = solve(fgraph, flt)
     log(f"TC fix: {dt:.2f}s {info}")
     _, cp_res, _ = _graph.residuals(fgraph, fix, idx)
-    fix_ok, fix_rej, _ = _ar.validate_fix(rows, keep_cp, acc, cp_res, n_ep, cfg)
+    fix_ok, fix_rej, _ = _ar.validate_fix(rows, acc, cp_res, n_ep, cfg)
     out.update(tc_fix=_graph.antenna_ecef(fix, ecef_T_nav, n_ep, cfg.lever),
                fix=fix_ok, fix_rejected=fix_rej, accepted=np.array(acc, np.int64).reshape(-1, 3),
-               sources=np.array(sources, float).reshape(-1, 2), keep_cp=keep_cp, cp_res=cp_res,
+               sources=np.array(sources, float).reshape(-1, 2), cp_res=cp_res,
                ratio_pass=np.isin(np.arange(n_ep), list(passed)))
     out["mount_deg"] = np.degrees(fix.atRot3(_graph.MOUNT).rpy())
     out["stats"] = dict(st, fix_rate=float(fix_ok.mean()), seconds=time.perf_counter() - t_all)
