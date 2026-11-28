@@ -116,7 +116,7 @@ Flat module layout under `src/gnss_fgo/`:
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
 | `config.py` | `TcConfig` and `BatchConfig` |
 | `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber / Cauchy robust noise |
-| `batch.py`, `batch_ar.py`, `batch_graph.py` | offline whole-run batch TC pipeline and global AR |
+| `batch.py`, `batch_ar.py`, `batch_graph.py`, `batch_preparation.py` | offline whole-run batch TC pipeline, front-end prep, and global AR |
 
 ## Configuration
 
