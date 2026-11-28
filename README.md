@@ -112,7 +112,8 @@ Flat module layout under `src/gnss_fgo/`:
 | Module | Role |
 |---|---|
 | `runner.py` | `ImuGnssTc.process(obs, obsb)` entry point and epoch flow (`bootstrap` / IMU prediction → slip check → factors → iSAM2 → `run_ar`) |
-| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding), `SatStateMap`, and cycle-slip detection |
+| `factors.py` | measurement → GTSAM factor builders (DD PR/CP, SD Doppler, NHC, ambiguity seeding) |
+| `slip.py` | `SatStateMap` and cycle-slip detection (LLI, geometry-free, Doppler-phase) |
 | `ar.py` | LAMBDA + partial AR with dimension-adaptive FFRT and full-AR fix-and-hold |
 | `config.py` | `TcConfig` and `BatchConfig` |
 | `utils.py` | geometry, IMU params/preintegration, signal auto-detection, Huber / Cauchy robust noise |
