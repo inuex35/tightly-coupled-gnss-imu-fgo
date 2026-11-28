@@ -11,7 +11,7 @@ from gtsam.symbol_shorthand import N
 from scipy.linalg import cho_factor, cho_solve
 
 from .ar import ffrt_ratio_threshold
-from .batch_prep import ARC_REF, ARC_TGT, EPOCH, SATNO_TGT
+from .batch_preparation import ARC_REF, ARC_TGT, EPOCH, SATNO_TGT
 
 _MIN_PARALLEL = 256     # below this, pool start-up costs more than it saves
 

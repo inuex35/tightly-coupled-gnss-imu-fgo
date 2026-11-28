@@ -90,7 +90,6 @@ class BatchConfig:
     sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
     dop_sigma0: float = _env_field("DOP_SIGMA0", float(np.sqrt(2.0) * _TC_DEFAULTS.err_a / 0.02))  # [m/s]
     huber_dop: float = 1.0
-    tropo: int = _env_field("TROPO", 0)  # Saastamoinen DD tropo
 
     # --- IMU (datasheet + vehicle vibration PSD from utils)
     lever: np.ndarray = _env_vec_field("LEVER_ARM", "0.31,0,0.55")

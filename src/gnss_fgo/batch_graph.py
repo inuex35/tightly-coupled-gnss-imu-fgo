@@ -10,7 +10,7 @@ from ._extra_factors import (
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .batch_prep import (
+from .batch_preparation import (
     ARC_REF,
     ARC_TGT,
     CP_BR,
@@ -38,7 +38,6 @@ from .batch_prep import (
     load,
     prepare,
     save,
-    tropo_correct,
 )
 from .factors import sd_doppler_sat_sigma
 from .utils import (

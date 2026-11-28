@@ -1,4 +1,4 @@
-"""Batch RINEX front end, NPZ serialization, and tropospheric correction."""
+"""Batch RINEX front end and NPZ serialization."""
 
 import time
 
@@ -6,7 +6,7 @@ import cssrlib.gnss as gn
 import cssrlib.rinex as rn
 import numpy as np
 from cssrlib.ephemeris import satposs
-from cssrlib.gnss import ecef2pos, rSigRnx, sat2prn, uGNSS, uTYP
+from cssrlib.gnss import rSigRnx, sat2prn, uGNSS, uTYP
 from cssrlib.rtk import rtkpos
 
 from .config import _TC_DEFAULTS
@@ -206,35 +206,3 @@ def save(path, data):
 def load(path):
     z = np.load(path)
     return {key: z[key] for key in ("rows", "dop", "tow", "rb", "pos0")}
-
-
-def _trop_saast(llh, sin_el, humi=0.7):
-    lat, hgt = llh[0], np.maximum(llh[2], 0.0)
-    pres = 1013.25 * (1.0 - 2.2557e-5 * hgt) ** 5.2568
-    temp = 15.0 - 6.5e-3 * hgt + 273.16
-    e = 6.108 * humi * np.exp((17.15 * temp - 4684.0) / (temp - 38.45))
-    zhd = 0.0022768 * pres / (1.0 - 0.00266 * np.cos(2.0 * lat) - 0.00028 * hgt / 1e3)
-    zwd = 0.002277 * (1255.0 / temp + 0.05) * e
-    return (zhd + zwd) / np.maximum(sin_el, 0.1)
-
-
-def tropo_correct(rows, rover_ecef, rb):
-    """Copy of the DD rows with modelled tropo removed from all eight PR/CP."""
-    out = rows.copy()
-    xr = rover_ecef[rows[:, EPOCH].astype(int)].copy()
-    xr[~np.all(np.isfinite(xr), axis=1)] = rb
-    llh_r = np.array([ecef2pos(p) for p in xr]).T
-    llh_b = np.array(ecef2pos(rb))
-
-    def delay(sat, x, llh):
-        lat, lon = llh[0], llh[1]
-        up = np.stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1)
-        los = sat - x
-        return _trop_saast(llh, np.sum(los * up, axis=-1) / np.linalg.norm(los, axis=-1))
-
-    t = (delay(rows[:, SAT_RR], xr, llh_r), delay(rows[:, SAT_BR], rb, llh_b),
-         delay(rows[:, SAT_RT], xr, llh_r), delay(rows[:, SAT_BT], rb, llh_b))
-    for cols in ((PR_RR, PR_BR, PR_RT, PR_BT), (CP_RR, CP_BR, CP_RT, CP_BT)):
-        for c, d in zip(cols, t):
-            out[:, c] -= d
-    return out
