@@ -6,7 +6,8 @@ import numpy as np
 
 from . import batch_ar as _ar
 from . import batch_graph as _graph
-from .batch_graph import load, prepare, save
+from . import batch_prep as _prep
+from .batch_prep import load, prepare, save
 from .config import BatchConfig
 from .utils import load_imu_csv as _load_imu_csv
 
@@ -36,7 +37,7 @@ def run_batch(meas, imu, cfg=None, log=print):
 
     # --- GNSS-only batch: initial trajectory for the TC graph.
     t0 = time.perf_counter()
-    rows = (_graph.tropo_correct(rows_raw, np.tile(pos0, (n_ep, 1)), rb)
+    rows = (_prep.tropo_correct(rows_raw, np.tile(pos0, (n_ep, 1)), rb)
             if cfg.tropo else rows_raw)
     g_graph, g_init = _graph.build_gnss_graph(rows, tow, rb, pos0, cfg)
     g_flt, _, _ = solve(g_graph, g_init)
@@ -51,7 +52,7 @@ def run_batch(meas, imu, cfg=None, log=print):
     # --- tightly coupled float: Huber initial convergence -> Cauchy polish.
     t0 = time.perf_counter()
     if cfg.tropo:
-        rows = _graph.tropo_correct(rows_raw, out["gnss_fix"], rb)
+        rows = _prep.tropo_correct(rows_raw, out["gnss_fix"], rb)
     tc_meas = dict(meas, rows=rows)
     h_graph, init, ecef_T_nav, _ = _graph.build_tc_graph(
         tc_meas, imu, out["gnss_fix"], cfg, use_cauchy=False)

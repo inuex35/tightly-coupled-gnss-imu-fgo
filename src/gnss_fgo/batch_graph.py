@@ -1,28 +1,51 @@
-"""Batch graph construction, RINEX frontend, and whole-run LM solver."""
+"""Batch graph construction and whole-run LM solver."""
 
 import time
 
-import cssrlib.gnss as gn
-import cssrlib.rinex as rn
 import gtsam
 import numpy as np
-from cssrlib.ephemeris import satposs
-from cssrlib.gnss import ecef2pos, rSigRnx, sat2prn, uGNSS, uTYP
-from cssrlib.rtk import rtkpos
 from gtsam.symbol_shorthand import B, N, V, X
 
 from ._extra_factors import (
     NhcFactorCalib,
     SingleDifferenceDopplerFactorArm,
 )
-from .config import _TC_DEFAULTS
-from .factors import _is_bds_geo, _snr_var_scale
-from .slip import _DOP_SLIP_MAX_DT_S, _DOP_SLIP_THRES_CYC
+from .batch_prep import (
+    ARC_REF,
+    ARC_TGT,
+    CP_BR,
+    CP_BT,
+    CP_RR,
+    CP_RT,
+    D_EPOCH,
+    D_HZ,
+    D_LAM,
+    D_SATPOS,
+    D_SATVEL,
+    D_SNR,
+    EPOCH,
+    LAM,
+    PR_BR,
+    PR_BT,
+    PR_RR,
+    PR_RT,
+    SAT_BR,
+    SAT_BT,
+    SAT_RR,
+    SAT_RT,
+    SATNO_TGT,
+    WEIGHT,
+    load,
+    prepare,
+    save,
+    tropo_correct,
+)
+from .factors import sd_doppler_sat_sigma
 from .utils import (
-    auto_detect_signals,
     cauchy_noise,
     enu_frame,
     huber_noise,
+    integrate_imu_segment,
     make_imu_params,
 )
 
@@ -39,236 +62,10 @@ def is_still_imu_window(acc: np.ndarray, gyro: np.ndarray,
     return acc_std <= 0.55 and gyro_std <= 0.030 and gyro_med <= 0.020
 
 
-# ── Row layout for batch measurement arrays ───────────────────────────
-
-EPOCH, FREQ, LAM, WEIGHT, ARC_REF, ARC_TGT = 0, 1, 2, 3, 4, 5
-PR_RR, PR_BR, PR_RT, PR_BT = 6, 7, 8, 9          # pseudoranges [m]: rover/base x ref/tgt
-CP_RR, CP_BR, CP_RT, CP_BT = 10, 11, 12, 13      # carriers [m]
-SAT_RR, SAT_RT, SAT_BR, SAT_BT = (slice(14, 17), slice(17, 20),   # sat ECEF at rover
-                                  slice(20, 23), slice(23, 26))   # / base signal time
-SATNO_REF, SATNO_TGT = 26, 27
-N_DD_COLS = 28
-
-D_EPOCH, D_SAT, D_HZ, D_LAM, D_EL = 0, 1, 2, 3, 4
-D_SATPOS, D_SATVEL = slice(5, 8), slice(8, 11)
-N_DOP_COLS = 11
-
-
 def sat_points(r):
     """(ref@rover, tgt@rover, ref@base, tgt@base) satellite positions."""
     return (gtsam.Point3(*r[SAT_RR]), gtsam.Point3(*r[SAT_RT]),
             gtsam.Point3(*r[SAT_BR]), gtsam.Point3(*r[SAT_BT]))
-
-
-# ── Batch RINEX front end ─────────────────────────────────────────────
-
-SYSTEMS = (uGNSS.GPS, uGNSS.GAL, uGNSS.QZS, uGNSS.BDS)
-SIGS_ROVER = ["GC1C", "GC2W", "GL1C", "GL2W", "GS1C", "GS2W", "GD1C", "GD2W",
-              "EC1C", "EC5Q", "EL1C", "EL5Q", "ES1C", "ES5Q", "ED1C", "ED5Q",
-              "JC1C", "JC2L", "JL1C", "JL2L", "JS1C", "JS2L", "JD1C", "JD2L"]
-SIGS_BASE = ["GC1C", "GC2W", "GL1C", "GL2W", "GS1C", "GS2W",
-             "EC1X", "EC5X", "EL1X", "EL5X", "ES1X", "ES5X",
-             "JC1C", "JC2X", "JL1C", "JL2X", "JS1C", "JS2X"]
-
-
-def _up(pos_ecef):
-    llh = gn.ecef2pos(np.asarray(pos_ecef, float))
-    return np.array([np.cos(llh[0]) * np.cos(llh[1]),
-                     np.cos(llh[0]) * np.sin(llh[1]), np.sin(llh[0])])
-
-
-def _doppler_rows(out, k, obs, rs, vs, pos0, up, elmin):
-    for i, s in enumerate(obs.sat):
-        s = int(s)
-        sys_ = sat2prn(s)[0]
-        if sys_ not in SYSTEMS or not np.any(rs[i, :3]):
-            continue
-        los = rs[i, :3] - pos0
-        el = np.arcsin(los @ up / np.linalg.norm(los))
-        if el < elmin:
-            continue
-        for f in range(obs.D.shape[1]):
-            if obs.D[i, f] != 0.0:
-                lam = obs.sig[sys_][uTYP.L][f].wavelength()
-                out.append((k, s, obs.D[i, f], lam, el, *rs[i, :3], *vs[i, :3]))
-                break
-
-
-def prepare(rover_obs, base_obs, nav_file, base_ecef=None, max_epochs=None,
-            elmin_deg=15.0, gf_jump=_TC_DEFAULTS.thres_slip,
-            sigs_rover=None, sigs_base=None, log=print):
-    """Decode the RINEX files and build the batch measurement arrays."""
-    nav_nf = 3
-    dec, decb = rn.rnxdec(), rn.rnxdec()
-    nav = gn.Nav(nf=nav_nf)
-    dec.decode_nav(nav_file, nav)
-    dec.decode_obsh(rover_obs)
-    decb.decode_obsh(base_obs)
-    if sigs_rover is not None and sigs_base is not None:
-        dec.setSignals([rSigRnx(s) for s in sigs_rover])
-        decb.setSignals([rSigRnx(s) for s in sigs_base])
-    else:
-        sigs, sigsb = auto_detect_signals(
-            dec.sig_map, decb.sig_map, max_freq=nav_nf,
-            required=(uTYP.C, uTYP.L, uTYP.S),
-            systems=list(SYSTEMS), strict_freq=False)
-        rov_picks_by_sys = {}
-        for s in sigs:
-            if s.typ != uTYP.L:
-                continue
-            band = int(s.sig) // 100
-            bands = rov_picks_by_sys.setdefault(s.sys, [])
-            if band not in bands:
-                bands.append(band)
-        for sys_id, bands in rov_picks_by_sys.items():
-            rov_typ_d = {int(s.sig) // 100: s
-                         for s in dec.sig_map.get(sys_id, {}).values()
-                         if s.typ == uTYP.D}
-            for band in bands:
-                if band in rov_typ_d:
-                    sigs.append(rov_typ_d[band])
-        dec.setSignals(sigs)
-        decb.setSignals(sigsb)
-    rb = np.asarray(base_ecef if base_ecef is not None else decb.pos, float)
-    nav.rb = list(rb)
-    nav.elmin = np.deg2rad(elmin_deg)
-    rtk = rtkpos(nav, dec.pos)
-    pos0 = np.array(dec.pos, float)
-    nav.x[0:3] = pos0
-    up = _up(pos0)
-
-    rows, dop, tow = [], [], []
-    arc_of, last_used, last_gf, last_dop = {}, {}, {}, {}
-    last_tb, n_arc = None, 0
-    t0 = time.perf_counter()
-    for ne, (obs, obsb, _) in enumerate(rn.sync_obs_hold(dec, decb, maxage=nav.maxtdiff)):
-        if max_epochs and ne >= max_epochs:
-            break
-        k = len(tow)
-        tow.append(gn.time2gpst(obs.t)[1])
-        dd = None
-        if obsb is not None:
-            dd = rtk.prepare_double_difference_measurements(obs, obsb, pos_pred=dec.pos)
-        if dd is not None:
-            rs, vs = dd.rs, dd.vs
-        elif len(obs.sat):
-            rs, vs, _, _, _ = satposs(obs, nav)
-        else:
-            continue
-        _doppler_rows(dop, k, obs, rs, vs, pos0, up, nav.elmin)
-        if dd is None:
-            continue
-        tb = gn.time2gpst(obsb.t)[1]
-        fresh_base, last_tb = tb != last_tb, tb
-
-        slip_gf = set()
-        for kk, s in enumerate(dd.sat):
-            s, iu = int(s), dd.iu[kk]
-            sys_ = sat2prn(s)[0]
-            if sys_ not in SYSTEMS:
-                continue
-            lams_s = [sig.wavelength() for sig in obs.sig[sys_][uTYP.L]]
-            n_f = min(nav.nf, len(lams_s), obs.L.shape[1])
-            for fa in range(n_f):
-                La = float(obs.L[iu, fa])
-                if La == 0.0 or lams_s[fa] <= 0.0:
-                    continue
-                for fb in range(fa + 1, n_f):
-                    Lb = float(obs.L[iu, fb])
-                    if Lb == 0.0 or lams_s[fb] <= 0.0:
-                        continue
-                    gf = La * lams_s[fa] - Lb * lams_s[fb]
-                    gkey = (s, fa, fb)
-                    prev = last_gf.get(gkey)
-                    if prev is not None and prev[0] == k - 1 and abs(gf - prev[1]) > gf_jump:
-                        slip_gf.add(s)
-                    last_gf[gkey] = (k, gf)
-
-        slip_dop = set()
-        if hasattr(obs, "D"):
-            tow_k = tow[-1]
-            for kk, s in enumerate(dd.sat):
-                s, iu = int(s), dd.iu[kk]
-                for f in range(min(nav.nf, obs.L.shape[1], obs.D.shape[1])):
-                    L_val, D_val = float(obs.L[iu, f]), float(obs.D[iu, f])
-                    if L_val == 0.0 or D_val == 0.0:
-                        continue
-                    key = (s, f)
-                    if key in last_dop:
-                        pL, pD, ptow = last_dop[key]
-                        dt = tow_k - ptow
-                        if 0.0 < dt <= _DOP_SLIP_MAX_DT_S:
-                            if abs((L_val - pL) + 0.5 * (D_val + pD) * dt) > _DOP_SLIP_THRES_CYC:
-                                slip_dop.add(key)
-                    last_dop[key] = (L_val, D_val, tow_k)
-
-        def arc(s, f, iu, ir):
-            nonlocal n_arc
-            key = (s, f)
-            slip = (last_used.get(key) != k - 1 or (obs.lli[iu, f] & 1)
-                    or (fresh_base and (obsb.lli[ir, f] & 1))
-                    or s in slip_gf or key in slip_dop)
-            if key not in arc_of or slip:
-                arc_of[key], n_arc = n_arc, n_arc + 1
-            return arc_of[key]
-
-        by_sys = {}
-        for kk, s in enumerate(dd.sat):
-            sys_ = sat2prn(int(s))[0]
-            if sys_ in SYSTEMS and dd.el[kk] >= nav.elmin:
-                by_sys.setdefault(sys_, []).append(kk)
-        used_now = []
-        for sys_, ks in by_sys.items():
-            for f in range(nav.nf):
-                lam = obs.sig[sys_][uTYP.L][f].wavelength()
-                ok = [kk for kk in ks
-                      if 0.0 not in (obs.P[dd.iu[kk], f], obsb.P[dd.ir[kk], f],
-                                     obs.L[dd.iu[kk], f], obsb.L[dd.ir[kk], f])]
-                if len(ok) < 2:
-                    continue
-                pool = [kk for kk in ok if not (sys_ == uGNSS.BDS and _is_bds_geo(int(dd.sat[kk])))] or ok
-                ridx = max(pool, key=lambda kk: dd.el[kk])
-                sr, iur, irr = int(dd.sat[ridx]), dd.iu[ridx], dd.ir[ridx]
-                a_ref = arc(sr, f, iur, irr)
-                used_now.append((sr, f))
-                for kk in ok:
-                    if kk == ridx:
-                        continue
-                    st, iut, irt = int(dd.sat[kk]), dd.iu[kk], dd.ir[kk]
-                    a_tgt = arc(st, f, iut, irt)
-                    used_now.append((st, f))
-                    has_sr, has_sb = hasattr(obs, "S"), hasattr(obsb, "S")
-                    snrs = (
-                        obs.S[iur, f] if has_sr else 0.0,
-                        obsb.S[irr, f] if has_sb else 0.0,
-                        obs.S[iut, f] if has_sr else 0.0,
-                        obsb.S[irt, f] if has_sb else 0.0,
-                    )
-                    w = float(np.sqrt(sum(2.0 * _snr_var_scale(s) for s in snrs)))
-                    rows.append((
-                        k, f, lam, w, a_ref, a_tgt,
-                        obs.P[iur, f], obsb.P[irr, f], obs.P[iut, f], obsb.P[irt, f],
-                        obs.L[iur, f] * lam, obsb.L[irr, f] * lam,
-                        obs.L[iut, f] * lam, obsb.L[irt, f] * lam,
-                        *dd.rs[iur, :3], *dd.rs[iut, :3],
-                        *dd.rsb[irr, :3], *dd.rsb[irt, :3], sr, st))
-        for key in used_now:
-            last_used[key] = k
-    out = dict(rows=np.array(rows, dtype=float).reshape(-1, N_DD_COLS),
-               dop=np.array(dop, dtype=float).reshape(-1, N_DOP_COLS),
-               tow=np.array(tow), rb=rb, pos0=pos0)
-    log(f"front end: {len(tow)} epochs, {len(rows)} DD rows, {len(dop)} Doppler rows, "
-        f"{n_arc} arcs ({time.perf_counter() - t0:.1f}s)")
-    return out
-
-
-def save(path, data):
-    np.savez_compressed(path, **data)
-
-
-def load(path):
-    z = np.load(path)
-    return {key: z[key] for key in ("rows", "dop", "tow", "rb", "pos0")}
 
 
 # ── GNSS-only batch graph ─────────────────────────────────────────────
@@ -400,38 +197,6 @@ def doppler_speed(dop, n_ep, pos_ecef, fallback):
     return out
 
 
-def _trop_saast(llh, sin_el, humi=0.7):
-    lat, hgt = llh[0], np.maximum(llh[2], 0.0)
-    pres = 1013.25 * (1.0 - 2.2557e-5 * hgt) ** 5.2568
-    temp = 15.0 - 6.5e-3 * hgt + 273.16
-    e = 6.108 * humi * np.exp((17.15 * temp - 4684.0) / (temp - 38.45))
-    zhd = 0.0022768 * pres / (1.0 - 0.00266 * np.cos(2.0 * lat) - 0.00028 * hgt / 1e3)
-    zwd = 0.002277 * (1255.0 / temp + 0.05) * e
-    return (zhd + zwd) / np.maximum(sin_el, 0.1)
-
-
-def tropo_correct(rows, rover_ecef, rb):
-    """Copy of the DD rows with modelled tropo removed from all eight PR/CP."""
-    out = rows.copy()
-    xr = rover_ecef[rows[:, EPOCH].astype(int)].copy()
-    xr[~np.all(np.isfinite(xr), axis=1)] = rb
-    llh_r = np.array([ecef2pos(p) for p in xr]).T
-    llh_b = np.array(ecef2pos(rb))
-
-    def delay(sat, x, llh):
-        lat, lon = llh[0], llh[1]
-        up = np.stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1)
-        los = sat - x
-        return _trop_saast(llh, np.sum(los * up, axis=-1) / np.linalg.norm(los, axis=-1))
-
-    t = (delay(rows[:, SAT_RR], xr, llh_r), delay(rows[:, SAT_BR], rb, llh_b),
-         delay(rows[:, SAT_RT], xr, llh_r), delay(rows[:, SAT_BT], rb, llh_b))
-    for cols in ((PR_RR, PR_BR, PR_RT, PR_BT), (CP_RR, CP_BR, CP_RT, CP_BT)):
-        for c, d in zip(cols, t):
-            out[:, c] -= d
-    return out
-
-
 def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
     """Graph, initial values, ecef_T_nav and factor-index map."""
     gnss_noise = (lambda s: cauchy_noise(s, cfg.cauchy)) if use_cauchy else (
@@ -462,14 +227,9 @@ def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
             omega[k] = gyr[lo:cut[k]].mean(axis=0) - bg0
         if k == 0:
             continue
-        pim = gtsam.PreintegratedCombinedMeasurements(params, bias0)
-        tprev = tow[k - 1]
-        for i in range(cut[k - 1], cut[k]):
-            if t_imu[i] > tprev:
-                pim.integrateMeasurement(acc[i], gyr[i], t_imu[i] - tprev)
-            tprev = t_imu[i]
-        if tow[k] > tprev and cut[k] > 0:
-            pim.integrateMeasurement(acc[cut[k] - 1], gyr[cut[k] - 1], tow[k] - tprev)
+        pim, _, _ = integrate_imu_segment(
+            params, bias0, t_imu, acc, gyr, cut[k - 1], cut[k],
+            t_prev=tow[k - 1], t_end=tow[k])
         graph.add(gtsam.CombinedImuFactor(X(k - 1), V(k - 1), X(k), V(k), B(k - 1), B(k), pim))
 
     init.insert(MOUNT, gtsam.Rot3())
@@ -520,13 +280,14 @@ def build_tc_graph(meas, imu, ant_ecef, cfg, use_cauchy=False):
         if len(d) < 2:
             continue
         rr = gtsam.Point3(*ant_ecef[k])
-        ir = int(np.argmax(d[:, D_EL]))
-        ref = d[ir]
-        s_ref = cfg.dop_sigma0 / max(np.sin(ref[D_EL]), 0.1)
-        for j, t in enumerate(d):
+        has_snr = d.shape[1] > D_SNR
+        sigmas = [sd_doppler_sat_sigma(cfg.dop_sigma0, t[D_SNR] if has_snr else 0.0)
+                  for t in d]
+        ir = int(np.argmin(sigmas))
+        ref, s_ref = d[ir], sigmas[ir]
+        for j, (t, s_t) in enumerate(zip(d, sigmas)):
             if j == ir:
                 continue
-            s_t = cfg.dop_sigma0 / max(np.sin(t[D_EL]), 0.1)
             idx["dop"].append(graph.size())
             idx["dop_k"].append(k)
             graph.add(SingleDifferenceDopplerFactorArm(
