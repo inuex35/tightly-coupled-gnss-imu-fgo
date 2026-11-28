@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import math
 import os
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import gtsam
 import numpy as np
@@ -184,57 +184,64 @@ def make_imu_params(
     return p
 
 
-def build_imu_preintegration(
-    params: gtsam.PreintegrationCombinedParams,
-    bias: gtsam.imuBias.ConstantBias,
-    imu_data: List[dict],
-    imu_idx: int,
-    target_tow: Optional[float] = None,
-    max_samples: int = 100,
-    dt: float = 0.01,
-) -> Tuple[gtsam.PreintegratedCombinedMeasurements, int, np.ndarray, int]:
-    """Integrate IMU samples up to `target_tow` or `max_samples`.
+def as_imu_arrays(imu_data):
+    """Normalize IMU data (dict list or (tow, acc, gyro) tuple) to float64 arrays."""
+    if isinstance(imu_data, tuple) and len(imu_data) == 3:
+        return tuple(np.asarray(a, dtype=np.float64) for a in imu_data)
+    if not imu_data:
+        return np.empty(0, dtype=np.float64), np.empty((0, 3)), np.empty((0, 3))
+    return (
+        np.array([im['tow'] for im in imu_data], dtype=np.float64),
+        np.array([im['acc'] for im in imu_data], dtype=np.float64),
+        np.array([im['gyro'] for im in imu_data], dtype=np.float64),
+    )
 
-    Returns (pim, n_integrated, gyro_mean_body_flu, new_imu_idx).
-    """
+
+def integrate_imu_segment(params, bias, t_imu, acc, gyr, start_idx, end_idx,
+                          t_prev=None, t_end=None, dt_default=0.01):
+    """Integrate IMU array slice ``[start_idx, end_idx)`` into a PIM."""
     pim = gtsam.PreintegratedCombinedMeasurements(params, bias)
-    n = 0
-    gyro_sum = np.zeros(3)
-    idx = imu_idx
-    while idx < len(imu_data):
-        im = imu_data[idx]
-        if target_tow is not None:
-            if im['tow'] > target_tow + 1e-6:
-                break
-        elif n >= max_samples:
-            break
-        gyro = np.asarray(im['gyro'], dtype=np.float64)
-        dt_i = dt
-        if idx > 0:
-            d = round(im['tow'] - imu_data[idx - 1]['tow'], 4)
-            if 0.0 < d <= 10 * dt:
-                dt_i = d
-        pim.integrateMeasurement(im['acc'], gyro, dt_i)
-        gyro_sum += gyro
-        n += 1
-        idx += 1
-    gyro_mean = gyro_sum / n if n > 0 else np.zeros(3)
-    return pim, n, gyro_mean, idx
+    if t_prev is not None:
+        tcur = float(t_prev)
+        for i in range(start_idx, end_idx):
+            if t_imu[i] > tcur:
+                pim.integrateMeasurement(acc[i], gyr[i], float(t_imu[i] - tcur))
+            tcur = float(t_imu[i])
+        if t_end is not None and t_end > tcur and end_idx > 0:
+            pim.integrateMeasurement(acc[end_idx - 1], gyr[end_idx - 1], float(t_end - tcur))
+    else:
+        for i in range(start_idx, end_idx):
+            d = round(float(t_imu[i] - t_imu[i - 1]), 4) if i > 0 else 0.0
+            pim.integrateMeasurement(acc[i], gyr[i], d if 0.0 < d <= 10 * dt_default else dt_default)
+    n = max(0, end_idx - start_idx)
+    return pim, n, (gyr[start_idx:end_idx].mean(axis=0) if n > 0 else np.zeros(3))
+
+
+def build_imu_preintegration(params, bias, imu_data, imu_idx,
+                             target_tow=None, max_samples=100, dt=0.01):
+    """Integrate IMU samples up to ``target_tow`` or ``max_samples``."""
+    t_imu, acc, gyr = as_imu_arrays(imu_data)
+    if target_tow is not None:
+        end_idx = int(np.searchsorted(t_imu[imu_idx:], target_tow + 1e-6, side="right")) + imu_idx
+    else:
+        end_idx = min(len(t_imu), imu_idx + max_samples)
+    pim, n, gyro_mean = integrate_imu_segment(
+        params, bias, t_imu, acc, gyr, imu_idx, end_idx, dt_default=dt)
+    return pim, n, gyro_mean, end_idx
 
 
 def estimate_stationary_bias(
-    imu_data: List[dict],
+    imu_data,
     n_max: int,
     n_min: int = 100,
     g_expected: float = 9.81,
 ):
-    """Coarse stationary-IMU bias estimation over the first `n_max` samples."""
+    """Coarse stationary-IMU bias estimation over the first ``n_max`` samples."""
     if n_max <= n_min:
         return np.zeros(3), np.zeros(3)
-    acc = np.array([im['acc'] for im in imu_data[:n_max]])
-    gyro = np.array([im['gyro'] for im in imu_data[:n_max]], dtype=np.float64)
-    acc_mean = np.mean(acc, axis=0)
-    gyro_mean = np.mean(gyro, axis=0)
+    _, acc, gyro = as_imu_arrays(imu_data)
+    acc_mean = np.mean(acc[:n_max], axis=0)
+    gyro_mean = np.mean(gyro[:n_max], axis=0)
     g_norm = np.linalg.norm(acc_mean)
     if g_norm > 1.0:
         bias_acc = acc_mean - g_expected * acc_mean / g_norm

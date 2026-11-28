@@ -46,10 +46,10 @@ class SatStateMap:
                 if st.amb_key is not None}
 
 
-def _detect_gf_slip(tc, obs, row, s, lams, nf, reset_keys):
-    """Multi-frequency geometry-free (La-Lb) jump detector."""
+def detect_gf_slip(obs, row, s, lams, nf, prev_gf, thres, epoch_idx=None) -> bool:
+    """Multi-frequency geometry-free (La - Lb) jump detector."""
     n_f = min(nf, len(lams), obs.L.shape[1])
-    prev_gf = tc._sat_states.prev_gf_m
+    slipped = False
     for fa in range(n_f):
         La = float(obs.L[row, fa])
         if La == 0.0 or lams[fa] <= 0.0:
@@ -60,19 +60,24 @@ def _detect_gf_slip(tc, obs, row, s, lams, nf, reset_keys):
                 continue
             gf = La * lams[fa] - Lb * lams[fb]
             key = (int(s), fa, fb)
-            if key in prev_gf and prev_gf[key] != 0.0:
-                if abs(gf - prev_gf[key]) > tc.cfg.thres_slip:
-                    for f in range(nf):
-                        reset_keys.add((s, f))
-            prev_gf[key] = gf
+            prev = prev_gf.get(key)
+            if epoch_idx is None:
+                if prev is not None and prev != 0.0 and abs(gf - prev) > thres:
+                    slipped = True
+                prev_gf[key] = gf
+            else:
+                if prev is not None and prev[0] == epoch_idx - 1 and abs(gf - prev[1]) > thres:
+                    slipped = True
+                prev_gf[key] = (epoch_idx, gf)
+    return slipped
 
 
-def _detect_dop_slip(tc, obs, row, s, nf, tow, reset_keys):
+def detect_dop_slip(obs, row, s, nf, tow, prev_dop) -> set:
     """Per-frequency Doppler-aided cycle-slip detector: |dPhi + D_mean*dt|."""
+    slipped = set()
     if tow is None or not hasattr(obs, "D"):
-        return
+        return slipped
     n_f = min(nf, obs.L.shape[1], obs.D.shape[1])
-    prev_dop = tc._sat_states.prev_dop_phi
     for f in range(n_f):
         L_val = float(obs.L[row, f])
         D_val = float(obs.D[row, f])
@@ -84,8 +89,9 @@ def _detect_dop_slip(tc, obs, row, s, nf, tow, reset_keys):
             dt = tow - ptow
             if 0.0 < dt <= _DOP_SLIP_MAX_DT_S:
                 if abs((L_val - pL) + 0.5 * (D_val + pD) * dt) > _DOP_SLIP_THRES_CYC:
-                    reset_keys.add((s, f))
+                    slipped.add(f)
         prev_dop[key] = (L_val, D_val, tow)
+    return slipped
 
 
 def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
@@ -105,9 +111,12 @@ def detect_slips_and_reset_ambiguities(tc, obs, obs_sd, sat, iu):
             sat_state.outage_count = 0
             if hasattr(obs, 'lli') and (int(obs.lli[iu[i], f]) & 1) != 0:
                 reset_keys.add((s, f))
-        if nf >= 2 and len(lams) >= 2:
-            _detect_gf_slip(tc, obs, iu[i], s, lams, nf, reset_keys)
-        _detect_dop_slip(tc, obs, iu[i], s, nf, tow, reset_keys)
+        if (nf >= 2 and len(lams) >= 2 and
+                detect_gf_slip(obs, iu[i], s, lams, nf,
+                               tc._sat_states.prev_gf_m, tc.cfg.thres_slip)):
+            reset_keys.update((s, f) for f in range(nf))
+        for f in detect_dop_slip(obs, iu[i], s, nf, tow, tc._sat_states.prev_dop_phi):
+            reset_keys.add((s, f))
 
     maxout = tc._sat_states.maxout
     for key in list(tc._sat_states.keys()):

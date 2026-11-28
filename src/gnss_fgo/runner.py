@@ -11,6 +11,7 @@ from . import slip as _tc_slip
 from .config import TcConfig
 from .slip import SatStateMap
 from .utils import (
+    as_imu_arrays,
     build_imu_preintegration,
     enu_frame,
     estimate_stationary_bias,
@@ -90,15 +91,15 @@ def _decide_fix_or_flt(tc, float_antenna_ecef, n_fixed, fixed_pos, info):
 def _init_pose_and_bias_epoch0(tc, obs, init_ecef, R_enu2ecef):
     """Estimate stationary IMU bias & tilt from pre-GNSS samples and build pose0."""
     _, tow_obs = time2gpst(obs.t)
-    while tc.imu_idx < len(tc.imu_data) and tc.imu_data[tc.imu_idx]['tow'] <= tow_obs + 1e-6:
-        tc.imu_idx += 1
+    t_imu, acc, _ = tc._imu_arrays
+    tc.imu_idx = int(np.searchsorted(t_imu[tc.imu_idx:], tow_obs + 1e-6, side='right')) + tc.imu_idx
     bias_acc, bias_gyro = estimate_stationary_bias(
-        tc.imu_data, n_max=min(3000, tc.imu_idx))
+        tc._imu_arrays, n_max=min(3000, tc.imu_idx))
     bias0 = gtsam.imuBias.ConstantBias(bias_acc, bias_gyro)
     tc.tc_bias = bias0
 
     n_static = max(1, min(500, tc.imu_idx))
-    acc_avg = np.mean([im['acc'] for im in tc.imu_data[:n_static]], axis=0)
+    acc_avg = np.mean(acc[:n_static], axis=0)
     acc_tilt = np.asarray(acc_avg - bias_acc, dtype=float)
     pitch_rad = float(np.arctan2(
         acc_tilt[0], np.sqrt(acc_tilt[1] ** 2 + acc_tilt[2] ** 2)))
@@ -169,7 +170,7 @@ def run_tc_epoch(tc, obs, obsb, rs, vs, rsb, sat, el, iu,
         info['tc_epoch'] = key_idx
         _, tow_obs = time2gpst(obs.t)
         pim, n_imu, gyro_mean, tc.imu_idx = build_imu_preintegration(
-            tc.imu_params, tc.tc_bias, tc.imu_data, tc.imu_idx, target_tow=tow_obs)
+            tc.imu_params, tc.tc_bias, tc._imu_arrays, tc.imu_idx, target_tow=tow_obs)
         info['n_imu'] = n_imu
         if n_imu == 0:
             return np.array(tc.nav.x[0:3]), 'FLT', 0, info
@@ -263,6 +264,7 @@ class ImuGnssTc:
 
         self.base_ecef = np.array(base_ecef)
         self.imu_data = imu_data
+        self._imu_arrays = as_imu_arrays(imu_data)
         self.lever_arm = np.array(lever_arm, dtype=float)
 
         self.R_enu2ecef, self.ecef_T_nav = enu_frame(self.base_ecef)

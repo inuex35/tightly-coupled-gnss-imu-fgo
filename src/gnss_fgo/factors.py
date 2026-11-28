@@ -51,6 +51,11 @@ def _snr_var_scale(snr_dbhz):
     return 10.0 ** (delta / 10.0)
 
 
+def dd_snr_weight(snrs) -> float:
+    """Dimensionless DD SNR noise scale sqrt(sum_i 2 * _snr_var_scale(snr_i))."""
+    return float(np.sqrt(sum(2.0 * _snr_var_scale(s) for s in snrs)))
+
+
 def dd_obs_sigma(tc, is_pseudorange, snrs, dt_s):
     """SNR-weighted DD observation σ [m] matching zenith varerr at _SNR_REF_DBHZ."""
     cfg = tc.cfg
@@ -253,18 +258,28 @@ def _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu):
     return rows
 
 
+def sd_doppler_sigma(err_a: float) -> float:
+    """Base SD Doppler velocity σ [m/s] from carrier-phase scale ``err_a``."""
+    return float(np.sqrt(2.0) * err_a / _DOPPLER_COH_TIME_S)
+
+
+def sd_doppler_sat_sigma(sigma0: float, snr_dbhz: float) -> float:
+    """Per-satellite SNR-weighted SD Doppler σ [m/s]."""
+    return sigma0 * float(np.sqrt(_snr_var_scale(snr_dbhz)))
+
+
 def add_sd_doppler_factors(tc, graph, key_idx, obs, obs_sd, rs, vs, sat, el,
                            iu, pred_ecef, gyro_mean, info):
     """Add clock-free SD Doppler factors against the highest-SNR reference sat."""
     if key_idx is None:
         return
-    sigma = float(np.sqrt(2.0) * tc.cfg.err_a / _DOPPLER_COH_TIME_S)
+    sigma = sd_doppler_sigma(tc.cfg.err_a)
 
     rows = _doppler_rows(tc, obs, obs_sd, rs, vs, sat, el, iu)
     if len(rows) < 2:
         return
 
-    sigmas = [sigma * float(np.sqrt(_snr_var_scale(r[5]))) for r in rows]
+    sigmas = [sd_doppler_sat_sigma(sigma, r[5]) for r in rows]
     i_ref = int(np.argmin(sigmas))
     ref, sigma_ref = rows[i_ref], sigmas[i_ref]
 

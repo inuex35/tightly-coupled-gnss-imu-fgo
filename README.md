@@ -61,12 +61,12 @@ Whole-run MAP smoothing (Huber initial convergence → Cauchy `k = 2.385` polish
 
 | run         | length    | AllRMS  | median  | FixRMS  | fix %  | <50 cm | Max     |
 |-------------|-----------|---------|---------|---------|--------|--------|---------|
-| tokyo run1  | 11928 ep  |  0.22 m | 0.041 m | 0.09 m  | 62.0 % | 95.6 % |  1.82 m |
-| tokyo run2  |  9151 ep  |  0.24 m | 0.031 m | 0.06 m  | 66.2 % | 96.1 % |  1.99 m |
-| tokyo run3  | 15301 ep  |  0.14 m | 0.035 m | 0.07 m  | 72.1 % | 98.5 % |  1.83 m |
-| nagoya run1 |  7602 ep  |  0.69 m | 0.120 m | 0.12 m  | 69.8 % | 91.9 % |  5.68 m |
-| nagoya run2 |  9451 ep  |  1.16 m | 0.212 m | 0.43 m  | 53.1 % | 65.6 % |  5.05 m |
-| nagoya run3 |  5201 ep  |  0.21 m | 0.117 m | 0.17 m  | 54.0 % | 97.6 % |  1.35 m |
+| tokyo run1  | 11928 ep  |  0.24 m | 0.041 m | 0.09 m  | 61.9 % | 96.3 % |  1.53 m |
+| tokyo run2  |  9151 ep  |  0.21 m | 0.032 m | 0.06 m  | 66.1 % | 96.2 % |  1.47 m |
+| tokyo run3  | 15301 ep  |  0.14 m | 0.035 m | 0.07 m  | 72.1 % | 98.8 % |  2.12 m |
+| nagoya run1 |  7602 ep  |  0.62 m | 0.120 m | 0.12 m  | 69.8 % | 93.8 % |  4.53 m |
+| nagoya run2 |  9451 ep  |  1.03 m | 0.212 m | 0.42 m  | 53.0 % | 73.1 % |  3.84 m |
+| nagoya run3 |  5201 ep  |  0.21 m | 0.117 m | 0.17 m  | 54.0 % | 97.6 % |  1.36 m |
 
 ## Quick start
 

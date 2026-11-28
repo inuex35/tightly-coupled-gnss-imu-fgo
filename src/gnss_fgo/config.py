@@ -59,53 +59,53 @@ class TcConfig:
 _TC_DEFAULTS = TcConfig()
 
 
+def _env_field(envname: str, default, vec: bool = False):
+    """Dataclass field whose default is read from ``envname`` at construction."""
+    if vec:
+        return field(default_factory=lambda: env_vector(envname, default))
+    if isinstance(default, int):
+        return field(default_factory=lambda: env_int(envname, default))
+    if isinstance(default, float):
+        return field(default_factory=lambda: env_float(envname, default))
+    return field(default_factory=lambda: os.environ.get(envname, default))
+
+
 @dataclass
 class BatchConfig:
     """All tunables of gnss_fgo.batch. Loaded from env vars at construction."""
 
     # --- solver
-    solver: str = field(default_factory=lambda: os.environ.get("BATCH_SOLVER", "auto"))
+    solver: str = _env_field("BATCH_SOLVER", "auto")
     #   auto: gtsam.cuda (cuDSS) when the gtsam build has it, else CPU LM
-    max_iters: int = field(default_factory=lambda: env_int("BATCH_MAX_ITERS", 200))
+    max_iters: int = _env_field("BATCH_MAX_ITERS", 200)
 
     # --- GNSS measurement model (defaults shared with TcConfig)
-    sig_pr: float = field(default_factory=lambda: env_float("BATCH_SIG_PR", _TC_DEFAULTS.err_a * _TC_DEFAULTS.err_eratio_pr))     # [m]
-    sig_cp: float = field(default_factory=lambda: env_float("BATCH_SIG_CP", _TC_DEFAULTS.err_a))    # [m]
-    huber: float = field(default_factory=lambda: env_float("BATCH_HUBER", HUBER_K))
-    cauchy: float = field(default_factory=lambda: env_float("BATCH_CAUCHY", CAUCHY_K))
+    sig_pr: float = _env_field("BATCH_SIG_PR", _TC_DEFAULTS.err_a * _TC_DEFAULTS.err_eratio_pr)  # [m]
+    sig_cp: float = _env_field("BATCH_SIG_CP", _TC_DEFAULTS.err_a)  # [m]
+    huber: float = _env_field("BATCH_HUBER", HUBER_K)
+    cauchy: float = _env_field("BATCH_CAUCHY", CAUCHY_K)
     sig_amb: float = 30.0          # [cyc] SD ambiguity gauge prior
     sig_rw: float = 5.0            # [m] GNSS-only position random walk per 0.2 s
-    dop_sigma0: float = field(default_factory=lambda: env_float("DOP_SIGMA0", 0.1))   # [m/s]
+    dop_sigma0: float = _env_field("DOP_SIGMA0", float(np.sqrt(2.0) * _TC_DEFAULTS.err_a / 0.02))  # [m/s]
     huber_dop: float = 1.0
-    tropo: int = field(default_factory=lambda: env_int("TROPO", 0))   # Saastamoinen DD tropo
 
     # --- IMU (datasheet + vehicle vibration PSD from utils)
-    lever: np.ndarray = field(default_factory=lambda: env_vector("LEVER_ARM", "0.31,0,0.55"))
-    acc_noise: np.ndarray = field(default_factory=lambda: env_vector("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}"))
-    gyro_noise: np.ndarray = field(default_factory=lambda: env_vector("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}"))
-    acc_bias_rw: float = field(default_factory=lambda: env_float("IMU_ACC_BIAS_RW", IMU_ACCEL_BIAS_SIGMA))
-    gyro_bias_rw: float = field(default_factory=lambda: env_float("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA))
+    lever: np.ndarray = _env_field("LEVER_ARM", "0.31,0,0.55", vec=True)
+    acc_noise: np.ndarray = _env_field("IMU_ACC_NOISE", f"{IMU_ACCEL_NOISE:.6g}", vec=True)
+    gyro_noise: np.ndarray = _env_field("IMU_GYRO_NOISE", f"{IMU_GYRO_NOISE:.6g}", vec=True)
+    acc_bias_rw: float = _env_field("IMU_ACC_BIAS_RW", IMU_ACCEL_BIAS_SIGMA)
+    gyro_bias_rw: float = _env_field("IMU_GYRO_BIAS_RW", IMU_GYRO_BIAS_SIGMA)
     integ_cov: float = 1e-3
-    gravity: float = field(default_factory=lambda: env_float("BATCH_GRAVITY", 9.81))
+    gravity: float = _env_field("BATCH_GRAVITY", 9.81)
     nhc_sigmas: tuple = (_TC_DEFAULTS.nhc_sigma_lat, _TC_DEFAULTS.nhc_sigma_vert)
-
-    # --- ZUPT: IMU stillness test AND speed gate (IMU-only fires at speed)
-    zupt: int = field(default_factory=lambda: env_int("ZUPT", 1))
-    zupt_speed: float = field(default_factory=lambda: env_float("ZUPT_SPEED", 0.2))   # [m/s]
-    zupt_speed_src: str = field(
-        default_factory=lambda: os.environ.get("ZUPT_SPEED_SRC", "doppler"))   # doppler | gnss
-    zupt_vel_sigma: float = 0.1     # [m/s]
-    zupt_rot_sigma: float = 0.01    # [rad]
-    zupt_pos_sigma: float = 0.05    # [m]
 
     # --- ambiguity resolution
     ratio: float | None = field(
         default_factory=lambda: env_float("AR_RATIO", 0.0) or None)  # None = FFRT
     sig_fix: float = 1e-3            # [cyc] integer DD constraint
-    lambda_workers: int = field(
-        default_factory=lambda: env_int("AR_LAMBDA_WORKERS", 0))   # 0 = all cores, 1 = serial
+    lambda_workers: int = _env_field("AR_LAMBDA_WORKERS", 0)  # 0 = all cores, 1 = serial
 
     # --- per-epoch FIX validation of the fixed solution
-    fix_res: float = field(default_factory=lambda: env_float("FIX_RES", 0.05))          # [m]
-    fix_min_pairs: int = field(default_factory=lambda: env_int("FIX_MIN_PAIRS", 4))
-    fix_min_sats: int = field(default_factory=lambda: env_int("FIX_MIN_SATS", 4))
+    fix_res: float = _env_field("FIX_RES", 0.05)          # [m]
+    fix_min_pairs: int = _env_field("FIX_MIN_PAIRS", 4)
+    fix_min_sats: int = _env_field("FIX_MIN_SATS", 4)

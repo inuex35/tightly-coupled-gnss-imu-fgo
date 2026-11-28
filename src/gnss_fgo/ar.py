@@ -132,6 +132,33 @@ class ResolverResult:
     dropped: int = 0
 
 
+_FFRT_POLY_COEFFS = (
+    (-1.94058448e-01, -7.79023476e+00, 1.24231120e+02,
+     -4.03126050e+02, 3.50413202e+02),
+    (6.42237302e-01, -8.39813962e+00, 2.92107285e+01,
+     -2.37577308e+01, -1.14307128e+00),
+    (-2.22600390e-02, 3.23169103e-01, -1.39837429e+00,
+     2.19282996e+00, -5.34583971e-02),
+)
+
+
+def ffrt_ratio_threshold(nb: int, p0: float = 0.001,
+                         thresar_min: float = _FFRT_MIN_RATIO,
+                         thresar_max: float = _FFRT_MAX_RATIO) -> float:
+    """Dimension-adaptive FFRT ratio threshold for ``nb`` DD candidates."""
+    nb1 = min(int(nb), 50)
+    coeff = []
+    for row in _FFRT_POLY_COEFFS:
+        c = row[0]
+        for kj in range(1, 5):
+            c = c * p0 + row[kj]
+        coeff.append(c)
+    th = coeff[0]
+    for ki in range(1, 3):
+        th = th / (nb1 + 1) + coeff[ki]
+    return min(max(th, thresar_min), thresar_max)
+
+
 class AmbiguityResolver:
     """LAMBDA over a float ambiguity vector and its covariance."""
 
@@ -147,14 +174,6 @@ class AmbiguityResolver:
         self.thresar_min = float(thresar_min)
         self.thresar_max = float(thresar_max)
 
-    _AR_POLY_COEFFS = (
-        (-1.94058448e-01, -7.79023476e+00, 1.24231120e+02,
-         -4.03126050e+02, 3.50413202e+02),
-        (6.42237302e-01, -8.39813962e+00, 2.92107285e+01,
-         -2.37577308e+01, -1.14307128e+00),
-        (-2.22600390e-02, 3.23169103e-01, -1.39837429e+00,
-         2.19282996e+00, -5.34583971e-02))
-
     def ratio_threshold(self, nb):
         """Ratio-test threshold for ``nb`` DD candidates.
 
@@ -164,18 +183,9 @@ class AmbiguityResolver:
         """
         if self.thresar_min == self.thresar_max:
             return self.thresar
-        p0 = self.thresar
-        nb1 = min(int(nb), 50)
-        coeff = []
-        for row in self._AR_POLY_COEFFS:
-            c = row[0]
-            for kj in range(1, 5):
-                c = c * p0 + row[kj]
-            coeff.append(c)
-        th = coeff[0]
-        for ki in range(1, 3):
-            th = th / (nb1 + 1) + coeff[ki]
-        return min(max(th, self.thresar_min), self.thresar_max)
+        return ffrt_ratio_threshold(
+            nb, p0=self.thresar,
+            thresar_min=self.thresar_min, thresar_max=self.thresar_max)
 
     def double_difference(self, keys, elevations):
         """Pick a reference per (constellation, frequency) and pair the rest."""

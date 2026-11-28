@@ -10,12 +10,10 @@ from cssrlib.core.mlambda import mlambda
 from gtsam.symbol_shorthand import N
 from scipy.linalg import cho_factor, cho_solve
 
-from .ar import AmbiguityResolver, _FFRT_MAX_RATIO, _FFRT_MIN_RATIO
-from .batch_graph import ARC_REF, ARC_TGT, EPOCH, SATNO_TGT
+from .ar import ffrt_ratio_threshold
+from .batch_preparation import ARC_REF, ARC_TGT, EPOCH, SATNO_TGT
 
 _MIN_PARALLEL = 256     # below this, pool start-up costs more than it saves
-_FFRT = AmbiguityResolver(
-    thresar=0.001, thresar_min=_FFRT_MIN_RATIO, thresar_max=_FFRT_MAX_RATIO)
 
 
 def _solve_one(a, Q):
@@ -229,7 +227,7 @@ def _solve_partial_one(a, Q, min_pairs=4):
         best, _, s, info = _solve_one(a[keep], Q[np.ix_(keep, keep)])
         if info == 0:
             ratio = float(s[1] / max(s[0], 1e-12))
-            if ratio >= _FFRT.ratio_threshold(len(keep)):
+            if ratio >= ffrt_ratio_threshold(len(keep)):
                 return keep, best, ratio
         if len(keep) == min_pairs:
             break
@@ -255,7 +253,7 @@ def resolve(groups, values, cov, ratio_min=None, workers=0, min_pairs=4):
     retry = []
     for i, p in enumerate(probs):
         nb = len(p[1])
-        thresh = ratio_min if ratio_min is not None else _FFRT.ratio_threshold(nb)
+        thresh = ratio_min if ratio_min is not None else ffrt_ratio_threshold(nb)
         if ratio[i] >= thresh:
             cand.append((float(ratio[i]), p[0], p[1], best[i]))
         elif nb > min_pairs:
@@ -297,11 +295,11 @@ def resolve(groups, values, cov, ratio_min=None, workers=0, min_pairs=4):
     return accepted, sources, passed, stats
 
 
-def validate_fix(rows, keep_cp, accepted, cp_res, n_ep, cfg):
+def validate_fix(rows, accepted, cp_res, n_ep, cfg):
     """Per-epoch FIX validation of the fixed solution."""
     uf = ArcUnion(accepted)
     k = rows[:, EPOCH].astype(int)
-    resolved = np.array([keep_cp[i] and uf.resolved(rows[i, ARC_REF], rows[i, ARC_TGT])
+    resolved = np.array([uf.resolved(rows[i, ARC_REF], rows[i, ARC_TGT])
                          for i in range(len(rows))], dtype=bool)
     n_res = np.bincount(k[resolved], minlength=n_ep)
     worst = np.zeros(n_ep)
